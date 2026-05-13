@@ -6,16 +6,33 @@ import api from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/useAuthStore";
 import { 
+  DndContext, 
+  DragOverlay, 
+  closestCorners, 
+  KeyboardSensor, 
+  PointerSensor, 
+  useSensor, 
+  useSensors,
+  DragStart,
+  DragOver,
+  DragEnd,
+} from "@dnd-kit/core";
+import { 
+  arrayMove, 
+  SortableContext, 
+  sortableKeyboardCoordinates, 
+  verticalListSortingStrategy 
+} from "@dnd-kit/sortable";
+import { 
   Plus, 
-  MoreHorizontal, 
   Loader2,
   Users,
-  Trash2,
-  GripVertical,
   ArrowLeft,
-  UserPlus,
   X
 } from "lucide-react";
+import TeamKanbanColumn from "./TeamKanbanColumn";
+import TeamTaskCard from "./TeamTaskCard";
+import TeamTaskDetailModal from "./TeamTaskDetailModal";
 
 interface Task {
   id: string;
@@ -28,6 +45,7 @@ interface Task {
   due_date?: string;
   comments_count?: number;
   attachments_count?: number;
+  created_at: string;
 }
 
 interface TeamInfo {
@@ -43,12 +61,6 @@ const COLUMNS = [
   { id: "done", title: "Selesai", color: "border-t-emerald-500", bg: "bg-emerald-500/10", badge: "bg-emerald-500" },
 ];
 
-const PRIORITY_COLORS: Record<string, string> = {
-  low: "bg-slate-500/20 text-slate-400",
-  medium: "bg-amber-500/20 text-amber-400",
-  high: "bg-rose-500/20 text-rose-400",
-};
-
 export default function TeamBoardPage() {
   const { id: orgId, teamId } = useParams();
   const router = useRouter();
@@ -56,9 +68,23 @@ export default function TeamBoardPage() {
   const [team, setTeam] = useState<TeamInfo | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
-  const [newTaskTitle, setNewTaskTitle] = useState<Record<string, string>>({});
-  const [addingTo, setAddingTo] = useState<string | null>(null);
   const [members, setMembers] = useState<any[]>([]);
+  
+  // DND State
+  const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   const fetchData = useCallback(async () => {
     try {
@@ -82,42 +108,100 @@ export default function TeamBoardPage() {
   }, [fetchData]);
 
   const handleAddTask = async (status: string) => {
-    const title = newTaskTitle[status]?.trim();
-    if (!title) return;
+    const title = prompt("Judul tugas baru:");
+    if (!title?.trim()) return;
 
     try {
       await api.post(`/organizations/${orgId}/teams/${teamId}/tasks`, {
-        title,
+        title: title.trim(),
         status,
       });
-      setNewTaskTitle((prev) => ({ ...prev, [status]: "" }));
-      setAddingTo(null);
       fetchData();
     } catch (err) {
       console.error("Failed to add task", err);
     }
   };
 
-  const handleMoveTask = async (taskId: string, newStatus: string) => {
-    try {
-      const columnTasks = tasks.filter((t) => t.status === newStatus);
-      await api.patch(
-        `/organizations/${orgId}/teams/${teamId}/tasks/${taskId}/move`,
-        { status: newStatus, position: columnTasks.length }
-      );
-      fetchData();
-    } catch (err) {
-      console.error("Failed to move task", err);
+  const onDragStart = (event: DragStart) => {
+    if (event.active.data.current?.type === "Task") {
+      setActiveTask(event.active.data.current.task);
+      return;
+    }
+    const task = tasks.find((t) => t.id === event.active.id);
+    if (task) setActiveTask(task);
+  };
+
+  const onDragOver = (event: DragOver) => {
+    const { active, over } = event;
+    if (!over) return;
+
+    const activeId = active.id;
+    const overId = over.id;
+
+    if (activeId === overId) return;
+
+    const isActiveATask = active.data.current?.type === "Task" || tasks.some(t => t.id === activeId);
+    const isOverATask = over.data.current?.type === "Task" || tasks.some(t => t.id === overId);
+
+    if (!isActiveATask) return;
+
+    // Dropping a Task over another Task
+    if (isActiveATask && isOverATask) {
+      setTasks((tasks) => {
+        const activeIndex = tasks.findIndex((t) => t.id === activeId);
+        const overIndex = tasks.findIndex((t) => t.id === overId);
+
+        if (tasks[activeIndex].status !== tasks[overIndex].status) {
+          tasks[activeIndex].status = tasks[overIndex].status;
+          return arrayMove(tasks, activeIndex, overIndex - 1);
+        }
+
+        return arrayMove(tasks, activeIndex, overIndex);
+      });
+    }
+
+    // Dropping a Task over a Column
+    const isOverAColumn = COLUMNS.some((c) => c.id === overId);
+    if (isActiveATask && isOverAColumn) {
+      setTasks((tasks) => {
+        const activeIndex = tasks.findIndex((t) => t.id === activeId);
+        tasks[activeIndex].status = overId as any;
+        return arrayMove(tasks, activeIndex, activeIndex);
+      });
     }
   };
 
-  const handleDeleteTask = async (taskId: string) => {
+  const onDragEnd = async (event: DragEnd) => {
+    const { active, over } = event;
+    setActiveTask(null);
+
+    if (!over) return;
+
+    const taskId = active.id as string;
+    const overId = over.id as string;
+    const task = tasks.find((t) => t.id === taskId);
+    
+    if (!task) return;
+
+    // Find new position and status
+    const newStatus = COLUMNS.some(c => c.id === overId) ? overId : tasks.find(t => t.id === overId)?.status || task.status;
+    const columnTasks = tasks.filter(t => t.status === newStatus);
+    const newPosition = columnTasks.findIndex(t => t.id === taskId);
+
     try {
-      await api.delete(`/organizations/${orgId}/teams/${teamId}/tasks/${taskId}`);
-      fetchData();
+      await api.patch(`/organizations/${orgId}/teams/${teamId}/tasks/${taskId}/move`, {
+        status: newStatus,
+        position: newPosition === -1 ? columnTasks.length : newPosition
+      });
     } catch (err) {
-      console.error("Failed to delete task", err);
+      console.error("Failed to sync task move", err);
+      fetchData(); // Revert on error
     }
+  };
+
+  const handleTaskClick = (task: Task) => {
+    setSelectedTaskId(task.id);
+    setIsModalOpen(true);
   };
 
   if (loading) {
@@ -129,36 +213,34 @@ export default function TeamBoardPage() {
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="border-b border-border px-8 py-5 flex items-center justify-between bg-card/50 backdrop-blur-sm">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => router.back()}
-              className="p-2 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </button>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/20">
-                <Users className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h1 className="text-lg font-bold text-foreground">{team?.name}</h1>
-                {team?.description && (
-                  <p className="text-xs text-muted-foreground">{team.description}</p>
-                )}
-              </div>
+    <div className="flex-1 flex flex-col overflow-hidden bg-[#fafafa]">
+      {/* Header */}
+      <div className="border-b border-border px-8 py-5 flex items-center justify-between bg-white/80 backdrop-blur-md sticky top-0 z-30">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => router.back()}
+            className="p-2 rounded-xl hover:bg-secondary text-muted-foreground hover:text-foreground transition-all"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/20">
+              <Users className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold text-foreground tracking-tight">{team?.name}</h1>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Team Workspace</p>
             </div>
           </div>
+        </div>
 
+        <div className="flex items-center gap-6">
           <div className="flex items-center gap-3">
-            {/* Member Avatars */}
             <div className="flex -space-x-2">
               {members.slice(0, 5).map((m: any) => (
                 <div
                   key={m.id}
-                  className="w-8 h-8 rounded-full bg-secondary border-2 border-card flex items-center justify-center text-xs font-bold overflow-hidden"
+                  className="w-8 h-8 rounded-full bg-secondary border-2 border-white flex items-center justify-center text-[10px] font-bold overflow-hidden shadow-sm"
                   title={m.user?.name}
                 >
                   {m.user?.avatar_url ? (
@@ -169,156 +251,64 @@ export default function TeamBoardPage() {
                 </div>
               ))}
               {members.length > 5 && (
-                <div className="w-8 h-8 rounded-full bg-secondary border-2 border-card flex items-center justify-center text-xs font-medium text-muted-foreground">
+                <div className="w-8 h-8 rounded-full bg-secondary border-2 border-white flex items-center justify-center text-[10px] font-bold text-muted-foreground shadow-sm">
                   +{members.length - 5}
                 </div>
               )}
             </div>
-            <span className="text-xs text-muted-foreground">{members.length} anggota</span>
+            <div className="flex flex-col">
+               <span className="text-xs font-bold text-foreground">{members.length} Anggota</span>
+               <span className="text-[9px] text-muted-foreground">Aktif di tim ini</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Kanban Board */}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCorners}
+        onDragStart={onDragStart}
+        onDragOver={onDragOver}
+        onDragEnd={onDragEnd}
+      >
+        <div className="flex-1 overflow-x-auto p-8">
+          <div className="flex gap-6 h-full min-w-max pb-4">
+            {COLUMNS.map((col) => (
+              <TeamKanbanColumn
+                key={col.id}
+                id={col.id}
+                title={col.title}
+                color={col.color}
+                badge={col.badge}
+                tasks={tasks.filter((t) => t.status === col.id)}
+                onAddTask={() => handleAddTask(col.id)}
+                onTaskClick={handleTaskClick}
+              />
+            ))}
           </div>
         </div>
 
-        {/* Kanban Board */}
-        <div className="flex-1 overflow-x-auto p-6">
-          <div className="flex gap-5 h-full min-w-max">
-            {COLUMNS.map((col) => {
-              const columnTasks = tasks.filter((t) => t.status === col.id);
-              return (
-                <div
-                  key={col.id}
-                  className={cn(
-                    "w-[320px] flex flex-col rounded-xl border border-border/50 bg-card/30 backdrop-blur-sm border-t-4",
-                    col.color
-                  )}
-                >
-                  {/* Column Header */}
-                  <div className="px-4 py-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-sm text-foreground">{col.title}</h3>
-                      <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full text-white", col.badge)}>
-                        {columnTasks.length}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => setAddingTo(addingTo === col.id ? null : col.id)}
-                      className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </button>
-                  </div>
+        <DragOverlay>
+          {activeTask ? (
+            <TeamTaskCard task={activeTask} isOverlay />
+          ) : null}
+        </DragOverlay>
+      </DndContext>
 
-                  {/* Add Task Input */}
-                  {addingTo === col.id && (
-                    <div className="px-3 pb-3">
-                      <div className="bg-card border border-border rounded-lg p-3 shadow-sm">
-                        <input
-                          type="text"
-                          autoFocus
-                          placeholder="Judul tugas..."
-                          value={newTaskTitle[col.id] || ""}
-                          onChange={(e) =>
-                            setNewTaskTitle((prev) => ({
-                              ...prev,
-                              [col.id]: e.target.value,
-                            }))
-                          }
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") handleAddTask(col.id);
-                            if (e.key === "Escape") setAddingTo(null);
-                          }}
-                          className="w-full text-sm bg-transparent border-none focus:outline-none focus:ring-0 text-foreground placeholder:text-muted-foreground/50"
-                        />
-                        <div className="flex gap-2 mt-2">
-                          <button
-                            onClick={() => handleAddTask(col.id)}
-                            className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors font-medium"
-                          >
-                            Tambah
-                          </button>
-                          <button
-                            onClick={() => setAddingTo(null)}
-                            className="px-3 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                          >
-                            Batal
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Task Cards */}
-                  <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-2 scrollbar-hide">
-                    {columnTasks.map((task) => (
-                      <div
-                        key={task.id}
-                        className="group bg-card border border-border/50 rounded-lg p-3 hover:border-primary/30 hover:shadow-md hover:shadow-primary/5 transition-all cursor-pointer"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-sm font-medium text-foreground leading-snug flex-1">
-                            {task.title}
-                          </p>
-                          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteTask(task.id);
-                              }}
-                              className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          </div>
-                        </div>
-
-                        {task.description && (
-                          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                            {task.description}
-                          </p>
-                        )}
-
-                        <div className="flex items-center gap-2 mt-3">
-                          <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded-full", PRIORITY_COLORS[task.priority])}>
-                            {task.priority}
-                          </span>
-
-                          {/* Quick move buttons */}
-                          <div className="flex-1" />
-                          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                            {COLUMNS.filter((c) => c.id !== col.id).map((target) => (
-                              <button
-                                key={target.id}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleMoveTask(task.id, target.id);
-                                }}
-                                className={cn(
-                                  "w-2 h-2 rounded-full transition-transform hover:scale-150",
-                                  target.badge
-                                )}
-                                title={`Pindah ke ${target.title}`}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Bottom Add Button */}
-                  {addingTo !== col.id && (
-                    <button
-                      onClick={() => setAddingTo(col.id)}
-                      className="mx-3 mb-3 flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
-                    >
-                      <Plus className="w-3 h-3" />
-                      Buat Tugas
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
+      {/* Task Detail Modal */}
+      {selectedTaskId && (
+        <TeamTaskDetailModal
+          isOpen={isModalOpen}
+          onClose={() => {
+            setIsModalOpen(false);
+            setSelectedTaskId(null);
+          }}
+          taskId={selectedTaskId}
+          teamId={teamId as string}
+          onUpdate={fetchData}
+        />
+      )}
     </div>
   );
 }

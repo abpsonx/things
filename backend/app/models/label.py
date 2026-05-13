@@ -11,16 +11,19 @@ class Label(Base):
     __tablename__ = "labels"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True)
     name = Column(String(50), nullable=False)
     color = Column(String(7), nullable=False, default="#6b7280")
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
-        UniqueConstraint("project_id", "name", name="uq_label_project_name"),
+        # Unique name per organization (global labels) or per project
+        UniqueConstraint("org_id", "name", name="uq_label_org_name"),
     )
 
     # Relationships
+    organization = relationship("Organization", back_populates="labels")
     project = relationship("Project", back_populates="labels")
     task_labels = relationship("TaskLabel", back_populates="label", cascade="all, delete-orphan")
 
