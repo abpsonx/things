@@ -16,8 +16,10 @@ import {
   User,
   Plus,
   Activity,
-  Folder
+  Folder,
+  Users
 } from "lucide-react";
+import CreateTeamModal from "@/components/team/CreateTeamModal";
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -29,35 +31,37 @@ export default function Sidebar() {
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [teams, setTeams] = useState<any[]>([]);
+  const [isCreateTeamOpen, setIsCreateTeamOpen] = useState(false);
+
+  const fetchContext = async () => {
+    try {
+      const orgsRes = await api.get("/organizations");
+      const fallbackId = orgsRes.data.length > 0 ? orgsRes.data[0].id : null;
+      const currentId = orgId && orgId !== "undefined" ? (orgId as string) : fallbackId;
+      
+      setActiveOrgId(currentId);
+
+      if (currentId) {
+        // Fetch projects for this org to find a fallback
+        const projectsRes = await api.get(`/organizations/${currentId}/projects`);
+        const fallbackProjId = projectsRes.data.length > 0 ? projectsRes.data[0].id : null;
+        setActiveProjectId(projectId ? (projectId as string) : fallbackProjId);
+
+        const res = await api.get(`/organizations/${currentId}`);
+        if (res.data && res.data.members) {
+          setMembers(res.data.members.filter((m: any) => m.user_id !== user?.id));
+        }
+
+        // Fetch teams
+        const teamsRes = await api.get(`/organizations/${currentId}/teams`);
+        setTeams(teamsRes.data);
+      }
+    } catch (err) {
+      console.error("Sidebar fetch failed", err);
+    }
+  };
 
   useEffect(() => {
-    const fetchContext = async () => {
-      try {
-        const orgsRes = await api.get("/organizations");
-        const fallbackId = orgsRes.data.length > 0 ? orgsRes.data[0].id : null;
-        const currentId = orgId && orgId !== "undefined" ? (orgId as string) : fallbackId;
-        
-        setActiveOrgId(currentId);
-
-        if (currentId) {
-          // Fetch projects for this org to find a fallback
-          const projectsRes = await api.get(`/organizations/${currentId}/projects`);
-          const fallbackProjId = projectsRes.data.length > 0 ? projectsRes.data[0].id : null;
-          setActiveProjectId(projectId ? (projectId as string) : fallbackProjId);
-
-          const res = await api.get(`/organizations/${currentId}`);
-          if (res.data && res.data.members) {
-            setMembers(res.data.members.filter((m: any) => m.user_id !== user?.id));
-          }
-
-          // Fetch teams
-          const teamsRes = await api.get(`/organizations/${currentId}/teams`);
-          setTeams(teamsRes.data);
-        }
-      } catch (err) {
-        console.error("Sidebar fetch failed", err);
-      }
-    };
     fetchContext();
   }, [orgId, projectId, user?.id]);
 
@@ -120,7 +124,10 @@ export default function Sidebar() {
         <div className="space-y-4">
           <h4 className="px-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 flex items-center justify-between">
             Tim
-            <Plus className="w-3 h-3 cursor-pointer hover:text-primary transition-colors" />
+            <Plus 
+              onClick={() => setIsCreateTeamOpen(true)}
+              className="w-3 h-3 cursor-pointer hover:text-primary transition-colors" 
+            />
           </h4>
           <div className="space-y-1">
             {teams.map((team) => {
@@ -143,7 +150,7 @@ export default function Sidebar() {
               );
             })}
             {teams.length === 0 && (
-              <p className="px-3 text-[10px] text-muted-foreground/40 italic italic">Belum ada tim</p>
+              <p className="px-3 text-[10px] text-muted-foreground/40 italic italic italic">Belum ada tim</p>
             )}
           </div>
         </div>
@@ -213,6 +220,13 @@ export default function Sidebar() {
           </button>
         </div>
       </div>
+
+      <CreateTeamModal 
+        orgId={activeOrgId || ""}
+        isOpen={isCreateTeamOpen}
+        onClose={() => setIsCreateTeamOpen(false)}
+        onSuccess={fetchContext}
+      />
     </aside>
   );
 }
