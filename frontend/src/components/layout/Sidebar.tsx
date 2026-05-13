@@ -27,6 +27,7 @@ export default function Sidebar() {
   const { user, logout } = useAuthStore();
   const [members, setMembers] = useState<any[]>([]);
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchContext = async () => {
@@ -38,6 +39,11 @@ export default function Sidebar() {
         setActiveOrgId(currentId);
 
         if (currentId) {
+          // Fetch projects for this org to find a fallback
+          const projectsRes = await api.get(`/organizations/${currentId}/projects`);
+          const fallbackProjId = projectsRes.data.length > 0 ? projectsRes.data[0].id : null;
+          setActiveProjectId(projectId ? (projectId as string) : fallbackProjId);
+
           const res = await api.get(`/organizations/${currentId}`);
           if (res.data && res.data.members) {
             setMembers(res.data.members.filter((m: any) => m.user_id !== user?.id));
@@ -48,7 +54,7 @@ export default function Sidebar() {
       }
     };
     fetchContext();
-  }, [orgId, user?.id]);
+  }, [orgId, projectId, user?.id]);
 
   const navItems = [
     { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
@@ -56,12 +62,12 @@ export default function Sidebar() {
     { 
       icon: MessageSquare, 
       label: "Chat", 
-      href: (activeOrgId && projectId) ? `/org/${activeOrgId}/project/${projectId}/chat` : "#" 
+      href: (activeOrgId && activeProjectId) ? `/org/${activeOrgId}/project/${activeProjectId}/chat` : "#" 
     },
     { 
       icon: Calendar, 
       label: "Kalender", 
-      href: (activeOrgId && projectId) ? `/org/${activeOrgId}/project/${projectId}/calendar` : "#" 
+      href: (activeOrgId && activeProjectId) ? `/org/${activeOrgId}/project/${activeProjectId}/calendar` : "#" 
     },
     {
       icon: Folder,
