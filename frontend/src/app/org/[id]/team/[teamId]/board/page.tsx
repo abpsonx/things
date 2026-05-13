@@ -5,7 +5,6 @@ import { useParams, useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/useAuthStore";
-import Sidebar from "@/components/layout/Sidebar";
 import { 
   Plus, 
   MoreHorizontal, 
@@ -123,19 +122,14 @@ export default function TeamBoardPage() {
 
   if (loading) {
     return (
-      <div className="flex h-screen bg-background">
-        <Sidebar />
-        <div className="flex-1 flex justify-center items-center">
-          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-        </div>
+      <div className="flex-1 flex justify-center items-center">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen bg-background">
-      <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
         <div className="border-b border-border px-8 py-5 flex items-center justify-between bg-card/50 backdrop-blur-sm">
           <div className="flex items-center gap-4">
@@ -325,7 +319,6 @@ export default function TeamBoardPage() {
             })}
           </div>
         </div>
-      </div>
     </div>
   );
 }
