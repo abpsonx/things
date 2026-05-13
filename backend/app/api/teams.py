@@ -360,6 +360,32 @@ async def move_team_task(
     return _task_to_response(task)
 
 
+@router.get("/{team_id}/tasks/{task_id}", response_model=TaskResponse)
+async def get_team_task(
+    org_id: str, team_id: str, task_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get detail for a specific team task."""
+    await _check_org_membership(db, org_id, current_user.id)
+
+    result = await db.execute(
+        select(Task).options(
+            selectinload(Task.task_labels).selectinload(TaskLabel.label),
+            selectinload(Task.subtasks),
+            selectinload(Task.comments),
+            selectinload(Task.attachments),
+            selectinload(Task.assignee)
+        )
+        .where(Task.id == task_id, Task.team_id == team_id)
+    )
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task tidak ditemukan")
+    
+    return _task_to_response(task)
+
+
 @router.put("/{team_id}/tasks/{task_id}", response_model=TaskResponse)
 async def update_team_task(
     org_id: str, team_id: str, task_id: str, data: TaskUpdate,
