@@ -12,7 +12,8 @@ class Task(Base):
     __tablename__ = "tasks"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True)
+    team_id = Column(UUID(as_uuid=True), ForeignKey("teams.id", ondelete="CASCADE"), nullable=True)
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     status = Column(String(20), default="todo", nullable=False)
@@ -31,6 +32,7 @@ class Task(Base):
 
     # Relationships
     project = relationship("Project", back_populates="tasks")
+    team = relationship("Team", back_populates="tasks")
     assignee = relationship("User", foreign_keys=[assignee_id])
     creator = relationship("User", foreign_keys=[created_by])
     subtasks = relationship("SubTask", back_populates="task", cascade="all, delete-orphan")

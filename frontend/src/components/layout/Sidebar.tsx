@@ -28,6 +28,7 @@ export default function Sidebar() {
   const [members, setMembers] = useState<any[]>([]);
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [teams, setTeams] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchContext = async () => {
@@ -48,6 +49,10 @@ export default function Sidebar() {
           if (res.data && res.data.members) {
             setMembers(res.data.members.filter((m: any) => m.user_id !== user?.id));
           }
+
+          // Fetch teams
+          const teamsRes = await api.get(`/organizations/${currentId}/teams`);
+          setTeams(teamsRes.data);
         }
       } catch (err) {
         console.error("Sidebar fetch failed", err);
@@ -110,6 +115,37 @@ export default function Sidebar() {
               </Link>
             );
           })}
+        </div>
+
+        <div className="space-y-4">
+          <h4 className="px-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 flex items-center justify-between">
+            Tim
+            <Plus className="w-3 h-3 cursor-pointer hover:text-primary transition-colors" />
+          </h4>
+          <div className="space-y-1">
+            {teams.map((team) => {
+              const href = `/org/${activeOrgId}/team/${team.id}/board`;
+              const isActive = pathname.includes(team.id);
+              return (
+                <Link
+                  key={team.id}
+                  href={href}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+                    isActive
+                      ? "bg-primary/10 text-primary border-r-2 border-primary rounded-r-none"
+                      : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                  )}
+                >
+                  <div className="w-2 h-2 rounded-full bg-primary/40" />
+                  <span className="truncate">{team.name}</span>
+                </Link>
+              );
+            })}
+            {teams.length === 0 && (
+              <p className="px-3 text-[10px] text-muted-foreground/40 italic italic">Belum ada tim</p>
+            )}
+          </div>
         </div>
 
         <div className="space-y-4">

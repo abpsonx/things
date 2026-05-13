@@ -13,12 +13,14 @@ async def log_activity(
     entity_type: str,
     entity_id: UUID = None,
     project_id: UUID = None,
+    team_id: UUID = None,
     metadata: dict = None,
 ):
     """Log an activity for audit trail."""
     log = ActivityLog(
         org_id=org_id,
         project_id=project_id,
+        team_id=team_id,
         user_id=user_id,
         action=action,
         entity_type=entity_type,

@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 
 from app.core.config import get_settings
 from app.core.database import engine, Base
-from app.api import auth, projects, organizations, channels, tasks, attachments, events, comments, subtasks, labels, notifications, search, stats, settings as settings_api, dm, google, documents, reports, announcements
+from app.api import auth, projects, teams, organizations, channels, tasks, attachments, events, comments, subtasks, labels, notifications, search, stats, settings as settings_api, dm, google, documents, reports, announcements
 
 
 settings = get_settings()
@@ -59,6 +59,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(auth.router, prefix="/api")
 app.include_router(organizations.router, prefix="/api")
 app.include_router(projects.router, prefix="/api")
+app.include_router(teams.router, prefix="/api")
 app.include_router(channels.router, prefix="/api")
 app.include_router(tasks.router, prefix="/api")
 app.include_router(attachments.router, prefix="/api")

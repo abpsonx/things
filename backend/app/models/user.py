@@ -26,4 +26,5 @@ class User(Base):
     # Relationships
     org_memberships = relationship("OrgMember", back_populates="user", cascade="all, delete-orphan")
     project_memberships = relationship("ProjectMember", back_populates="user", cascade="all, delete-orphan")
+    team_memberships = relationship("TeamMember", back_populates="user", cascade="all, delete-orphan")
     notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")

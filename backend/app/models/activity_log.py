@@ -13,6 +13,7 @@ class ActivityLog(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
     project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True)
+    team_id = Column(UUID(as_uuid=True), ForeignKey("teams.id", ondelete="SET NULL"), nullable=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     action = Column(String(50), nullable=False)
     entity_type = Column(String(50), nullable=False)
@@ -28,4 +29,5 @@ class ActivityLog(Base):
     # Relationships
     organization = relationship("Organization")
     project = relationship("Project")
+    team = relationship("Team")
     user = relationship("User")

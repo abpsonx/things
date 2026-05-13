@@ -81,6 +81,38 @@ class OrgDetailResponse(BaseModel):
         from_attributes = True
 
 
+# ============ Team Schemas ============
+
+class TeamCreate(BaseModel):
+    name: str = Field(..., min_length=2, max_length=100)
+    description: Optional[str] = None
+
+class TeamUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=2, max_length=100)
+    description: Optional[str] = None
+
+class TeamResponse(BaseModel):
+    id: UUID
+    org_id: UUID
+    name: str
+    description: Optional[str] = None
+    created_by: UUID
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class TeamMemberResponse(BaseModel):
+    id: UUID
+    user_id: UUID
+    role: str
+    joined_at: datetime
+    user: Optional[UserResponse] = None
+
+    class Config:
+        from_attributes = True
+
+
 # ============ Project Schemas ============
 
 class ProjectCreate(BaseModel):
@@ -172,7 +204,8 @@ class LabelResponse(BaseModel):
 
 class TaskResponse(BaseModel):
     id: UUID
-    project_id: UUID
+    project_id: Optional[UUID] = None
+    team_id: Optional[UUID] = None
     title: str
     description: Optional[str] = None
     status: str
@@ -223,6 +256,7 @@ class ActivityLogResponse(BaseModel):
     id: UUID
     org_id: UUID
     project_id: Optional[UUID] = None
+    team_id: Optional[UUID] = None
     user_id: Optional[UUID] = None
     action: str
     entity_type: str
