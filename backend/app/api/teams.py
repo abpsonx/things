@@ -7,7 +7,7 @@ from typing import List
 from app.core.database import get_db
 from app.models.user import User
 from app.models.organization import OrgMember
-from app.models.team import Team, TeamMember
+from app.models.team import Team, TeamMember, TeamMessage
 from app.models.activity_log import ActivityLog
 from app.schemas import (
     TeamCreate, TeamUpdate, TeamResponse, 
@@ -437,3 +437,72 @@ async def delete_team_task(
     await db.delete(task)
     await db.commit()
     return None
+
+# ============ Team Chat Endpoints ============
+
+@router.post("/{team_id}/chat/messages", response_model=dict)
+async def send_team_message(
+    org_id: str, team_id: str, data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Send a message to the team chat."""
+    await _check_org_membership(db, org_id, current_user.id)
+
+    msg = TeamMessage(
+        team_id=team_id,
+        user_id=current_user.id,
+        content=data.get("content")
+    )
+    db.add(msg)
+    await db.commit()
+    await db.refresh(msg)
+
+    # Broadcast via socket
+    from app.sockets.manager import sio
+    from app.models.team import TeamMessage as TMModel
+    await sio.emit("team_message", {
+        "id": str(msg.id),
+        "user_id": str(msg.user_id),
+        "content": msg.content,
+        "created_at": msg.created_at.isoformat(),
+        "user": {
+            "name": current_user.name,
+            "avatar_url": current_user.avatar_url
+        }
+    }, room=f"team_{team_id}")
+
+    return {"status": "sent"}
+
+
+@router.get("/{team_id}/chat/messages", response_model=List[dict])
+async def list_team_messages(
+    org_id: str, team_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List last 50 messages from team chat."""
+    await _check_org_membership(db, org_id, current_user.id)
+
+    result = await db.execute(
+        select(TeamMessage)
+        .options(selectinload(TeamMessage.user))
+        .where(TeamMessage.team_id == team_id)
+        .order_by(TeamMessage.created_at.asc())
+        .limit(50)
+    )
+    messages = result.scalars().all()
+    
+    return [
+        {
+            "id": str(m.id),
+            "user_id": str(m.user_id),
+            "content": m.content,
+            "created_at": m.created_at.isoformat(),
+            "user": {
+                "name": m.user.name,
+                "avatar_url": m.user.avatar_url
+            }
+        }
+        for m in messages
+    ]

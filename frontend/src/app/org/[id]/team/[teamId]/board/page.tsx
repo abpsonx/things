@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import TeamKanbanColumn from "./TeamKanbanColumn";
 import TeamTaskCard from "./TeamTaskCard";
+import TeamNav from "@/components/team/TeamNav";
 import TeamTaskDetailModal from "./TeamTaskDetailModal";
 
 interface Task {
@@ -266,6 +267,8 @@ export default function TeamBoardPage() {
           </div>
         </div>
       </div>
+
+      <TeamNav orgId={params.id} teamId={params.teamId} />
 
       {/* Kanban Board */}
       <DndContext

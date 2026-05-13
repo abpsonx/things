@@ -63,3 +63,14 @@ async def send_message(sid, data):
             "user_id": user_id,
             "created_at": "now" # In real usage, this comes from DB
         }, room=f"channel_{channel_id}")
+@sio.event
+async def join_team(sid, team_id):
+    if team_id:
+        await sio.enter_room(sid, f"team_{team_id}")
+        print(f"User {sid} joined team room: {team_id}")
+
+@sio.event
+async def leave_team(sid, team_id):
+    if team_id:
+        await sio.leave_room(sid, f"team_{team_id}")
+        print(f"User {sid} left team room: {team_id}")

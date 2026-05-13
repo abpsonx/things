@@ -22,6 +22,7 @@ class Team(Base):
     creator = relationship("User", foreign_keys=[created_by])
     members = relationship("TeamMember", back_populates="team", cascade="all, delete-orphan")
     tasks = relationship("Task", back_populates="team", cascade="all, delete-orphan")
+    messages = relationship("TeamMessage", back_populates="team", cascade="all, delete-orphan")
     # labels = relationship("Label", back_populates="team", cascade="all, delete-orphan")
     # channels = relationship("Channel", back_populates="team", cascade="all, delete-orphan")
 
@@ -42,3 +43,15 @@ class TeamMember(Base):
     # Relationships
     team = relationship("Team", back_populates="members")
     user = relationship("User", back_populates="team_memberships")
+class TeamMessage(Base):
+    __tablename__ = "team_messages"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    team_id = Column(UUID(as_uuid=True), ForeignKey("teams.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    team = relationship("Team", back_populates="messages")
+    user = relationship("User")
