@@ -6,9 +6,9 @@ services:
     container_name: things-db
     restart: always
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-cicleapp}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cicleapp_pass}
-      POSTGRES_DB: ${POSTGRES_DB:-cicleapp}
+      POSTGRES_USER: ${POSTGRES_USER:-thingsapp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password_db_mas}
+      POSTGRES_DB: ${POSTGRES_DB:-thingsapp}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
@@ -26,7 +26,7 @@ services:
     container_name: things-backend
     restart: always
     environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-cicleapp}:${POSTGRES_PASSWORD:-cicleapp_pass}@db:5432/${POSTGRES_DB:-cicleapp}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-thingsapp}:${POSTGRES_PASSWORD:-password_db_mas}@db:5432/${POSTGRES_DB:-thingsapp}
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY}
       ENVIRONMENT: production
