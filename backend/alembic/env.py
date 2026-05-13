@@ -25,28 +25,9 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
-    """Run migrations in 'offline' mode.
-
-    This configures the context with just a URL
-    and not an Engine, though an Engine is also acceptable
-    here.  By skipping the Engine creation we don't even need a
-    DBAPI to be available.
-
-    Calls to context.execute() here emit the given string to the
-    script output.
-
-    """
+    """Run migrations in 'offline' mode."""
     settings = get_settings()
     url = settings.DATABASE_URL
-    
-    # Smart URL resolver for Host vs Docker
-    if "db:5432" in url:
-        import socket
-        try:
-            socket.gethostbyname("db")
-        except socket.gaierror:
-            url = url.replace("@db:5432", "@localhost:5432")
-
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -70,39 +51,19 @@ async def run_migrations_online() -> None:
     settings = get_settings()
     url = settings.DATABASE_URL
     
-    # Smart URL resolver for Host vs Docker
-    if "db:5432" in url:
-        import socket
-        try:
-            socket.gethostbyname("db")
-        except socket.gaierror:
-            url = url.replace("@db:5432", "@localhost:5432")
-    
-    # Try multiple users if one fails (Handle environment mismatch)
-    potential_urls = [url]
-    if "thingsapp" in url:
-        potential_urls.append(url.replace("thingsapp:password_db_mas", "cicleapp:cicleapp_pass"))
-    
-    last_err = None
-    for try_url in potential_urls:
-        try:
-            configuration = config.get_section(config.config_ini_section, {})
-            configuration["sqlalchemy.url"] = try_url
-            connectable = async_engine_from_config(
-                configuration,
-                prefix="sqlalchemy.",
-                poolclass=pool.NullPool,
-            )
-            async with connectable.connect() as connection:
-                await connection.run_sync(do_run_migrations)
-            await connectable.dispose()
-            return # Success!
-        except Exception as e:
-            last_err = e
-            continue
-    
-    if last_err:
-        raise last_err
+    configuration = config.get_section(config.config_ini_section, {})
+    configuration["sqlalchemy.url"] = url
+
+    connectable = async_engine_from_config(
+        configuration,
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
+
+    async with connectable.connect() as connection:
+        await connection.run_sync(do_run_migrations)
+
+    await connectable.dispose()
 
 
 if context.is_offline_mode():
