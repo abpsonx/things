@@ -90,6 +90,8 @@ class TeamCreate(BaseModel):
 class TeamUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=2, max_length=100)
     description: Optional[str] = None
+    allow_invite: Optional[bool] = None
+    allow_delete_task: Optional[bool] = None
 
 class TeamResponse(BaseModel):
     id: UUID
@@ -98,6 +100,8 @@ class TeamResponse(BaseModel):
     description: Optional[str] = None
     created_by: UUID
     created_at: datetime
+    allow_invite: bool
+    allow_delete_task: bool
 
     class Config:
         from_attributes = True

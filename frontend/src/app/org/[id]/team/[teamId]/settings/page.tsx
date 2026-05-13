@@ -19,6 +19,8 @@ export default function TeamSettingsPage() {
   // Form states
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [allowInvite, setAllowInvite] = useState(true);
+  const [allowDeleteTask, setAllowDeleteTask] = useState(false);
 
   useEffect(() => {
     fetchTeam();
@@ -30,6 +32,8 @@ export default function TeamSettingsPage() {
       setTeam(res.data);
       setName(res.data.name);
       setDescription(res.data.description || '');
+      setAllowInvite(res.data.allow_invite);
+      setAllowDeleteTask(res.data.allow_delete_task);
     } catch (error) {
       console.error('Failed to fetch team:', error);
     } finally {
@@ -42,7 +46,9 @@ export default function TeamSettingsPage() {
     try {
       await api.put(`/organizations/${orgId}/teams/${teamId}`, {
         name,
-        description
+        description,
+        allow_invite: allowInvite,
+        allow_delete_task: allowDeleteTask
       });
       alert('Team settings updated successfully!');
     } catch (error) {
@@ -113,25 +119,17 @@ export default function TeamSettingsPage() {
                 placeholder="What is this team working on?" 
               />
             </div>
-            <button 
-              onClick={handleSave}
-              disabled={saving}
-              className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-2xl font-bold hover:bg-primary/90 disabled:opacity-50 transition-all shadow-lg shadow-primary/20"
-            >
-              <Save className="w-4 h-4" />
-              {saving ? 'Saving...' : 'Save Changes'}
-            </button>
           </div>
         </div>
 
-        {/* Member Permissions (Preview) */}
-        <div className="bg-white rounded-3xl border border-border shadow-sm overflow-hidden opacity-80">
+        {/* Member Permissions */}
+        <div className="bg-white rounded-3xl border border-border shadow-sm overflow-hidden">
           <div className="p-8 border-b border-border bg-slate-50/50">
             <h2 className="text-xl font-bold flex items-center gap-2">
               <Users className="w-5 h-5 text-blue-500" />
               Permissions
             </h2>
-            <p className="text-sm text-muted-foreground mt-1">Manage what members can do (Available soon)</p>
+            <p className="text-sm text-muted-foreground mt-1">Manage what members can do within this team.</p>
           </div>
           <div className="p-8 space-y-4">
             <div className="flex items-center justify-between py-4 border-b border-dashed">
@@ -139,24 +137,42 @@ export default function TeamSettingsPage() {
                 <p className="font-bold text-sm">Allow members to invite others</p>
                 <p className="text-xs text-muted-foreground">Collaborators can grow the team independently</p>
               </div>
-              <div className="w-12 h-6 bg-slate-200 rounded-full relative cursor-not-allowed">
-                <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow-sm" />
-              </div>
+              <button 
+                onClick={() => setAllowInvite(!allowInvite)}
+                className={`w-12 h-6 rounded-full relative transition-all ${allowInvite ? 'bg-primary' : 'bg-slate-200'}`}
+              >
+                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${allowInvite ? 'right-1' : 'left-1'}`} />
+              </button>
             </div>
             <div className="flex items-center justify-between py-4">
               <div>
                 <p className="font-bold text-sm">Task deletion protection</p>
                 <p className="text-xs text-muted-foreground">Only leads can permanently remove tasks</p>
               </div>
-              <div className="w-12 h-6 bg-primary/20 rounded-full relative cursor-not-allowed">
-                <div className="absolute right-1 top-1 w-4 h-4 bg-primary rounded-full shadow-sm" />
-              </div>
+              <button 
+                onClick={() => setAllowDeleteTask(!allowDeleteTask)}
+                className={`w-12 h-6 rounded-full relative transition-all ${allowDeleteTask ? 'bg-primary' : 'bg-slate-200'}`}
+              >
+                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${allowDeleteTask ? 'right-1' : 'left-1'}`} />
+              </button>
             </div>
           </div>
         </div>
 
+        {/* Save Button Sticky Bar */}
+        <div className="flex justify-end pt-4">
+          <button 
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center gap-2 px-10 py-4 bg-primary text-white rounded-2xl font-bold hover:bg-primary/90 disabled:opacity-50 transition-all shadow-xl shadow-primary/30"
+          >
+            <Save className="w-5 h-5" />
+            {saving ? 'Saving...' : 'Save All Settings'}
+          </button>
+        </div>
+
         {/* Danger Zone */}
-        <div className="bg-red-50/50 rounded-3xl border border-red-100 overflow-hidden">
+        <div className="bg-red-50/50 rounded-3xl border border-red-100 overflow-hidden mt-12">
           <div className="p-8 border-b border-red-100 bg-red-100/30">
             <h2 className="text-xl font-bold flex items-center gap-2 text-red-600">
               <ShieldAlert className="w-5 h-5" />

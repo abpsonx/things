@@ -1,7 +1,7 @@
 """Team and TeamMember models."""
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey, CheckConstraint
+from sqlalchemy import Column, String, Text, DateTime, ForeignKey, CheckConstraint, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -16,6 +16,10 @@ class Team(Base):
     description = Column(Text, nullable=True)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    # Permissions settings
+    allow_invite = Column(Boolean, default=True)
+    allow_delete_task = Column(Boolean, default=False)
 
     # Relationships
     organization = relationship("Organization", back_populates="teams")
