@@ -38,15 +38,19 @@ export default function Sidebar() {
   const fetchContext = async () => {
     try {
       const orgsRes = await api.get("/organizations");
-      const fallbackId = orgsRes.data.length > 0 ? orgsRes.data[0].id : null;
-      const currentId = orgId && orgId !== "undefined" ? (orgId as string) : fallbackId;
+      // Handle the case where orgsRes.data might not be an array or is empty
+      const organizations = Array.isArray(orgsRes.data) ? orgsRes.data : [];
+      
+      const fallbackId = organizations.length > 0 ? organizations[0].id : null;
+      const currentId = (orgId && orgId !== "undefined" && orgId !== "null") ? (orgId as string) : fallbackId;
       
       setActiveOrgId(currentId);
 
       if (currentId) {
         // Fetch projects for this org to find a fallback
         const projectsRes = await api.get(`/organizations/${currentId}/projects`);
-        const fallbackProjId = projectsRes.data.length > 0 ? projectsRes.data[0].id : null;
+        const projects = Array.isArray(projectsRes.data) ? projectsRes.data : [];
+        const fallbackProjId = projects.length > 0 ? projects[0].id : null;
         setActiveProjectId(projectId ? (projectId as string) : fallbackProjId);
 
         const res = await api.get(`/organizations/${currentId}`);
@@ -56,10 +60,10 @@ export default function Sidebar() {
 
         // Fetch teams
         const teamsRes = await api.get(`/organizations/${currentId}/teams`);
-        setTeams(teamsRes.data);
-      } else if (orgsRes.data.length === 0) {
-        // No orgs at all, maybe show a hint
-        console.log("User has no organizations");
+        setTeams(Array.isArray(teamsRes.data) ? teamsRes.data : []);
+      } else {
+        setTeams([]);
+        setMembers([]);
       }
     } catch (err) {
       console.error("Sidebar fetch failed", err);
@@ -96,7 +100,7 @@ export default function Sidebar() {
   ];
 
   return (
-    <aside className="w-64 border-r border-border h-screen flex flex-col bg-card sticky top-0">
+    <aside className="w-64 border-r border-border h-screen flex flex-col bg-card sticky top-0 z-[50]">
       <div className="p-6">
         <Link href="/dashboard" className="flex items-center gap-2 font-bold text-xl tracking-tighter text-primary">
           <img src="/assets/logo.png" alt="Logo" className="w-8 h-8 object-contain" />
@@ -106,16 +110,22 @@ export default function Sidebar() {
 
       <nav className="flex-1 px-4 space-y-8 overflow-y-auto">
         {!activeOrgId && (
-          <div className="px-3 py-4 bg-primary/5 border border-primary/20 rounded-2xl space-y-3">
-            <p className="text-[10px] font-medium text-primary leading-relaxed">
-              Mas belum punya Workspace. Buat dulu yuk untuk mulai!
-            </p>
+          <div className="px-3 py-5 bg-primary/5 border-2 border-dashed border-primary/20 rounded-3xl space-y-4 animate-pulse">
+            <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center mx-auto text-primary">
+              <Users className="w-5 h-5" />
+            </div>
+            <div className="text-center space-y-1">
+              <p className="text-[11px] font-bold text-primary uppercase tracking-tight">Belum Ada Workspace</p>
+              <p className="text-[10px] text-muted-foreground leading-relaxed px-2">
+                Buatlah organisasi/workspace dulu untuk mulai berkolaborasi.
+              </p>
+            </div>
             <button
               onClick={() => setIsCreateOrgOpen(true)}
-              className="w-full py-2 bg-primary text-primary-foreground rounded-xl text-[10px] font-bold hover:shadow-lg hover:shadow-primary/20 transition-all flex items-center justify-center gap-2"
+              className="w-full py-2.5 bg-primary text-primary-foreground rounded-2xl text-[10px] font-black hover:shadow-xl hover:shadow-primary/30 transition-all flex items-center justify-center gap-2"
             >
-              <Plus className="w-3 h-3" />
-              Buat Workspace
+              <Plus className="w-4 h-4" />
+              BUAT WORKSPACE
             </button>
           </div>
         )}
@@ -128,9 +138,9 @@ export default function Sidebar() {
                 key={item.label}
                 href={item.href}
                 className={cn(
-                  "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
+                  "flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-colors",
                   isActive 
-                    ? "bg-primary text-primary-foreground" 
+                    ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20" 
                     : "text-muted-foreground hover:text-foreground hover:bg-secondary"
                 )}
               >
@@ -145,7 +155,7 @@ export default function Sidebar() {
           <h4 className="px-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 flex items-center justify-between">
             Tim
             <Plus 
-              onClick={() => setIsCreateTeamOpen(true)}
+              onClick={() => activeOrgId ? setIsCreateTeamOpen(true) : setIsCreateOrgOpen(true)}
               className="w-3 h-3 cursor-pointer hover:text-primary transition-colors" 
             />
           </h4>
