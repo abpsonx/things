@@ -220,6 +220,7 @@ class TaskResponse(BaseModel):
     labels: List[LabelResponse] = []
     comments_count: int = 0
     attachments_count: int = 0
+    assignee: Optional[UserResponse] = None
 
     class Config:
         from_attributes = True
