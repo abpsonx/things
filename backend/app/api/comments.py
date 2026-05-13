@@ -27,16 +27,32 @@ async def create_comment(
     if not task:
         raise HTTPException(status_code=404, detail="Task tidak ditemukan")
 
-    result = await db.execute(select(Project).where(Project.id == task.project_id))
-    project = result.scalar_one()
+    # Determine org_id and context
+    org_id = None
+    project_id = None
+    team_id = None
+
+    if task.project_id:
+        result = await db.execute(select(Project).where(Project.id == task.project_id))
+        project = result.scalar_one()
+        org_id = project.org_id
+        project_id = project.id
+    elif task.team_id:
+        from app.models.team import Team
+        result = await db.execute(select(Team).where(Team.id == task.team_id))
+        team = result.scalar_one()
+        org_id = team.org_id
+        team_id = team.id
+    else:
+        raise HTTPException(status_code=400, detail="Task tidak memiliki konteks Proyek atau Tim")
 
     comment = Comment(task_id=task_id, user_id=current_user.id, content=data.content)
     db.add(comment)
 
     await log_activity(
-        db, org_id=project.org_id, user_id=current_user.id,
+        db, org_id=org_id, user_id=current_user.id,
         action="comment_added", entity_type="comment", entity_id=comment.id,
-        project_id=project.id, metadata={"task_title": task.title},
+        project_id=project_id, team_id=team_id, metadata={"task_title": task.title},
     )
 
     # Notify task assignee if someone else comments
@@ -48,7 +64,7 @@ async def create_comment(
             type="comment_added",
             content=f"{current_user.name} mengomentari tugas kamu: {task.title}",
             ref_id=str(task.id),
-            org_id=str(project.org_id)
+            org_id=str(org_id)
         )
 
     await db.commit()

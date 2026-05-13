@@ -53,16 +53,25 @@ async def upload_attachment(
     db.add(attachment)
     
     # Log activity
-    from app.models.project import Project
-    result = await db.execute(select(Project).where(Project.id == task.project_id))
-    project = result.scalar_one()
-    
     from app.services import log_activity
-    await log_activity(
-        db, org_id=project.org_id, user_id=current_user.id,
-        action="attachment_uploaded", entity_type="attachment", entity_id=attachment.id,
-        project_id=project.id, metadata={"filename": file.filename, "task_title": task.title},
-    )
+    if task.project_id:
+        from app.models.project import Project
+        result = await db.execute(select(Project).where(Project.id == task.project_id))
+        project = result.scalar_one()
+        await log_activity(
+            db, org_id=project.org_id, user_id=current_user.id,
+            action="attachment_uploaded", entity_type="attachment", entity_id=attachment.id,
+            project_id=project.id, metadata={"filename": file.filename, "task_title": task.title},
+        )
+    elif task.team_id:
+        from app.models.team import Team
+        result = await db.execute(select(Team).where(Team.id == task.team_id))
+        team = result.scalar_one()
+        await log_activity(
+            db, org_id=team.org_id, user_id=current_user.id,
+            action="attachment_uploaded", entity_type="attachment", entity_id=attachment.id,
+            team_id=team.id, metadata={"filename": file.filename, "task_title": task.title},
+        )
 
     await db.commit()
     await db.refresh(attachment)
@@ -108,16 +117,25 @@ async def delete_attachment(
         os.remove(attachment.file_path)
 
     # Log activity
-    from app.models.project import Project
-    result = await db.execute(select(Project).where(Project.id == task.project_id))
-    project = result.scalar_one()
-    
     from app.services import log_activity
-    await log_activity(
-        db, org_id=project.org_id, user_id=current_user.id,
-        action="attachment_deleted", entity_type="attachment", entity_id=attachment.id,
-        project_id=project.id, metadata={"filename": attachment.file_name, "task_title": task.title},
-    )
+    if attachment.task.project_id:
+        from app.models.project import Project
+        result = await db.execute(select(Project).where(Project.id == attachment.task.project_id))
+        project = result.scalar_one()
+        await log_activity(
+            db, org_id=project.org_id, user_id=current_user.id,
+            action="attachment_deleted", entity_type="attachment", entity_id=attachment.id,
+            project_id=project.id, metadata={"filename": attachment.file_name, "task_title": attachment.task.title},
+        )
+    elif attachment.task.team_id:
+        from app.models.team import Team
+        result = await db.execute(select(Team).where(Team.id == attachment.task.team_id))
+        team = result.scalar_one()
+        await log_activity(
+            db, org_id=team.org_id, user_id=current_user.id,
+            action="attachment_deleted", entity_type="attachment", entity_id=attachment.id,
+            team_id=team.id, metadata={"filename": attachment.file_name, "task_title": attachment.task.title},
+        )
 
     await db.delete(attachment)
     await db.commit()
