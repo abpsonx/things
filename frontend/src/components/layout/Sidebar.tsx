@@ -56,22 +56,22 @@ export default function Sidebar() {
     { 
       icon: MessageSquare, 
       label: "Chat", 
-      href: (activeOrgId && projectId) ? `/org/${activeOrgId}/project/${projectId}/chat` : "/dashboard" 
+      href: (activeOrgId && projectId) ? `/org/${activeOrgId}/project/${projectId}/chat` : "#" 
     },
     { 
       icon: Calendar, 
       label: "Kalender", 
-      href: (activeOrgId && projectId) ? `/org/${activeOrgId}/project/${projectId}/calendar` : "/dashboard" 
+      href: (activeOrgId && projectId) ? `/org/${activeOrgId}/project/${projectId}/calendar` : "#" 
     },
     {
       icon: Folder,
       label: "Files",
-      href: activeOrgId ? `/org/${activeOrgId}/files` : "/dashboard"
+      href: activeOrgId ? `/org/${activeOrgId}/files` : "#"
     },
     {
       icon: Activity,
       label: "Aktivitas",
-      href: activeOrgId ? `/org/${activeOrgId}/activity` : "/dashboard"
+      href: activeOrgId ? `/org/${activeOrgId}/activity` : "#"
     }
   ];
 
