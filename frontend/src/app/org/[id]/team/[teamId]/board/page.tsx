@@ -64,7 +64,10 @@ const COLUMNS = [
 ];
 
 export default function TeamBoardPage() {
-  const { id: orgId, teamId } = useParams();
+  const params = useParams();
+  const orgId = params.id as string;
+  const teamId = params.teamId as string;
+  
   const router = useRouter();
   const { user } = useAuthStore();
   const [team, setTeam] = useState<TeamInfo | null>(null);
@@ -106,8 +109,10 @@ export default function TeamBoardPage() {
   }, [orgId, teamId]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (orgId && teamId) {
+      fetchData();
+    }
+  }, [orgId, teamId, fetchData]);
 
   const handleAddTask = async (status: string) => {
     try {
@@ -208,9 +213,9 @@ export default function TeamBoardPage() {
     setIsModalOpen(true);
   };
 
-  if (loading) {
+  if (loading || !team) {
     return (
-      <div className="flex-1 flex justify-center items-center">
+      <div className="flex-1 flex justify-center items-center h-screen">
         <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
       </div>
     );
@@ -268,7 +273,7 @@ export default function TeamBoardPage() {
         </div>
       </div>
 
-      <TeamNav orgId={params.id} teamId={params.teamId} />
+      <TeamNav orgId={orgId} teamId={teamId} />
 
       {/* Kanban Board */}
       <DndContext

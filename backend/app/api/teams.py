@@ -9,6 +9,7 @@ from app.models.user import User
 from app.models.organization import OrgMember
 from app.models.team import Team, TeamMember, TeamMessage
 from app.models.activity_log import ActivityLog
+from app.models.task import Task
 from app.schemas import (
     TeamCreate, TeamUpdate, TeamResponse, 
     TeamMemberResponse, UserResponse, InviteMemberRequest,
