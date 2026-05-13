@@ -108,15 +108,17 @@ export default function TeamBoardPage() {
   }, [fetchData]);
 
   const handleAddTask = async (status: string) => {
-    const title = prompt("Judul tugas baru:");
-    if (!title?.trim()) return;
-
     try {
-      await api.post(`/organizations/${orgId}/teams/${teamId}/tasks`, {
-        title: title.trim(),
+      const res = await api.post(`/organizations/${orgId}/teams/${teamId}/tasks`, {
+        title: "Tugas Baru",
         status,
       });
-      fetchData();
+      const newTask = res.data;
+      await fetchData();
+      
+      // Auto open the detail modal for the new task
+      setSelectedTaskId(newTask.id);
+      setIsModalOpen(true);
     } catch (err) {
       console.error("Failed to add task", err);
     }

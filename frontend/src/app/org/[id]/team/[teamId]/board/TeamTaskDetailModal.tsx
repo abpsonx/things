@@ -248,7 +248,18 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
   if (!task && loading) return null;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={task?.title || "Detail Tugas Tim"}>
+    <Modal 
+      isOpen={isOpen} 
+      onClose={onClose} 
+      title={
+        <input
+          defaultValue={task?.title}
+          onBlur={(e) => updateTask({ title: e.target.value })}
+          className="bg-transparent border-none focus:outline-none focus:ring-0 w-full font-bold text-xl p-0"
+          placeholder="Judul Tugas..."
+        />
+      }
+    >
       <div className="grid grid-cols-1 md:grid-cols-10 gap-8 max-h-[80vh] overflow-y-auto pr-2 scrollbar-thin">
         {/* Main Content */}
         <div className="md:col-span-7 space-y-8">
