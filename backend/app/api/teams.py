@@ -266,7 +266,8 @@ async def list_team_tasks(
             selectinload(Task.task_labels).selectinload(TaskLabel.label),
             selectinload(Task.subtasks),
             selectinload(Task.comments),
-            selectinload(Task.attachments)
+            selectinload(Task.attachments),
+            selectinload(Task.assignee)
         )
         .where(Task.team_id == team_id)
         .order_by(Task.position)
@@ -310,7 +311,8 @@ async def create_team_task(
             selectinload(Task.task_labels).selectinload(TaskLabel.label),
             selectinload(Task.subtasks),
             selectinload(Task.comments),
-            selectinload(Task.attachments)
+            selectinload(Task.attachments),
+            selectinload(Task.assignee)
         )
         .where(Task.id == task.id)
     )
@@ -349,7 +351,8 @@ async def move_team_task(
             selectinload(Task.task_labels).selectinload(TaskLabel.label),
             selectinload(Task.subtasks),
             selectinload(Task.comments),
-            selectinload(Task.attachments)
+            selectinload(Task.attachments),
+            selectinload(Task.assignee)
         )
         .where(Task.id == task_id)
     )
@@ -382,7 +385,8 @@ async def update_team_task(
             selectinload(Task.task_labels).selectinload(TaskLabel.label),
             selectinload(Task.subtasks),
             selectinload(Task.comments),
-            selectinload(Task.attachments)
+            selectinload(Task.attachments),
+            selectinload(Task.assignee)
         )
         .where(Task.id == task_id)
     )
