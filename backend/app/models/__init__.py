@@ -1,0 +1,35 @@
+"""Models package — import all models here for Alembic to detect them."""
+from app.models.user import User
+from app.models.organization import Organization, OrgMember
+from app.models.project import Project, ProjectMember
+from app.models.task import Task, SubTask
+from app.models.attachment import Attachment
+from app.models.label import Label, TaskLabel
+from app.models.comment import Comment
+from app.models.channel import Channel, Message
+from app.models.dm import DMChannel, DMMessage
+from app.models.event import Event, EventAttendee
+from app.models.activity_log import ActivityLog
+from app.models.notification import Notification, PushSubscription
+from app.models.invitation import Invitation
+from app.models.system_setting import SystemSetting
+from app.models.document import Document
+from app.models.announcement import Announcement
+
+__all__ = [
+    "User",
+    "Organization", "OrgMember",
+    "Project", "ProjectMember",
+    "Task", "SubTask", "Attachment",
+    "Label", "TaskLabel",
+    "Comment",
+    "Channel", "Message",
+    "DMChannel", "DMMessage",
+    "Event", "EventAttendee",
+    "ActivityLog",
+    "Notification", "PushSubscription",
+    "Invitation",
+    "SystemSetting",
+    "Document",
+    "Announcement"
+]

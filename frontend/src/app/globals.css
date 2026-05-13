@@ -1,0 +1,118 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --background: #ffffff;
+    --foreground: #0a0a0a;
+
+    --card: #ffffff;
+    --card-foreground: #0a0a0a;
+
+    --popover: #ffffff;
+    --popover-foreground: #0a0a0a;
+
+    --primary: #000000;
+    --primary-foreground: #ffffff;
+
+    --secondary: #f9f9f9;
+    --secondary-foreground: #0a0a0a;
+
+    --muted: #f9f9f9;
+    --muted-foreground: #737373;
+
+    --accent: #f9f9f9;
+    --accent-foreground: #0a0a0a;
+
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+
+    --border: #e5e5e5;
+    --input: #e5e5e5;
+    --ring: #000000;
+
+    --radius: 0.5rem;
+    
+    /* Kanban Status Colors */
+    --todo: #e5e5e5;
+    --progress: #d4d4d4;
+    --done: #a3a3a3;
+    
+    /* Priority Colors */
+    --priority-high: #ef4444;
+    --priority-medium: #f59e0b;
+    --priority-low: #22c55e;
+  }
+
+  .dark {
+    --background: #0a0a0a;
+    --foreground: #ffffff;
+
+    --card: #0a0a0a;
+    --card-foreground: #ffffff;
+
+    --popover: #0a0a0a;
+    --popover-foreground: #ffffff;
+
+    --primary: #ffffff;
+    --primary-foreground: #0a0a0a;
+
+    --secondary: #1a1a1a;
+    --secondary-foreground: #ffffff;
+
+    --muted: #1a1a1a;
+    --muted-foreground: #a3a3a3;
+
+    --accent: #1a1a1a;
+    --accent-foreground: #ffffff;
+
+    --destructive: #7f1d1d;
+    --destructive-foreground: #ffffff;
+
+    --border: #262626;
+    --input: #262626;
+    --ring: #ffffff;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  
+  --color-todo: var(--todo);
+  --color-progress: var(--progress);
+  --color-done: var(--done);
+  --color-priority-high: var(--priority-high);
+  --color-priority-medium: var(--priority-medium);
+  --color-priority-low: var(--priority-low);
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+}

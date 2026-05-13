@@ -1,0 +1,83 @@
+"""Comment endpoints for tasks."""
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from typing import List
+from app.core.database import get_db
+from app.models.user import User
+from app.models.project import Project
+from app.models.task import Task
+from app.models.comment import Comment
+from app.schemas import CommentCreate, CommentResponse, UserResponse
+from app.dependencies import get_current_user
+from app.services import log_activity
+
+router = APIRouter(prefix="/tasks/{task_id}/comments", tags=["Comments"])
+
+
+@router.post("", response_model=CommentResponse, status_code=status.HTTP_201_CREATED)
+async def create_comment(
+    task_id: str, data: CommentCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(select(Task).where(Task.id == task_id))
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task tidak ditemukan")
+
+    result = await db.execute(select(Project).where(Project.id == task.project_id))
+    project = result.scalar_one()
+
+    comment = Comment(task_id=task_id, user_id=current_user.id, content=data.content)
+    db.add(comment)
+
+    await log_activity(
+        db, org_id=project.org_id, user_id=current_user.id,
+        action="comment_added", entity_type="comment", entity_id=comment.id,
+        project_id=project.id, metadata={"task_title": task.title},
+    )
+
+    # Notify task assignee if someone else comments
+    if task.assignee_id and str(task.assignee_id) != str(current_user.id):
+        from app.services.notification import notify_user
+        await notify_user(
+            db,
+            user_id=str(task.assignee_id),
+            type="comment_added",
+            content=f"{current_user.name} mengomentari tugas kamu: {task.title}",
+            ref_id=str(task.id),
+            org_id=str(project.org_id)
+        )
+
+    await db.commit()
+    await db.refresh(comment)
+
+    return CommentResponse(
+        id=comment.id, task_id=comment.task_id, user_id=comment.user_id,
+        content=comment.content, created_at=comment.created_at,
+        user=UserResponse.model_validate(current_user),
+    )
+
+
+@router.get("", response_model=List[CommentResponse])
+async def list_comments(
+    task_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(Comment).options(selectinload(Comment.user))
+        .where(Comment.task_id == task_id)
+        .order_by(Comment.created_at.asc())
+    )
+    comments = result.scalars().all()
+    return [
+        CommentResponse(
+            id=c.id, task_id=c.task_id, user_id=c.user_id,
+            content=c.content, created_at=c.created_at,
+            user=UserResponse.model_validate(c.user) if c.user else None,
+        )
+        for c in comments
+    ]

@@ -1,0 +1,12 @@
+.env
+.env.production
+node_modules/
+.next/
+backend/venv/
+__pycache__/
+*.db
+*.pyc
+.DS_Store
+project.tar.gz
+backend/uploads/*
+!backend/uploads/.gitkeep

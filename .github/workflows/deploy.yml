@@ -1,0 +1,20 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [ main ] # Ganti ke 'master' jika branch utama mas namanya master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: 103.226.138.253
+          username: things
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd ~/app
+            git pull origin main
+            echo "sontookstrong7@@" | sudo -S ./deploy.sh
