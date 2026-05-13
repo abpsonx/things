@@ -167,7 +167,8 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
   const updateTask = async (updates: any) => {
     try {
       await api.put(`/organizations/${orgId}/teams/${teamId}/tasks/${taskId}`, updates);
-      setTask({ ...task, ...updates });
+      // Re-fetch full detail to get populated relationships (like assignee name)
+      fetchTaskDetail();
       onUpdate();
     } catch (err: any) {
       console.error("Failed to update task", err);

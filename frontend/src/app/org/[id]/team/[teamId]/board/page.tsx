@@ -46,6 +46,7 @@ interface Task {
   comments_count?: number;
   attachments_count?: number;
   created_at: string;
+  assignee?: { name: string; avatar_url?: string };
 }
 
 interface TeamInfo {

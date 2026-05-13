@@ -22,6 +22,7 @@ interface Task {
   created_at: string;
   comments_count?: number;
   attachments_count?: number;
+  assignee?: { name: string; avatar_url?: string };
 }
 
 export default function TeamTaskCard({ task, isOverlay, onClick }: { task: Task, isOverlay?: boolean, onClick?: () => void }) {
@@ -103,8 +104,11 @@ export default function TeamTaskCard({ task, isOverlay, onClick }: { task: Task,
             )}
           </div>
           
-          <div className="w-6 h-6 rounded-full bg-secondary border border-border flex items-center justify-center text-[10px] font-bold shrink-0">
-            {task.title.charAt(0)}
+          <div 
+            className="w-6 h-6 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-[10px] font-bold shrink-0 text-primary"
+            title={task.assignee?.name || "Unassigned"}
+          >
+            {task.assignee?.name?.charAt(0) || "U"}
           </div>
         </div>
       </div>
