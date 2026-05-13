@@ -1,20 +1,17 @@
 "use client";
 
 import React, { useState } from "react";
-import { X, Users, Loader2, CheckCircle2, Plus, Type, AlignLeft } from "lucide-react";
+import { X, Building2, Loader2, CheckCircle2, Plus, Type } from "lucide-react";
 import api from "@/lib/api";
-import { cn } from "@/lib/utils";
 
-interface CreateTeamModalProps {
-  orgId: string;
+interface CreateOrgModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (orgId: string) => void;
 }
 
-export default function CreateTeamModal({ orgId, isOpen, onClose, onSuccess }: CreateTeamModalProps) {
+export default function CreateOrgModal({ isOpen, onClose, onSuccess }: CreateOrgModalProps) {
   const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [isSuccess, setIsSuccess] = useState(false);
@@ -25,32 +22,26 @@ export default function CreateTeamModal({ orgId, isOpen, onClose, onSuccess }: C
     e.preventDefault();
     if (!name.trim()) return;
 
-    if (!orgId || orgId === "") {
-      setError("ID Organisasi tidak ditemukan. Silakan pilih atau buat organisasi dulu.");
-      return;
-    }
-
     setLoading(true);
     setError("");
     try {
-      await api.post(`/organizations/${orgId}/teams`, { name, description });
+      const res = await api.post("/organizations", { name });
       setIsSuccess(true);
       setTimeout(() => {
         setIsSuccess(false);
         setName("");
-        setDescription("");
-        onSuccess();
+        onSuccess(res.data.id);
         onClose();
       }, 1500);
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Gagal membuat tim baru.");
+      setError(err.response?.data?.detail || "Gagal membuat workspace.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="relative w-full max-w-md bg-card border border-border rounded-3xl shadow-2xl p-8 animate-in zoom-in-95 duration-200">
         <button 
           onClick={onClose}
@@ -64,24 +55,24 @@ export default function CreateTeamModal({ orgId, isOpen, onClose, onSuccess }: C
             <div className="w-20 h-20 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto text-emerald-500">
               <CheckCircle2 className="w-10 h-10" />
             </div>
-            <h2 className="text-2xl font-bold">Tim Berhasil Dibuat!</h2>
-            <p className="text-muted-foreground">Tim {name} sudah siap digunakan.</p>
+            <h2 className="text-2xl font-bold">Workspace Siap!</h2>
+            <p className="text-muted-foreground">Workspace {name} berhasil dibuat.</p>
           </div>
         ) : (
           <div className="space-y-6">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary font-bold">
-                <Users className="w-6 h-6" />
+                <Building2 className="w-6 h-6" />
               </div>
               <div>
-                <h2 className="text-2xl font-bold tracking-tight">Buat Tim Baru</h2>
-                <p className="text-muted-foreground text-sm italic italic">Pisahkan tugas berdasarkan divisi atau tim kerja.</p>
+                <h2 className="text-2xl font-bold tracking-tight">Buat Workspace</h2>
+                <p className="text-muted-foreground text-sm italic italic">Ini adalah rumah besar untuk semua proyek dan tim mas.</p>
               </div>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Nama Tim / Divisi</label>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Nama Workspace / Perusahaan</label>
                 <div className="relative">
                   <Type className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <input
@@ -89,23 +80,9 @@ export default function CreateTeamModal({ orgId, isOpen, onClose, onSuccess }: C
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="Contoh: Advertising Content, Marketing, Dev"
+                    placeholder="Contoh: PT Maju Jaya, My Business, dsb"
                     required
                     className="w-full pl-12 pr-4 py-3 bg-secondary/50 border border-border rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Deskripsi Singkat (Opsional)</label>
-                <div className="relative">
-                  <AlignLeft className="absolute left-4 top-4 w-4 h-4 text-muted-foreground" />
-                  <textarea
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Apa fokus utama tim ini?"
-                    rows={3}
-                    className="w-full pl-12 pr-4 py-3 bg-secondary/50 border border-border rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all resize-none"
                   />
                 </div>
               </div>
@@ -126,7 +103,7 @@ export default function CreateTeamModal({ orgId, isOpen, onClose, onSuccess }: C
                 ) : (
                   <>
                     <Plus className="w-4 h-4" />
-                    Buat Tim Sekarang
+                    Buat Workspace Sekarang
                   </>
                 )}
               </button>

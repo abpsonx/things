@@ -20,6 +20,7 @@ import {
   Users
 } from "lucide-react";
 import CreateTeamModal from "@/components/team/CreateTeamModal";
+import CreateOrgModal from "@/components/org/CreateOrgModal";
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -32,6 +33,7 @@ export default function Sidebar() {
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [teams, setTeams] = useState<any[]>([]);
   const [isCreateTeamOpen, setIsCreateTeamOpen] = useState(false);
+  const [isCreateOrgOpen, setIsCreateOrgOpen] = useState(false);
 
   const fetchContext = async () => {
     try {
@@ -55,6 +57,9 @@ export default function Sidebar() {
         // Fetch teams
         const teamsRes = await api.get(`/organizations/${currentId}/teams`);
         setTeams(teamsRes.data);
+      } else if (orgsRes.data.length === 0) {
+        // No orgs at all, maybe show a hint
+        console.log("User has no organizations");
       }
     } catch (err) {
       console.error("Sidebar fetch failed", err);
@@ -100,6 +105,21 @@ export default function Sidebar() {
       </div>
 
       <nav className="flex-1 px-4 space-y-8 overflow-y-auto">
+        {!activeOrgId && (
+          <div className="px-3 py-4 bg-primary/5 border border-primary/20 rounded-2xl space-y-3">
+            <p className="text-[10px] font-medium text-primary leading-relaxed">
+              Mas belum punya Workspace. Buat dulu yuk untuk mulai!
+            </p>
+            <button
+              onClick={() => setIsCreateOrgOpen(true)}
+              className="w-full py-2 bg-primary text-primary-foreground rounded-xl text-[10px] font-bold hover:shadow-lg hover:shadow-primary/20 transition-all flex items-center justify-center gap-2"
+            >
+              <Plus className="w-3 h-3" />
+              Buat Workspace
+            </button>
+          </div>
+        )}
+
         <div className="space-y-1">
           {navItems.map((item) => {
             const isActive = pathname === item.href;
@@ -226,6 +246,15 @@ export default function Sidebar() {
         isOpen={isCreateTeamOpen}
         onClose={() => setIsCreateTeamOpen(false)}
         onSuccess={fetchContext}
+      />
+
+      <CreateOrgModal 
+        isOpen={isCreateOrgOpen}
+        onClose={() => setIsCreateOrgOpen(false)}
+        onSuccess={(id) => {
+          fetchContext();
+          // Optionally redirect to the new org dashboard
+        }}
       />
     </aside>
   );
