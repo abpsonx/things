@@ -3,8 +3,9 @@
 import React, { useEffect, useState } from "react";
 
 import api from "@/lib/api";
-import { Briefcase, Building2, ChevronRight, FolderRoot, Loader2 } from "lucide-react";
+import { Briefcase, Building2, ChevronRight, FolderRoot, Loader2, Plus } from "lucide-react";
 import Link from "next/link";
+import CreateProjectModal from "@/components/project/CreateProjectModal";
 
 interface GlobalProject {
   id: string;
@@ -16,6 +17,7 @@ interface GlobalProject {
 export default function GlobalProjectsPage() {
   const [projects, setProjects] = useState<GlobalProject[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isCreating, setIsCreating] = useState(false);
 
   useEffect(() => {
     const fetchAllProjects = async () => {
@@ -44,12 +46,21 @@ export default function GlobalProjectsPage() {
   return (
     <>
       <div className="space-y-8">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <Briefcase className="w-8 h-8 text-primary" />
-            Semua Proyek
-          </h1>
-          <p className="text-muted-foreground">Daftar semua proyek di seluruh workspace kamu.</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+              <Briefcase className="w-8 h-8 text-primary" />
+              Semua Proyek
+            </h1>
+            <p className="text-muted-foreground">Daftar semua proyek di seluruh workspace kamu.</p>
+          </div>
+          <button 
+            onClick={() => setIsCreating(true)}
+            className="flex items-center gap-2 bg-primary text-primary-foreground px-5 py-3 rounded-2xl text-sm font-bold hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
+          >
+            <Plus className="w-5 h-5" />
+            Proyek Baru
+          </button>
         </div>
 
         {loading ? (
@@ -88,6 +99,29 @@ export default function GlobalProjectsPage() {
           </div>
         )}
       </div>
+
+      <CreateProjectModal 
+        isOpen={isCreating}
+        onClose={() => setIsCreating(false)}
+        onSuccess={() => {
+          // Re-fetch projects to show the new one
+          const fetchAllProjects = async () => {
+            try {
+              const orgsRes = await api.get("/organizations");
+              const orgs = orgsRes.data;
+              const projectPromises = orgs.map(async (org: any) => {
+                const res = await api.get(`/organizations/${org.id}/projects`);
+                return res.data.map((p: any) => ({ ...p, org_name: org.name }));
+              });
+              const results = await Promise.all(projectPromises);
+              setProjects(results.flat());
+            } catch (err) {
+              console.error("Failed to fetch global projects", err);
+            }
+          };
+          fetchAllProjects();
+        }}
+      />
     </>
   );
 }
