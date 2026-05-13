@@ -46,7 +46,7 @@ export default function TeamActivitiesPage() {
       setTeam(teamRes.data);
 
       // Fetch activities filtered by team_id
-      const res = await api.get(`/organizations/${orgId}/activities?team_id=${teamId}`);
+      const res = await api.get(`/organizations/${orgId}/teams/${teamId}/activities`);
       setActivities(res.data);
     } catch (err) {
       console.error("Failed to fetch team activities", err);

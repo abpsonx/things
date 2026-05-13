@@ -507,3 +507,24 @@ async def list_team_messages(
         }
         for m in messages
     ]
+
+# ============ Team Activity Endpoints ============
+
+@router.get("/{team_id}/activities", response_model=List[ActivityLogResponse])
+async def get_team_activities(
+    org_id: str, team_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get activity logs for a specific team."""
+    await _check_org_membership(db, org_id, current_user.id)
+
+    result = await db.execute(
+        select(ActivityLog)
+        .options(selectinload(ActivityLog.user))
+        .where(ActivityLog.team_id == team_id)
+        .order_by(ActivityLog.created_at.desc())
+        .limit(100)
+    )
+    activities = result.scalars().all()
+    return [ActivityLogResponse.model_validate(a) for a in activities]
