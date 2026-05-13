@@ -128,13 +128,15 @@ export default function TeamActivitiesPage() {
                       </div>
                       <div>
                         <p className="text-sm">
-                          <span className="font-bold text-foreground">{log.user?.name}</span>
+                          <span className="font-bold text-foreground">{log.user?.name || 'Sistem'}</span>
                           {" "}
                           <span className="text-muted-foreground">{formatAction(log.action, log.metadata)}</span>
                         </p>
                         <div className="flex items-center gap-2 mt-1 text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
                           <Clock className="w-3 h-3" />
-                          {new Date(log.created_at).toLocaleString('id-ID', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}
+                          {log.created_at ? (
+                            new Date(log.created_at).toLocaleString('id-ID', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })
+                          ) : 'Waktu tidak diketahui'}
                         </div>
                       </div>
                     </div>
