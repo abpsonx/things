@@ -13,6 +13,7 @@ from app.models.activity_log import ActivityLog
 from app.models.notification import Notification, PushSubscription
 from app.models.invitation import Invitation
 from app.models.system_setting import SystemSetting
+from app.models.team import Team, TeamMember, TeamMessage
 from app.models.document import Document
 from app.models.announcement import Announcement
 
@@ -20,6 +21,7 @@ __all__ = [
     "User",
     "Organization", "OrgMember",
     "Project", "ProjectMember",
+    "Team", "TeamMember", "TeamMessage",
     "Task", "SubTask", "Attachment",
     "Label", "TaskLabel",
     "Comment",
