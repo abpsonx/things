@@ -54,7 +54,11 @@ class TeamMessage(Base):
     team_id = Column(UUID(as_uuid=True), ForeignKey("teams.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     content = Column(Text, nullable=False)
+    file_url = Column(String, nullable=True)
+    file_name = Column(String, nullable=True)
+    file_type = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    edited_at = Column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     team = relationship("Team", back_populates="messages")

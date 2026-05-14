@@ -441,6 +441,12 @@ async def delete_team_task(
 
 # ============ Team Chat Endpoints ============
 
+# ============ Team Chat Endpoints ============
+import os
+import shutil
+from datetime import datetime, timezone
+from fastapi import UploadFile, File
+
 @router.post("/{team_id}/chat/messages", response_model=dict)
 async def send_team_message(
     org_id: str, team_id: str, data: dict,
@@ -453,7 +459,10 @@ async def send_team_message(
     msg = TeamMessage(
         team_id=team_id,
         user_id=current_user.id,
-        content=data.get("content")
+        content=data.get("content"),
+        file_url=data.get("file_url"),
+        file_name=data.get("file_name"),
+        file_type=data.get("file_type")
     )
     db.add(msg)
     await db.commit()
@@ -461,11 +470,13 @@ async def send_team_message(
 
     # Broadcast via socket
     from app.sockets.manager import sio
-    from app.models.team import TeamMessage as TMModel
     await sio.emit("team_message", {
         "id": str(msg.id),
         "user_id": str(msg.user_id),
         "content": msg.content,
+        "file_url": msg.file_url,
+        "file_name": msg.file_name,
+        "file_type": msg.file_type,
         "created_at": msg.created_at.isoformat(),
         "user": {
             "name": current_user.name,
@@ -473,7 +484,115 @@ async def send_team_message(
         }
     }, room=f"team_{team_id}")
 
-    return {"status": "sent"}
+    return {"id": str(msg.id), "status": "sent"}
+
+
+@router.put("/{team_id}/chat/messages/{message_id}", response_model=dict)
+async def edit_team_message(
+    org_id: str, team_id: str, message_id: str, data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Edit an existing chat message."""
+    await _check_org_membership(db, org_id, current_user.id)
+
+    result = await db.execute(
+        select(TeamMessage).where(TeamMessage.id == message_id, TeamMessage.user_id == current_user.id)
+    )
+    msg = result.scalar_one_or_none()
+    if not msg:
+        raise HTTPException(status_code=404, detail="Pesan tidak ditemukan atau Anda tidak berhak mengeditnya")
+
+    msg.content = data.get("content")
+    msg.edited_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(msg)
+
+    # Broadcast update
+    from app.sockets.manager import sio
+    await sio.emit("message_edited", {
+        "id": str(msg.id),
+        "content": msg.content,
+        "edited_at": msg.edited_at.isoformat()
+    }, room=f"team_{team_id}")
+
+    return {"id": str(msg.id), "content": msg.content, "edited_at": msg.edited_at.isoformat()}
+
+
+@router.delete("/{team_id}/chat/messages/{message_id}")
+async def delete_team_message(
+    org_id: str, team_id: str, message_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a chat message."""
+    await _check_org_membership(db, org_id, current_user.id)
+
+    result = await db.execute(
+        select(TeamMessage).where(TeamMessage.id == message_id, TeamMessage.user_id == current_user.id)
+    )
+    msg = result.scalar_one_or_none()
+    if not msg:
+        raise HTTPException(status_code=404, detail="Pesan tidak ditemukan atau Anda tidak berhak menghapusnya")
+
+    await db.delete(msg)
+    await db.commit()
+
+    # Broadcast deletion
+    from app.sockets.manager import sio
+    await sio.emit("message_deleted", str(message_id), room=f"team_{team_id}")
+
+    return {"status": "deleted"}
+
+
+@router.post("/{team_id}/chat/upload")
+async def upload_chat_file(
+    org_id: str, team_id: str, file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Upload a file to team chat."""
+    await _check_org_membership(db, org_id, current_user.id)
+
+    upload_dir = f"uploads/teams/{team_id}/chat"
+    os.makedirs(upload_dir, exist_ok=True)
+    
+    file_path = f"{upload_dir}/{datetime.now().timestamp()}_{file.filename}"
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    file_url = f"/api/{file_path}" # Assuming Nginx/FastAPI serves /api/uploads
+    
+    # Send a message automatically with the file
+    msg = TeamMessage(
+        team_id=team_id,
+        user_id=current_user.id,
+        content=f"Sent a file: {file.filename}",
+        file_url=file_url,
+        file_name=file.filename,
+        file_type=file.content_type
+    )
+    db.add(msg)
+    await db.commit()
+    await db.refresh(msg)
+
+    # Broadcast
+    from app.sockets.manager import sio
+    await sio.emit("team_message", {
+        "id": str(msg.id),
+        "user_id": str(msg.user_id),
+        "content": msg.content,
+        "file_url": msg.file_url,
+        "file_name": msg.file_name,
+        "file_type": msg.file_type,
+        "created_at": msg.created_at.isoformat(),
+        "user": {
+            "name": current_user.name,
+            "avatar_url": current_user.avatar_url
+        }
+    }, room=f"team_{team_id}")
+
+    return {"file_url": file_url}
 
 
 @router.get("/{team_id}/chat/messages", response_model=List[dict])
@@ -490,7 +609,7 @@ async def list_team_messages(
         .options(selectinload(TeamMessage.user))
         .where(TeamMessage.team_id == team_id)
         .order_by(TeamMessage.created_at.asc())
-        .limit(50)
+        .limit(100)
     )
     messages = result.scalars().all()
     
@@ -499,7 +618,11 @@ async def list_team_messages(
             "id": str(m.id),
             "user_id": str(m.user_id),
             "content": m.content,
+            "file_url": m.file_url,
+            "file_name": m.file_name,
+            "file_type": m.file_type,
             "created_at": m.created_at.isoformat(),
+            "edited_at": m.edited_at.isoformat() if m.edited_at else None,
             "user": {
                 "name": m.user.name,
                 "avatar_url": m.user.avatar_url
