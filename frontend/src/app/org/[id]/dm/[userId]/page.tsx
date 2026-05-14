@@ -49,9 +49,12 @@ export default function DMChatPage() {
   const emojis = ["😊", "😂", "👍", "🔥", "🙏", "❤️", "🙌", "✅", "🚀", "🤔"];
 
   // ─── Connect native WebSocket ─────────────────────────────────────────────
+  const connectWsRef = useRef<any>(null);
+
   const connectWs = useCallback((channelId: string) => {
     // Close any existing connection with code 1000 so it doesn't auto-reconnect
     if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
+      wsRef.current.onclose = null; // Prevent onclose from firing
       wsRef.current.close(1000);
     }
     if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
@@ -79,6 +82,7 @@ export default function DMChatPage() {
     };
 
     ws.onmessage = (event) => {
+      console.log('[WS] message received, ws instance:', ws === wsRef.current);
       // Ignore pong responses
       if (event.data === "pong") return;
 
@@ -121,7 +125,9 @@ export default function DMChatPage() {
       // Auto-reconnect after 3s unless intentionally closed (code 1000 or 4001)
       if (event.code !== 1000 && event.code !== 4001) {
         reconnectTimerRef.current = setTimeout(() => {
-          if (channelIdRef.current) connectWs(channelIdRef.current);
+          if (channelIdRef.current && connectWsRef.current) {
+            connectWsRef.current(channelIdRef.current);
+          }
         }, 3000);
       }
     };
@@ -130,6 +136,10 @@ export default function DMChatPage() {
       setWsStatus("disconnected");
     };
   }, []);
+
+  useEffect(() => {
+    connectWsRef.current = connectWs;
+  }, [connectWs]);
 
   // ─── Init DM ──────────────────────────────────────────────────────────────
   useEffect(() => {
