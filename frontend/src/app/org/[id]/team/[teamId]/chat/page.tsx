@@ -189,7 +189,7 @@ export default function TeamChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  const renderTextWithLinks = (content: string) => {
+  const renderTextWithLinks = (content: string, isMe: boolean) => {
     if (!content) return "";
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     const parts = content.split(urlRegex);
@@ -212,7 +212,7 @@ export default function TeamChatPage() {
     });
   };
 
-  const renderContent = (msg: Message) => {
+  const renderContent = (msg: Message, isMe: boolean) => {
     if (msg.file_url) {
       const isImage = msg.file_type?.startsWith('image/');
       return (
@@ -246,7 +246,7 @@ export default function TeamChatPage() {
           )}
           {msg.content && (
             <p className="text-[14px] whitespace-pre-wrap leading-relaxed mt-1">
-              {renderTextWithLinks(msg.content)}
+              {renderTextWithLinks(msg.content, isMe)}
             </p>
           )}
         </div>
@@ -257,7 +257,7 @@ export default function TeamChatPage() {
 
     return (
       <p className="text-[14px] whitespace-pre-wrap leading-relaxed">
-        {renderTextWithLinks(msg.content)}
+        {renderTextWithLinks(msg.content, isMe)}
       </p>
     );
   };
@@ -357,7 +357,7 @@ export default function TeamChatPage() {
                         </div>
                       ) : (
                         <>
-                          {renderContent(msg)}
+                          {renderContent(msg, isMe)}
                           {msg.edited_at && <span className={`text-[9px] block mt-1 opacity-50 ${isMe ? 'text-white' : 'text-muted-foreground'}`}>(diedit)</span>}
                         </>
                       )}
