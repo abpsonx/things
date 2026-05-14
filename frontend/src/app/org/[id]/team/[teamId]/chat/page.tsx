@@ -290,9 +290,9 @@ export default function TeamChatPage() {
   );
 
   return (
-    <div className="flex-1 flex flex-col h-screen bg-[#fafafa] overflow-hidden">
+    <div className="flex-1 flex flex-col h-[calc(100vh-64px)] -m-8 bg-[#fafafa] overflow-hidden relative">
       {/* Sticky Header & Nav Container */}
-      <div className="sticky top-0 z-30 shrink-0 bg-white/90 backdrop-blur-md flex flex-col border-b border-border shadow-sm">
+      <div className="shrink-0 bg-white/90 backdrop-blur-md flex flex-col border-b border-border shadow-sm">
         {/* Header */}
         <div className="px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
