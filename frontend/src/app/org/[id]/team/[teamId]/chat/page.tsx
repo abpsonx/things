@@ -189,8 +189,8 @@ export default function TeamChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  const renderContent = (content: string) => {
-    if (!content) return ""; // <--- TAMBAHKAN PENGAMAN INI
+  const renderTextWithLinks = (content: string) => {
+    if (!content) return "";
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     const parts = content.split(urlRegex);
     
@@ -202,7 +202,7 @@ export default function TeamChatPage() {
             href={part} 
             target="_blank" 
             rel="noopener noreferrer" 
-            className="text-blue-500 underline hover:text-blue-600 inline-flex items-center gap-1"
+            className={`${isMe ? 'text-indigo-100 underline underline-offset-4 hover:text-white' : 'text-indigo-600 underline underline-offset-4 hover:text-indigo-700'} inline-flex items-center gap-1 transition-colors`}
           >
             {part} <ExternalLink className="w-3 h-3" />
           </a>
@@ -210,6 +210,56 @@ export default function TeamChatPage() {
       }
       return part;
     });
+  };
+
+  const renderContent = (msg: Message) => {
+    if (msg.file_url) {
+      const isImage = msg.file_type?.startsWith('image/');
+      return (
+        <div className="flex flex-col gap-2">
+          {isImage ? (
+            <div className="rounded-xl overflow-hidden border border-black/5 shadow-sm max-w-sm">
+              <img src={msg.file_url} alt={msg.file_name} className="w-full h-auto object-cover max-h-60" />
+            </div>
+          ) : (
+            <div className={`flex items-center gap-3 p-3 rounded-2xl border ${isMe ? 'bg-white/10 border-white/20' : 'bg-white border-border shadow-sm'}`}>
+              <div className={`p-2.5 rounded-xl ${isMe ? 'bg-white/20' : 'bg-indigo-50'}`}>
+                <Paperclip className={`w-5 h-5 ${isMe ? 'text-white' : 'text-indigo-600'}`} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className={`text-[13px] font-bold truncate ${isMe ? 'text-white' : 'text-foreground'}`}>
+                  {msg.file_name}
+                </p>
+                <p className={`text-[11px] font-medium opacity-70 ${isMe ? 'text-white/80' : 'text-muted-foreground'}`}>
+                  Attachment
+                </p>
+              </div>
+              <a 
+                href={msg.file_url} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className={`p-2.5 rounded-xl transition-all ${isMe ? 'hover:bg-white/20 text-white' : 'hover:bg-secondary text-indigo-600 hover:scale-105 active:scale-95'}`}
+              >
+                <Download className="w-4 h-4" />
+              </a>
+            </div>
+          )}
+          {msg.content && (
+            <p className="text-[14px] whitespace-pre-wrap leading-relaxed mt-1">
+              {renderTextWithLinks(msg.content)}
+            </p>
+          )}
+        </div>
+      );
+    }
+
+    if (!msg.content) return null;
+
+    return (
+      <p className="text-[14px] whitespace-pre-wrap leading-relaxed">
+        {renderTextWithLinks(msg.content)}
+      </p>
+    );
   };
 
   if (loading) {
@@ -307,7 +357,7 @@ export default function TeamChatPage() {
                         </div>
                       ) : (
                         <>
-                          {renderContent(msg.content)}
+                          {renderContent(msg)}
                           {msg.edited_at && <span className={`text-[9px] block mt-1 opacity-50 ${isMe ? 'text-white' : 'text-muted-foreground'}`}>(diedit)</span>}
                         </>
                       )}
