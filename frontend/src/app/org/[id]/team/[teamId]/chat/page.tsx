@@ -60,6 +60,7 @@ export default function TeamChatPage() {
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const sentMessageIds = useRef<Set<string>>(new Set());
 
   const emojis = ["😀", "😂", "🥰", "👍", "🔥", "🙏", "🚀", "💡", "✅", "❌", "💯", "🙌"];
 
@@ -69,8 +70,12 @@ export default function TeamChatPage() {
     socket.emit("join_team", teamId);
 
     socket.on("team_message", (message: Message) => {
+      // Skip messages we just sent ourselves (already in state via optimistic update)
+      if (sentMessageIds.current.has(message.id)) {
+        sentMessageIds.current.delete(message.id);
+        return;
+      }
       setMessages((prev) => {
-        // Avoid duplicate if we just sent it
         if (prev.some(m => m.id === message.id)) return prev;
         return [...prev, { ...message, status: 'sent' }];
       });
@@ -133,6 +138,8 @@ export default function TeamChatPage() {
         content: contentToSend
       });
       
+      // Register the real ID so the socket broadcast is ignored
+      sentMessageIds.current.add(res.data.id);
       setMessages((prev) => prev.map(m => m.id === tempId ? { ...res.data, status: 'sent' } : m));
     } catch (err) {
       console.error("Failed to send message", err);
