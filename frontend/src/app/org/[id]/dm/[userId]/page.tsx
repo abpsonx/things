@@ -133,33 +133,44 @@ export default function DMChatPage() {
 
   // ─── Init DM ──────────────────────────────────────────────────────────────
   useEffect(() => {
+    let mounted = true;
+
     const initDM = async () => {
       try {
         const res = await api.post("/dm/channels", {
           org_id: orgId === "undefined" ? null : orgId,
           other_user_id: targetUserId,
         });
+        
+        if (!mounted) return;
+        
         setChannel(res.data);
         channelIdRef.current = res.data.id;
 
         const msgRes = await api.get(`/dm/channels/${res.data.id}/messages`);
+        
+        if (!mounted) return;
+        
         setMessages(msgRes.data);
-
         connectWs(res.data.id);
       } catch (err) {
         console.error("Failed to init DM", err);
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     };
 
     if (targetUserId) initDM();
 
     return () => {
+      mounted = false;
       channelIdRef.current = null;
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
       if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
-      if (wsRef.current) wsRef.current.close(1000, "page unmount");
+      if (wsRef.current) {
+        wsRef.current.onclose = null;
+        wsRef.current.close(1000, "page unmount");
+      }
     };
   }, [orgId, targetUserId, connectWs]);
 
@@ -438,6 +449,9 @@ export default function DMChatPage() {
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               onKeyDown={(e) => {
+                // Ignore Enter if the user is using an IME or emoji picker
+                if (e.nativeEvent.isComposing) return;
+                
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   handleSendMessage();
