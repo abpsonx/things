@@ -50,9 +50,9 @@ export default function DMChatPage() {
 
   // ─── Connect native WebSocket ─────────────────────────────────────────────
   const connectWs = useCallback((channelId: string) => {
-    // Close any existing connection
+    // Close any existing connection with code 1000 so it doesn't auto-reconnect
     if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
-      wsRef.current.close();
+      wsRef.current.close(1000);
     }
     if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
 
@@ -87,6 +87,15 @@ export default function DMChatPage() {
 
         if (data.type === "dm_received") {
           setMessages((prev) => {
+            // Replace optimistic message if it exists
+            const tempIndex = prev.findIndex(
+              (m) => m.id.startsWith("optimistic_") && m.content === data.message.content && m.user_id === data.message.user_id
+            );
+            if (tempIndex !== -1) {
+              const next = [...prev];
+              next[tempIndex] = data.message;
+              return next;
+            }
             // Dedup by message ID
             if (prev.find((m) => m.id === data.message.id)) return prev;
             return [...prev, data.message];
