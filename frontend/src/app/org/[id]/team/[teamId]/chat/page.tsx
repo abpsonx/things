@@ -286,10 +286,10 @@ export default function TeamChatPage() {
 
                     {/* Bubble */}
                     <div 
-                      className={`relative p-3 rounded-2xl shadow-sm text-sm leading-relaxed ${
+                      className={`relative p-4 rounded-2xl shadow-sm text-[14px] leading-relaxed ${
                         isMe 
-                        ? 'bg-primary text-white rounded-tr-none' 
-                        : 'bg-white text-foreground border border-border rounded-tl-none'
+                        ? 'bg-indigo-600 text-white rounded-tr-none shadow-indigo-200/50' 
+                        : 'bg-gray-100 text-gray-800 border border-gray-200 rounded-tl-none'
                       }`}
                     >
                       {editingId === msg.id ? (
