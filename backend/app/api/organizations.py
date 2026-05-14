@@ -134,16 +134,20 @@ async def invite_member(
         member = OrgMember(org_id=org_id, user_id=user.id, role=data.role)
         db.add(member)
     else:
-        # User doesn't exist, create a pending invitation
-        # Check if invitation already exists
+        # Check if invitation already exists (we'll just update it or create new)
         inv_result = await db.execute(
             select(Invitation).where(Invitation.org_id == org_id, Invitation.email == data.email)
         )
-        if inv_result.scalar_one_or_none():
-            raise HTTPException(status_code=400, detail="Email ini sudah diundang sebelumnya")
-            
-        invitation = Invitation(org_id=org_id, email=data.email, role=data.role, invited_by=current_user.id)
-        db.add(invitation)
+        existing_inv = inv_result.scalar_one_or_none()
+        
+        if existing_inv:
+            # Update existing invitation timestamp
+            existing_inv.created_at = datetime.now(timezone.utc)
+            existing_inv.role = data.role
+        else:
+            # Create new invitation
+            invitation = Invitation(org_id=org_id, email=data.email, role=data.role, invited_by=current_user.id)
+            db.add(invitation)
         
         # Send Email
         from app.services.email import send_invitation_email
