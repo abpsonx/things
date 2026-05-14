@@ -174,7 +174,11 @@ export default function TeamChatPage() {
     formData.append("file", file);
 
     try {
-      await api.post(`/organizations/${orgId}/teams/${teamId}/chat/upload`, formData);
+      await api.post(`/organizations/${orgId}/teams/${teamId}/chat/upload`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
       // Backend will emit via socket
     } catch (err) {
       console.error("Failed to upload file", err);
