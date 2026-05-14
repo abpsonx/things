@@ -18,7 +18,6 @@ class DMConnectionManager:
         self.channels: Dict[str, Set[WebSocket]] = {}
 
     async def connect(self, websocket: WebSocket, channel_id: str):
-        await websocket.accept()
         if channel_id not in self.channels:
             self.channels[channel_id] = set()
         self.channels[channel_id].add(websocket)
