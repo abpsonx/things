@@ -255,9 +255,12 @@ async def dm_websocket(
     """
     from app.core.security import verify_token
 
-    # Authenticate via token query param (WS can't send Authorization headers easily)
+    await websocket.accept()
+    
+    # Authenticate via token query param
     user_id = verify_token(token)
     if not user_id:
+        await websocket.send_json({"type": "error", "message": "Invalid token"})
         await websocket.close(code=4001)
         return
 
