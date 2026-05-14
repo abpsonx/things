@@ -132,7 +132,23 @@ export default function Sidebar() {
 
         <div className="space-y-1">
           {navItems.map((item) => {
-            const isActive = pathname === item.href;
+            let isActive = pathname === item.href;
+            
+            // Logika pintar buat deteksi rute aktif
+            if (item.label === "Proyek") {
+              isActive = pathname === "/projects" || pathname.includes("/project/");
+            } else if (item.label === "Chat") {
+              isActive = pathname.includes("/chat") || pathname.includes("/dm/");
+            } else if (item.label === "Kalender") {
+              isActive = pathname.includes("/calendar");
+            } else if (item.label === "Aktivitas") {
+              isActive = pathname.includes("/activity");
+            } else if (item.label === "Files") {
+              isActive = pathname.includes("/files");
+            } else if (item.label === "Dashboard") {
+              isActive = pathname === "/dashboard" || (pathname.startsWith("/org/") && !pathname.includes("/project/") && !pathname.includes("/team/") && !pathname.includes("/activity") && !pathname.includes("/files") && !pathname.includes("/members"));
+            }
+
             return (
               <Link
                 key={item.label}
