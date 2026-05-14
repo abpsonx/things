@@ -559,15 +559,25 @@ export default function TeamChatPage() {
 
       {/* Input Area */}
       <div className="p-6 bg-white border-t border-border shrink-0 shadow-[0_-4px_20px_rgba(0,0,0,0.02)]">
-        <form onSubmit={sendMessage} className="max-w-5xl mx-auto flex items-center gap-4">
+        <form onSubmit={sendMessage} className="max-w-5xl mx-auto flex items-end gap-4">
           <div className="flex-1 relative group">
-            <input
-              type="text"
+            <textarea
+              rows={1}
               placeholder="Ketik pesan untuk tim..."
-              className="w-full pl-6 pr-24 py-4 bg-secondary/40 border border-transparent focus:border-primary/20 focus:bg-white rounded-2xl text-sm focus:ring-4 focus:ring-primary/5 transition-all outline-none"
+              className="w-full pl-6 pr-24 py-4 bg-secondary/40 border border-transparent focus:border-primary/20 focus:bg-white rounded-2xl text-sm focus:ring-4 focus:ring-primary/5 transition-all outline-none resize-none overflow-hidden"
               value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
+              onChange={(e) => {
+                setNewMessage(e.target.value);
+                e.target.style.height = 'auto';
+                e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+              }}
               onFocus={() => setShowEmojiPicker(false)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  if (newMessage.trim()) sendMessage(e as any);
+                }
+              }}
             />
             <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1">
               <input 
@@ -595,7 +605,7 @@ export default function TeamChatPage() {
           <button
             type="submit"
             disabled={!newMessage.trim()}
-            className="p-4 bg-primary text-white rounded-2xl shadow-xl shadow-primary/25 hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:grayscale disabled:scale-100"
+            className="p-4 bg-primary text-white rounded-2xl shadow-xl shadow-primary/25 hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:grayscale disabled:scale-100 shrink-0"
           >
             <Send className="w-5 h-5" />
           </button>
