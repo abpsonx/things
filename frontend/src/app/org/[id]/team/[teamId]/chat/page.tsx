@@ -232,9 +232,17 @@ export default function TeamChatPage() {
       return (
         <div className="flex flex-col gap-2">
           {isImage ? (
-            <a href={msg.file_url} target="_blank" rel="noopener noreferrer" className="rounded-xl overflow-hidden border border-black/5 shadow-sm max-w-sm block hover:opacity-90 transition-opacity">
+            <div className="relative group/img rounded-xl overflow-hidden border border-black/5 shadow-sm max-w-sm">
               <img src={msg.file_url} alt={msg.file_name} className="w-full h-auto object-cover max-h-60" />
-            </a>
+              <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/30 transition-all flex items-center justify-center gap-2 opacity-0 group-hover/img:opacity-100">
+                <a href={msg.file_url} target="_blank" rel="noopener noreferrer" className="p-2 bg-white/90 rounded-xl hover:bg-white transition-all hover:scale-105" title="Lihat gambar">
+                  <ExternalLink className="w-4 h-4 text-gray-700" />
+                </a>
+                <a href={msg.file_url} download={msg.file_name} className="p-2 bg-white/90 rounded-xl hover:bg-white transition-all hover:scale-105" title="Download gambar">
+                  <Download className="w-4 h-4 text-gray-700" />
+                </a>
+              </div>
+            </div>
           ) : (
             <div className={`flex items-center gap-3 p-3 rounded-2xl border ${isMe ? 'bg-white/10 border-white/20' : 'bg-white border-border shadow-sm'}`}>
               <div className={`p-2.5 rounded-xl ${isMe ? 'bg-white/20' : 'bg-indigo-50'}`}>
@@ -285,7 +293,7 @@ export default function TeamChatPage() {
   }
 
   const filteredMessages = messages.filter(m => 
-    m.content.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    (m.content?.toLowerCase() ?? "").includes(searchQuery.toLowerCase()) || 
     (m.file_name && m.file_name.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
