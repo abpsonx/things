@@ -320,7 +320,14 @@ export default function TeamChatPage() {
                   {/* Timestamp & Status */}
                   <div className={`flex items-center gap-1.5 mt-1 px-1`}>
                     <span className="text-[10px] text-muted-foreground font-medium">
-                      {format(new Date(msg.created_at), 'HH:mm')}
+                      {(() => {
+                        try {
+                          const date = new Date(msg.created_at);
+                          return isNaN(date.getTime()) ? "--:--" : format(date, 'HH:mm');
+                        } catch (e) {
+                          return "--:--";
+                        }
+                      })()}
                     </span>
                     {isMe && (
                       <span className="text-muted-foreground">
