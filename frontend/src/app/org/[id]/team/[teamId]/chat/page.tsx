@@ -54,6 +54,7 @@ export default function TeamChatPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [uploadingFiles, setUploadingFiles] = useState<{id: string, file: File, previewUrl?: string}[]>([]);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -91,7 +92,7 @@ export default function TeamChatPage() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, uploadingFiles]);
 
   const fetchTeamAndMessages = async () => {
     try {
@@ -171,6 +172,11 @@ export default function TeamChatPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const tempId = `temp_${Date.now()}`;
+    const previewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined;
+    
+    setUploadingFiles(prev => [...prev, { id: tempId, file, previewUrl }]);
+
     const formData = new FormData();
     formData.append("file", file);
 
@@ -180,10 +186,15 @@ export default function TeamChatPage() {
           'Content-Type': 'multipart/form-data',
         },
       });
-      // Backend will emit via socket
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setUploadingFiles(prev => prev.filter(f => f.id !== tempId));
     } catch (err) {
       console.error("Failed to upload file", err);
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setUploadingFiles(prev => prev.filter(f => f.id !== tempId));
     }
+    
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const scrollToBottom = () => {
@@ -219,9 +230,9 @@ export default function TeamChatPage() {
       return (
         <div className="flex flex-col gap-2">
           {isImage ? (
-            <div className="rounded-xl overflow-hidden border border-black/5 shadow-sm max-w-sm">
+            <a href={msg.file_url} target="_blank" rel="noopener noreferrer" className="rounded-xl overflow-hidden border border-black/5 shadow-sm max-w-sm block hover:opacity-90 transition-opacity">
               <img src={msg.file_url} alt={msg.file_name} className="w-full h-auto object-cover max-h-60" />
-            </div>
+            </a>
           ) : (
             <div className={`flex items-center gap-3 p-3 rounded-2xl border ${isMe ? 'bg-white/10 border-white/20' : 'bg-white border-border shadow-sm'}`}>
               <div className={`p-2.5 rounded-xl ${isMe ? 'bg-white/20' : 'bg-indigo-50'}`}>
@@ -425,6 +436,53 @@ export default function TeamChatPage() {
             <p className="text-xs opacity-60">Kirim pesan pertama kamu sekarang!</p>
           </div>
         )}
+        
+        {/* Uploading Status Bubbles */}
+        {uploadingFiles.map((upload) => (
+          <div 
+            key={upload.id} 
+            className="flex items-start gap-3 group flex-row-reverse animate-in fade-in slide-in-from-bottom-2 duration-300"
+          >
+            <div className="w-8 h-8 rounded-xl bg-secondary flex items-center justify-center text-xs font-bold overflow-hidden shrink-0 border border-border shadow-sm">
+              {currentUser?.avatar_url ? (
+                <img src={currentUser.avatar_url} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <UserIcon className="w-4 h-4 text-muted-foreground" />
+              )}
+            </div>
+
+            <div className="flex flex-col items-end max-w-[75%] relative">
+              <div className="flex items-center gap-2 group/bubble flex-row-reverse">
+                <div className="relative p-4 rounded-2xl shadow-sm text-[14px] leading-relaxed bg-indigo-600 text-white rounded-tr-none shadow-indigo-200/50 opacity-80">
+                  <div className="flex flex-col gap-2">
+                    {upload.previewUrl ? (
+                      <div className="rounded-xl overflow-hidden border border-black/5 shadow-sm max-w-sm relative">
+                        <img src={upload.previewUrl} alt="uploading" className="w-full h-auto object-cover max-h-60 opacity-60" />
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <Loader2 className="w-8 h-8 text-white animate-spin drop-shadow-md" />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3 p-3 rounded-2xl border bg-white/10 border-white/20">
+                        <div className="p-2.5 rounded-xl bg-white/20 relative">
+                          <Paperclip className="w-5 h-5 text-white opacity-40" />
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <Loader2 className="w-4 h-4 text-white animate-spin" />
+                          </div>
+                        </div>
+                        <div className="flex-1 min-w-0 pr-6">
+                          <p className="text-[13px] font-bold truncate text-white">{upload.file.name}</p>
+                          <p className="text-[11px] font-medium text-white/80">Mengunggah file...</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+
         <div ref={messagesEndRef} />
       </div>
 
