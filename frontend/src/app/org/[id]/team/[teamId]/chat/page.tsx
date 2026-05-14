@@ -186,6 +186,7 @@ export default function TeamChatPage() {
   };
 
   const renderContent = (content: string) => {
+    if (!content) return ""; // <--- TAMBAHKAN PENGAMAN INI
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     const parts = content.split(urlRegex);
     
