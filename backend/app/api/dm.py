@@ -1,5 +1,5 @@
 """Direct Messaging endpoints."""
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, WebSocket, WebSocketDisconnect, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, and_
 from sqlalchemy.orm import selectinload
@@ -9,6 +9,7 @@ from app.core.database import get_db
 from app.models.user import User
 from app.models.dm import DMChannel, DMMessage
 from app.dependencies import get_current_user
+from app.sockets.dm_ws import dm_ws_manager
 from pydantic import BaseModel
 from uuid import UUID
 from datetime import datetime
@@ -21,6 +22,9 @@ class DMChannelCreate(BaseModel):
 
 class DMMessageCreate(BaseModel):
     content: str
+
+
+# ─── REST Endpoints ──────────────────────────────────────────────────────────
 
 @router.get("/channels")
 async def list_dm_channels(
@@ -48,7 +52,6 @@ async def get_or_create_dm_channel(
     current_user: User = Depends(get_current_user),
 ):
     """Find or create a 1-on-1 DM channel."""
-    # Check if channel exists
     result = await db.execute(
         select(DMChannel)
         .options(selectinload(DMChannel.user1), selectinload(DMChannel.user2))
@@ -107,19 +110,27 @@ async def send_dm_message(
     db.add(message)
     await db.commit()
     await db.refresh(message)
-    
-    # Trigger socket broadcast
-    from app.sockets.manager import sio
-    await sio.emit("dm_received", {
+
+    # Broadcast via native WebSocket to all clients in this channel
+    payload = {
+        "type": "dm_received",
         "channel_id": str(channel_id),
         "message": {
             "id": str(message.id),
             "content": message.content,
             "user_id": str(current_user.id),
-            "created_at": str(message.created_at),
-            "user": {"id": str(current_user.id), "name": current_user.name, "avatar_url": current_user.avatar_url}
+            "dm_channel_id": str(channel_id),
+            "created_at": message.created_at.isoformat(),
+            "attachment_url": None,
+            "attachment_name": None,
+            "user": {
+                "id": str(current_user.id),
+                "name": current_user.name,
+                "avatar_url": current_user.avatar_url
+            }
         }
-    }, room=f"dm_{channel_id}")
+    }
+    await dm_ws_manager.broadcast(channel_id, payload)
     
     return message
 
@@ -140,6 +151,14 @@ async def edit_dm_message(
     
     message.content = data.content
     await db.commit()
+
+    # Broadcast edit event
+    await dm_ws_manager.broadcast(str(message.dm_channel_id), {
+        "type": "dm_edited",
+        "channel_id": str(message.dm_channel_id),
+        "message": {"id": str(message.id), "content": message.content}
+    })
+
     return message
 
 @router.delete("/messages/{message_id}")
@@ -156,8 +175,19 @@ async def delete_dm_message(
     if not message:
         raise HTTPException(status_code=404, detail="Pesan tidak ditemukan atau bukan milik Anda")
     
+    channel_id = str(message.dm_channel_id)
+    msg_id = str(message.id)
+
     await db.delete(message)
     await db.commit()
+
+    # Broadcast delete event
+    await dm_ws_manager.broadcast(channel_id, {
+        "type": "dm_deleted",
+        "channel_id": channel_id,
+        "message_id": msg_id
+    })
+
     return {"status": "success"}
 
 @router.post("/channels/{channel_id}/attachments")
@@ -168,19 +198,15 @@ async def upload_dm_attachment(
     current_user: User = Depends(get_current_user),
 ):
     """Upload a file in a DM channel."""
-    # Ensure uploads directory exists
     os.makedirs("uploads", exist_ok=True)
     
-    # Generate unique filename
     file_ext = os.path.splitext(file.filename)[1]
     unique_filename = f"{uuid.uuid4()}{file_ext}"
     file_path = os.path.join("uploads", unique_filename)
 
-    # Save file
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     
-    # Create message with attachment
     message = DMMessage(
         dm_channel_id=channel_id,
         user_id=current_user.id,
@@ -192,20 +218,55 @@ async def upload_dm_attachment(
     await db.commit()
     await db.refresh(message)
     
-    # Trigger socket broadcast
-    from app.sockets.manager import sio
-    await sio.emit("dm_received", {
+    # Broadcast via native WebSocket
+    await dm_ws_manager.broadcast(str(channel_id), {
+        "type": "dm_received",
         "channel_id": str(channel_id),
         "message": {
             "id": str(message.id),
             "content": message.content,
             "user_id": str(current_user.id),
-            "created_at": str(message.created_at),
+            "dm_channel_id": str(channel_id),
+            "created_at": message.created_at.isoformat(),
             "attachment_url": message.attachment_url,
             "attachment_name": message.attachment_name,
-            "user": {"id": str(current_user.id), "name": current_user.name, "avatar_url": current_user.avatar_url}
+            "user": {
+                "id": str(current_user.id),
+                "name": current_user.name,
+                "avatar_url": current_user.avatar_url
+            }
         }
-    }, room=f"dm_{channel_id}")
+    })
     
     return message
 
+
+# ─── Native WebSocket Endpoint ────────────────────────────────────────────────
+
+@router.websocket("/ws/{channel_id}")
+async def dm_websocket(
+    websocket: WebSocket,
+    channel_id: str,
+    token: str = Query(..., description="JWT access token"),
+):
+    """
+    Native WebSocket endpoint for real-time DM.
+    Client connects with: wss://<host>/api/dm/ws/<channel_id>?token=<jwt>
+    """
+    from app.core.security import verify_token
+
+    # Authenticate via token query param (WS can't send Authorization headers easily)
+    user_id = verify_token(token)
+    if not user_id:
+        await websocket.close(code=4001)
+        return
+
+    await dm_ws_manager.connect(websocket, channel_id)
+    try:
+        while True:
+            # Keep connection alive — client sends ping, we echo pong
+            data = await websocket.receive_text()
+            if data == "ping":
+                await websocket.send_text("pong")
+    except WebSocketDisconnect:
+        dm_ws_manager.disconnect(websocket, channel_id)

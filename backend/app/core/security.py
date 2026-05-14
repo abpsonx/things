@@ -47,3 +47,11 @@ def decode_token(token: str) -> Optional[dict]:
         return payload
     except JWTError:
         return None
+
+
+def verify_token(token: str) -> Optional[str]:
+    """Verify a JWT token and return the user_id (sub), or None if invalid."""
+    payload = decode_token(token)
+    if payload and payload.get("type") == "access":
+        return payload.get("sub")
+    return None
