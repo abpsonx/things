@@ -547,7 +547,7 @@ async def delete_team_message(
 
 @router.post("/{team_id}/chat/upload")
 async def upload_chat_file(
-    org_id: str, team_id: str, file: UploadFile = File(...),
+    org_id: str, team_id: str, file: UploadFile = File(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
