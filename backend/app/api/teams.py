@@ -484,7 +484,21 @@ async def send_team_message(
         }
     }, room=f"team_{team_id}")
 
-    return {"id": str(msg.id), "status": "sent"}
+    return {
+        "id": str(msg.id),
+        "user_id": str(msg.user_id),
+        "content": msg.content,
+        "file_url": msg.file_url,
+        "file_name": msg.file_name,
+        "file_type": msg.file_type,
+        "created_at": msg.created_at.isoformat(),
+        "edited_at": None,
+        "status": "sent",
+        "user": {
+            "name": current_user.name,
+            "avatar_url": current_user.avatar_url
+        }
+    }
 
 
 @router.put("/{team_id}/chat/messages/{message_id}", response_model=dict)

@@ -138,9 +138,15 @@ export default function TeamChatPage() {
         content: contentToSend
       });
       
-      // Register the real ID so the socket broadcast is ignored
+      // Register the real ID so the socket broadcast is ignored (if it arrives after)
       sentMessageIds.current.add(res.data.id);
-      setMessages((prev) => prev.map(m => m.id === tempId ? { ...res.data, status: 'sent' } : m));
+      
+      setMessages((prev) => {
+        // Remove any socket-received duplicate with the same real ID (arrived before API response)
+        const withoutDuplicate = prev.filter(m => m.id !== res.data.id);
+        // Replace the optimistic placeholder with the full message data
+        return withoutDuplicate.map(m => m.id === tempId ? { ...res.data, status: 'sent' } : m);
+      });
     } catch (err) {
       console.error("Failed to send message", err);
       setMessages((prev) => prev.filter(m => m.id !== tempId));
