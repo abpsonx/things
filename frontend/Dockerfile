@@ -1,24 +1,53 @@
-# Stage 1: Build
-FROM node:20-alpine AS builder
+# Multi-stage Dockerfile for Next.js Frontend
+FROM node:18-alpine AS builder
+
 WORKDIR /app
+
+# Install dependencies
 COPY package*.json ./
-RUN npm install
+RUN npm ci --only=production
+
+# Copy source
 COPY . .
-# We'll inject environment variables during the build process
+
+# Build arguments
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_SOCKET_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_SOCKET_URL=$NEXT_PUBLIC_SOCKET_URL
+
+# Build the application
 RUN npm run build
 
-# Stage 2: Runner
-FROM node:20-alpine AS runner
-WORKDIR /app
-COPY --from=builder /app/next.config.ts ./
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
+# Production stage
+FROM node:18-alpine
 
+WORKDIR /app
+
+# Install runtime dependencies
+COPY package*.json ./
+RUN npm ci --only=production
+
+# Copy built application from builder
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/next.config.ts ./
+COPY --from=builder /app/package.json ./
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
+USER nextjs
+
+# Expose port
 EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1
+
+# Set environment
+ENV NODE_ENV=production
+ENV PORT=3000
+
+# Start the application
 CMD ["npm", "start"]
