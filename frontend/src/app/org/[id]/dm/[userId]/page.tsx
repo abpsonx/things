@@ -222,9 +222,21 @@ export default function DMChatPage() {
       const res = await api.post(`/dm/channels/${channel.id}/messages`, {
         content: optimistic.content,
       });
-      // Do NOT replace the optimistic message here!
+      // Do NOT replace the optimistic message here immediately!
       // Let the Native WebSocket (ws.onmessage) handle the replacement 
       // when it receives the "dm_received" broadcast from the backend.
+      
+      // Fallback: jika WS telat atau gagal merespon dalam 3 detik, 
+      // lakukan fallback replacement manual dari response HTTP.
+      setTimeout(() => {
+        setMessages((prev) => {
+          const stillOptimistic = prev.find((m) => m.id === optimisticId);
+          if (stillOptimistic) {
+            return prev.map((m) => (m.id === optimisticId ? res.data : m));
+          }
+          return prev;
+        });
+      }, 3000);
     } catch (err) {
       console.error("Failed to send message", err);
       // Remove failed optimistic message
