@@ -17,7 +17,8 @@ import {
   CheckCheck,
   X,
   ExternalLink,
-  Download
+  Download,
+  Search
 } from "lucide-react";
 import api from "@/lib/api";
 import { socket } from "@/lib/socket";
@@ -55,6 +56,7 @@ export default function TeamChatPage() {
   const [editContent, setEditContent] = useState("");
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [uploadingFiles, setUploadingFiles] = useState<{id: string, file: File, previewUrl?: string}[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -282,38 +284,59 @@ export default function TeamChatPage() {
     );
   }
 
+  const filteredMessages = messages.filter(m => 
+    m.content.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    (m.file_name && m.file_name.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+
   return (
     <div className="flex-1 flex flex-col h-screen bg-[#fafafa] overflow-hidden">
-      {/* Header */}
-      <div className="border-b border-border px-8 py-4 flex items-center justify-between bg-white/80 backdrop-blur-md sticky top-0 z-30 shrink-0">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => router.back()}
-            className="p-2 rounded-xl hover:bg-secondary text-muted-foreground hover:text-foreground transition-all"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </button>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/20">
-              <Users className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-foreground tracking-tight">{team?.name}</h1>
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Active Discussion</p>
+      {/* Sticky Header & Nav Container */}
+      <div className="sticky top-0 z-30 shrink-0 bg-white/90 backdrop-blur-md flex flex-col border-b border-border shadow-sm">
+        {/* Header */}
+        <div className="px-8 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => router.back()}
+              className="p-2 rounded-xl hover:bg-secondary text-muted-foreground hover:text-foreground transition-all"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/20">
+                <Users className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h1 className="text-lg font-bold text-foreground tracking-tight">{team?.name}</h1>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Active Discussion</p>
+                </div>
               </div>
             </div>
           </div>
+          
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input 
+                type="text" 
+                placeholder="Cari pesan atau file..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 pr-4 py-2 bg-secondary border border-transparent rounded-full text-[13px] outline-none focus:bg-white focus:border-indigo-500/30 focus:ring-4 focus:ring-indigo-500/10 w-[200px] transition-all focus:w-[280px]"
+              />
+            </div>
+          </div>
         </div>
-      </div>
 
-      <TeamNav orgId={orgId} teamId={teamId} />
+        <TeamNav orgId={orgId} teamId={teamId} />
+      </div>
 
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-6 scrollbar-thin bg-dot-pattern">
-        {messages.length > 0 ? (
-          messages.map((msg) => {
+        {filteredMessages.length > 0 ? (
+          filteredMessages.map((msg) => {
             const isMe = msg.user_id === currentUser?.id;
             return (
               <div 
@@ -432,8 +455,17 @@ export default function TeamChatPage() {
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-muted-foreground py-20">
             <Users className="w-16 h-16 opacity-10 mb-4" />
-            <p className="text-sm font-semibold tracking-wide">Belum ada obrolan di tim ini.</p>
-            <p className="text-xs opacity-60">Kirim pesan pertama kamu sekarang!</p>
+            {searchQuery ? (
+              <>
+                <p className="text-sm font-semibold tracking-wide">Pesan tidak ditemukan.</p>
+                <p className="text-xs opacity-60">Coba kata kunci lain.</p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-semibold tracking-wide">Belum ada obrolan di tim ini.</p>
+                <p className="text-xs opacity-60">Kirim pesan pertama kamu sekarang!</p>
+              </>
+            )}
           </div>
         )}
         
