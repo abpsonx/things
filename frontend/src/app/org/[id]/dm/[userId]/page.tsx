@@ -222,10 +222,9 @@ export default function DMChatPage() {
       const res = await api.post(`/dm/channels/${channel.id}/messages`, {
         content: optimistic.content,
       });
-      // Replace optimistic with real message
-      setMessages((prev) =>
-        prev.map((m) => (m.id === optimisticId ? res.data : m))
-      );
+      // Do NOT replace the optimistic message here!
+      // Let the Native WebSocket (ws.onmessage) handle the replacement 
+      // when it receives the "dm_received" broadcast from the backend.
     } catch (err) {
       console.error("Failed to send message", err);
       // Remove failed optimistic message
