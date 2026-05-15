@@ -60,6 +60,7 @@ services:
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
       - /etc/letsencrypt:/etc/letsencrypt:ro
+      - ./backend/uploads:/app/uploads:ro
     depends_on:
       - frontend
       - backend
