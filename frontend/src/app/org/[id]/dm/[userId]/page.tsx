@@ -69,6 +69,7 @@ export default function DMChatPage() {
 
     setWsStatus("connecting");
     const ws = new WebSocket(wsUrl);
+    console.log('[WS] new WebSocket created, channelId:', channelId);
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -146,6 +147,7 @@ export default function DMChatPage() {
     let mounted = true;
 
     const initDM = async () => {
+      console.log('[DM] initDM called, targetUserId:', targetUserId);
       try {
         const res = await api.post("/dm/channels", {
           org_id: orgId === "undefined" ? null : orgId,
@@ -159,6 +161,7 @@ export default function DMChatPage() {
 
         // ✅ Connect WS DULU, sebelum fetch history agar tidak ada blind-spot pesan masuk
         connectWs(res.data.id);
+        console.log('[DM] connectWs called, channelId:', res.data.id);
 
         const msgRes = await api.get(`/dm/channels/${res.data.id}/messages`);
         
