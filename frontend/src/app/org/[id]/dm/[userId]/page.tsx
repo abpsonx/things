@@ -83,9 +83,11 @@ export default function DMChatPage() {
     };
 
     ws.onmessage = (event) => {
-      console.log('[WS] message received, ws instance:', ws === wsRef.current);
       // Ignore pong responses
       if (event.data === "pong") return;
+
+      console.log('[WS] REAL message received:', event.data);
+      console.log('[WS] ws instance still active?', ws === wsRef.current);
 
       try {
         const data = JSON.parse(event.data);
