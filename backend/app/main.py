@@ -22,6 +22,20 @@ async def lifespan(app: FastAPI):
         # Note: In production, use Alembic for migrations
         await conn.run_sync(Base.metadata.create_all)
         
+        # Auto-fix missing columns in dm_messages (existing databases)
+        from sqlalchemy import text
+        for col, col_type in [
+            ("is_delivered", "BOOLEAN DEFAULT FALSE"),
+            ("delivered_at", "TIMESTAMP WITH TIME ZONE"),
+            ("reactions", "JSONB DEFAULT '{}'::jsonb"),
+            ("attachment_url", "VARCHAR"),
+            ("attachment_name", "VARCHAR"),
+        ]:
+            try:
+                await conn.execute(text(f"ALTER TABLE dm_messages ADD COLUMN IF NOT EXISTS {col} {col_type}"))
+            except Exception:
+                pass  # Table may not exist yet
+        
     # Start background scheduler
     from app.services.scheduler import check_reminders
     scheduler_task = asyncio.create_task(check_reminders())
