@@ -61,6 +61,8 @@ export default function DMChatPage() {
       try {
         const d = JSON.parse(e.data);
         if (d.type === "dm_received") {
+          // Skip messages from self to avoid blink (HTTP already replaced optimistic)
+          if (d.message && d.message.user_id === uid) return;
           setMs(prev => {
             const i = prev.findIndex(m => d.message.temp_id && m.id === d.message.temp_id);
             if (i !== -1) { const n = [...prev]; n[i] = { ...d.message, reactions: d.message.reactions || {} }; return n; }
