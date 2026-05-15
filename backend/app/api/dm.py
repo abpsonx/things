@@ -273,5 +273,7 @@ async def dm_websocket(
             data = await websocket.receive_text()
             if data == "ping":
                 await websocket.send_text("pong")
-    except WebSocketDisconnect:
+    except Exception as e:
+        logger.warning(f"[DM-WS] Connection error or disconnect: {e}")
+    finally:
         dm_ws_manager.disconnect(websocket, channel_id)

@@ -72,19 +72,29 @@ export default function DMChatPage() {
     console.log('[WS] new WebSocket created, channelId:', channelId);
     wsRef.current = ws;
 
+    let pongTimeout: ReturnType<typeof setTimeout>;
+
     ws.onopen = () => {
       setWsStatus("connected");
       // Send ping every 25s to keep connection alive
       pingIntervalRef.current = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
           ws.send("ping");
+          // Jika dalam 5 detik tidak ada pong balasan, anggap koneksi mati (silent drop)
+          pongTimeout = setTimeout(() => {
+            console.warn('[WS] Pong timeout! Koneksi mati diam-diam. Force reconnect...');
+            ws.close(); // Memicu onclose() yang akan me-reconnect ulang
+          }, 5000);
         }
       }, 25000);
     };
 
     ws.onmessage = (event) => {
-      // Ignore pong responses
-      if (event.data === "pong") return;
+      // Ignore pong responses and clear the timeout
+      if (event.data === "pong") {
+        clearTimeout(pongTimeout);
+        return;
+      }
 
       console.log('[WS] REAL message received:', event.data);
       console.log('[WS] ws instance still active?', ws === wsRef.current);
