@@ -57,7 +57,11 @@ export default function DMChatPage() {
       wsRef.current.onclose = null; // Prevent onclose from firing
       wsRef.current.close(1000);
     }
-    if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
+    
+    if (pingIntervalRef.current) {
+      console.log('[WS] clearing old ping interval:', pingIntervalRef.current);
+      clearInterval(pingIntervalRef.current);
+    }
 
     const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
     if (!token) return;

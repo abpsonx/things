@@ -13,6 +13,7 @@ from app.sockets.dm_ws import dm_ws_manager
 from pydantic import BaseModel
 from uuid import UUID
 from datetime import datetime
+import asyncio
 
 router = APIRouter(prefix="/dm", tags=["Direct Messages"])
 
@@ -270,9 +271,19 @@ async def dm_websocket(
     try:
         while True:
             # Keep connection alive — client sends ping, we echo pong
-            data = await websocket.receive_text()
-            if data == "ping":
-                await websocket.send_text("pong")
+            # Jika tidak ada ping dalam 60 detik, anggap klien mati
+            try:
+                data = await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=60.0
+                )
+                if data == "ping":
+                    await websocket.send_text("pong")
+            except asyncio.TimeoutError:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"[DM-WS] Client timeout (no ping for 60s), closing {channel_id}")
+                break
     except Exception as e:
         logger.warning(f"[DM-WS] Connection error or disconnect: {e}")
     finally:
