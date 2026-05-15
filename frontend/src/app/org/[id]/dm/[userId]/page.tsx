@@ -586,26 +586,26 @@ export default function DMChatPage() {
                         {/* Image preview */}
                         {(msg.is_image || getFileInfo(msg.attachment_name || "").isImage) && !isUploading ? (
                           <div
-                            className="relative group/img cursor-pointer rounded-xl overflow-hidden"
+                            className="relative group/img cursor-pointer rounded-lg overflow-hidden max-w-[240px]"
                             onClick={() => openFileViewer(msg)}
                           >
                             <img
                               src={msg.attachment_url}
                               alt={msg.attachment_name || "Gambar"}
-                              className="max-w-full rounded-xl max-h-[260px] object-cover"
+                              className="w-full rounded-lg max-h-[200px] object-cover"
                               loading="lazy"
                             />
                             <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/10 transition-all flex items-center justify-center">
-                              <div className="opacity-0 group-hover/img:opacity-100 transition-opacity bg-black/50 text-white p-2 rounded-full">
-                                <Eye className="w-5 h-5" />
+                              <div className="opacity-0 group-hover/img:opacity-100 transition-opacity bg-black/50 text-white p-1.5 rounded-full">
+                                <Eye className="w-4 h-4" />
                               </div>
                             </div>
                           </div>
                         ) : msg.is_video || getFileInfo(msg.attachment_name || "").isVideo ? (
-                          <div className="relative rounded-xl overflow-hidden">
+                          <div className="relative rounded-lg overflow-hidden max-w-[240px]">
                             <video
                               src={msg.attachment_url}
-                              className="max-w-full rounded-xl max-h-[260px]"
+                              className="w-full rounded-lg max-h-[200px]"
                               controls
                               preload="metadata"
                             />
