@@ -45,11 +45,14 @@ export default function DMChatPage() {
   const pi = useRef<any>(null);
   const init = useRef(false);
   const connectWsRef = useRef<((cid: string) => void) | null>(null);
+
+  // Store uid in ref so WS closure always has latest value
   const uidRef = useRef(uid);
   uidRef.current = uid;
 
   const scrollDown = () => { setTimeout(() => { if (sc.current) sc.current.scrollTop = sc.current.scrollHeight; }, 50); };
 
+  // ─── WS ──────────────────────────────────────────────────────────────────
   const connectWs = useCallback((cid: string) => {
     if (ws.current && ws.current.readyState !== WebSocket.CLOSED) { ws.current.onclose = null; ws.current.close(1000); }
     if (pi.current) clearInterval(pi.current);
@@ -64,6 +67,7 @@ export default function DMChatPage() {
       try {
         const d = JSON.parse(e.data);
         if (d.type === "dm_received") {
+          // Skip messages from self (HTTP already replaced optimistic)
           if (d.message && d.message.user_id === uidRef.current) return;
           setMs(prev => {
             const i = prev.findIndex(m => d.message.temp_id && m.id === d.message.temp_id);
@@ -87,6 +91,7 @@ export default function DMChatPage() {
   }, []);
   connectWsRef.current = connectWs;
 
+  // ─── Init ────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!tid || init.current) return; init.current = true; let mounted = true;
     (async () => {
@@ -104,6 +109,7 @@ export default function DMChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [oid, tid]);
 
+  // ─── Send ────────────────────────────────────────────────────────────────
   const sendMsg = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!tx.trim() || !ch) return;
@@ -119,11 +125,22 @@ export default function DMChatPage() {
     finally { setSe(false); }
   };
 
-  const updateMsg = async () => { try { const r = await api.put(`/dm/messages/${em.id}`, { content: tx }); setMs(p => p.map(m => m.id === em.id ? { ...m, content: r.data.content } : m)); setEm(null); setTx(""); } catch { } };
+  const updateMsg = async () => {
+    try { const r = await api.put(`/dm/messages/${em.id}`, { content: tx }); setMs(p => p.map(m => m.id === em.id ? { ...m, content: r.data.content } : m)); setEm(null); setTx(""); } catch { }
+  };
   const delMsg = async (id: string) => { if (!confirm("Hapus?")) return; setMs(p => p.filter(m => m.id !== id)); try { await api.delete(`/dm/messages/${id}`); } catch { } };
-  const doReact = async (mid: string, emoji: string) => { setRm(null); try { const r = await api.post(`/dm/messages/${mid}/react`, { emoji }); setMs(p => p.map(m => m.id === mid ? { ...m, reactions: r.data.reactions || {} } : m)); } catch { } };
-  const getRC = (rx: Record<string, string>) => { const c: Record<string, { c: number; u: string[] }> = {}; if (!rx) return c; Object.entries(rx).forEach(([u, e]) => { if (!c[e]) c[e] = { c: 0, u: [] }; c[e].c++; if (u === uid) c[e].u.push("me"); }); return c; };
 
+  // ─── React ───────────────────────────────────────────────────────────────
+  const doReact = async (mid: string, emoji: string) => {
+    setRm(null);
+    try { const r = await api.post(`/dm/messages/${mid}/react`, { emoji }); setMs(p => p.map(m => m.id === mid ? { ...m, reactions: r.data.reactions || {} } : m)); } catch { }
+  };
+  const getRC = (rx: Record<string, string>) => {
+    const c: Record<string, { c: number; u: string[] }> = {};
+    if (!rx) return c; Object.entries(rx).forEach(([u, e]) => { if (!c[e]) c[e] = { c: 0, u: [] }; c[e].c++; if (u === uid) c[e].u.push("me"); }); return c;
+  };
+
+  // ─── Upload ──────────────────────────────────────────────────────────────
   const upload = async (file: File) => {
     if (!ch) return;
     const id = `o${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
@@ -142,20 +159,13 @@ export default function DMChatPage() {
   };
   const onFP = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) upload(f); if (fi.current) fi.current.value = ""; };
 
+  // ─── Render ──────────────────────────────────────────────────────────────
   if (ld) return <div className="flex flex-col items-center justify-center h-[calc(100vh-160px)]"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>;
   const ou = ch?.user1_id === uid ? ch?.user2 : ch?.user1;
 
-  // Group messages by date
-  const groups: { date: string; msgs: any[] }[] = [];
-  let lastDate = "";
-  for (const m of ms) {
-    const d = new Date(m.created_at).toLocaleDateString("id-ID", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-    if (d !== lastDate) { groups.push({ date: d, msgs: [] }); lastDate = d; }
-    groups[groups.length - 1].msgs.push(m);
-  }
-
   return (
     <div className="flex flex-col h-[calc(100vh-160px)] bg-card border border-border rounded-3xl overflow-hidden shadow-sm">
+      {/* Header */}
       <div className="px-5 py-3.5 border-b border-border bg-secondary/10 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary relative">
@@ -169,43 +179,61 @@ export default function DMChatPage() {
         </div>
       </div>
 
-      <div ref={sc} onDragOver={e => { e.preventDefault(); setDr(true); }} onDragLeave={() => setDr(false)} onDrop={e => { e.preventDefault(); setDr(false); const f = e.dataTransfer.files?.[0]; if (f && ch) upload(f); }}
-        className="flex-1 overflow-y-auto px-4 py-4 space-y-1 bg-secondary/[0.02] relative" onClick={() => setRm(null)}>
+      {/* Messages */}
+      <div ref={sc}
+        onDragOver={e => { e.preventDefault(); setDr(true); }}
+        onDragLeave={() => setDr(false)}
+        onDrop={e => { e.preventDefault(); setDr(false); const f = e.dataTransfer.files?.[0]; if (f && ch) upload(f); }}
+        className="flex-1 overflow-y-auto px-4 py-4 space-y-1 bg-secondary/[0.02] relative"
+        onClick={() => setRm(null)}>
+
         {dr && <div className="absolute inset-0 bg-primary/10 backdrop-blur-[2px] z-50 flex items-center justify-center border-2 border-dashed border-primary m-3 rounded-3xl">
           <div className="bg-background px-8 py-6 rounded-2xl shadow-xl flex flex-col items-center gap-3"><Paperclip className="w-8 h-8 text-primary animate-bounce" /><span className="font-bold text-sm">Lepaskan untuk mengirim file</span><span className="text-[10px] text-muted-foreground">ke {ou?.name}</span></div>
         </div>}
+
         {ms.length === 0 && <div className="flex flex-col items-center justify-center h-full text-center py-12"><div className="w-16 h-16 rounded-2xl bg-secondary/50 flex items-center justify-center mb-4"><Send className="w-6 h-6 text-muted-foreground" /></div><p className="text-sm font-bold text-muted-foreground">Belum ada pesan</p><p className="text-[11px] text-muted-foreground/60 mt-1">Kirim pesan atau file untuk memulai percakapan</p></div>}
-        {groups.map(g => (
-          <React.Fragment key={g.date}>
-            <div className="flex justify-center my-3">
-              <span className="text-[10px] text-muted-foreground bg-secondary/50 px-3 py-1 rounded-full border border-border/50">
-                {g.date}
-              </span>
-            </div>
-            {g.msgs.map((msg, idx) => {
-              const me = msg.user_id === uid, opt = msg._opt === true, up2 = msg._up === true, pct = msg._upP || 0;
-              const prev = idx > 0 ? g.msgs[idx - 1] : null, same = prev && prev.user_id === msg.user_id, av = !me && !same;
-              const rx = msg.reactions || {}, rc = getRC(rx), hrx = Object.keys(rc).length > 0, myE = rx[uid || ""] || null;
-              return (
-                <div key={msg.id} className={cn("flex group relative", me ? "justify-end" : "justify-start")}>
+
+        {(() => {
+          let lastDate = "";
+          return ms.map((msg) => {
+            const me = msg.user_id === uid;
+            const opt = msg._opt === true;
+            const up2 = msg._up === true;
+            const pct = msg._upP || 0;
+            const rx = msg.reactions || {};
+            const rc = getRC(rx);
+            const hrx = Object.keys(rc).length > 0;
+            const myE = rx[uid || ""] || null;
+            const d = new Date(msg.created_at);
+            const dateStr = d.toLocaleDateString("id-ID", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+            const showDate = dateStr !== lastDate;
+            if (showDate) lastDate = dateStr;
+            return (
+              <div key={msg.id}>
+                {showDate && <div className="flex justify-center my-3"><span className="text-[10px] text-muted-foreground bg-secondary/50 px-3 py-1 rounded-full border border-border/50">{dateStr}</span></div>}
+                <div className={cn("flex group relative", me ? "justify-end" : "justify-start")}>
                   <div className={cn("flex gap-1.5 max-w-[80%] md:max-w-[65%]", me ? "flex-row-reverse" : "flex-row")}>
-                    <div className={cn("w-8 shrink-0", !av && "invisible")}>{av && <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold">{(ou?.name || "?").charAt(0).toUpperCase()}</div>}</div>
+                    <div className={cn("w-8 shrink-0", (me || !ms.find((m, i) => i === 0 ? false : false)) && "invisible")}>
+                      {!me && <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold">{(ou?.name || "?").charAt(0).toUpperCase()}</div>}
+                    </div>
                     <div className={cn("flex flex-col", me ? "items-end" : "items-start")}>
-                      {av && !me && <span className="text-[10px] text-muted-foreground font-medium mb-0.5 ml-1">{ou?.name}</span>}
                       <div className={cn("relative px-3.5 py-2 text-sm shadow-sm transition-all", me ? "bg-primary text-primary-foreground rounded-[18px] rounded-br-[4px]" : "bg-card border border-border rounded-[18px] rounded-bl-[4px] text-foreground", opt && "opacity-70", up2 && "min-w-[160px]")}>
                         {msg.attachment_url ? (
                           <div className="space-y-1.5">
-                            {(msg.is_image || GI(msg.attachment_name || "").isImage) && !up2 && <div className="relative group/img cursor-pointer rounded-lg overflow-hidden max-w-[240px]" onClick={() => setVf({ id: msg.id, name: msg.attachment_name || "file", url: msg.attachment_url, ...GI(msg.attachment_name || ""), size: msg.file_size })}>
-                              <img src={msg.attachment_url} alt={msg.attachment_name || "img"} className="w-full rounded-lg max-h-[200px] object-cover" loading="lazy" />
-                              <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/10 transition-all flex items-center justify-center"><div className="opacity-0 group-hover/img:opacity-100 transition-opacity bg-black/50 text-white p-1.5 rounded-full"><Eye className="w-4 h-4" /></div></div>
-                            </div>}
-                            {(msg.is_video || GI(msg.attachment_name || "").isVideo) && <div className="relative rounded-lg overflow-hidden max-w-[240px]"><video src={msg.attachment_url} className="w-full rounded-lg max-h-[200px]" controls preload="metadata" /></div>}
-                            {!msg.is_image && !GI(msg.attachment_name || "").isImage && !msg.is_video && !GI(msg.attachment_name || "").isVideo && <div className={cn("flex items-center gap-2 p-2 rounded-xl", me ? "bg-primary-foreground/10" : "bg-secondary/50")}>
-                              <div className={cn("p-1.5 rounded-lg shrink-0", me ? "bg-primary-foreground/15" : "bg-background")}>{(() => { const i = GI(msg.attachment_name || ""); if (i.isImage) return <Image className="w-4 h-4" />; if (i.isVideo) return <Video className="w-4 h-4" />; if (i.isAudio) return <Music className="w-4 h-4" />; if (i.isPdf) return <FileText className="w-4 h-4" />; return <File className="w-4 h-4" />; })()}</div>
-                              <div className="min-w-0 flex-1"><p className="text-xs font-medium truncate">{msg.attachment_name || "File"}</p><p className={cn("text-[9px]", me ? "text-primary-foreground/60" : "text-muted-foreground")}>{FS(msg.file_size)}</p></div>
-                              <button onClick={() => setVf({ id: msg.id, name: msg.attachment_name || "file", url: msg.attachment_url, ...GI(msg.attachment_name || ""), size: msg.file_size })} className={cn("p-1.5 rounded-lg shrink-0 transition-colors", me ? "hover:bg-primary-foreground/15" : "hover:bg-secondary")} title="Lihat"><Eye className="w-3.5 h-3.5" /></button>
-                              <a href={msg.attachment_url} download={msg.attachment_name || "file"} className={cn("p-1.5 rounded-lg shrink-0 transition-colors", me ? "hover:bg-primary-foreground/15" : "hover:bg-secondary")} title="Unduh"><Download className="w-3.5 h-3.5" /></a>
-                            </div>}
+                            {(msg.is_image || GI(msg.attachment_name || "").isImage) && !up2 &&
+                              <div className="relative group/img cursor-pointer rounded-lg overflow-hidden max-w-[240px]" onClick={() => setVf({ id: msg.id, name: msg.attachment_name || "file", url: msg.attachment_url, ...GI(msg.attachment_name || ""), size: msg.file_size })}>
+                                <img src={msg.attachment_url} alt={msg.attachment_name || "img"} className="w-full rounded-lg max-h-[200px] object-cover" loading="lazy" />
+                                <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/10 transition-all flex items-center justify-center"><div className="opacity-0 group-hover/img:opacity-100 transition-opacity bg-black/50 text-white p-1.5 rounded-full"><Eye className="w-4 h-4" /></div></div>
+                              </div>}
+                            {(msg.is_video || GI(msg.attachment_name || "").isVideo) &&
+                              <div className="relative rounded-lg overflow-hidden max-w-[240px]"><video src={msg.attachment_url} className="w-full rounded-lg max-h-[200px]" controls preload="metadata" /></div>}
+                            {!msg.is_image && !GI(msg.attachment_name || "").isImage && !msg.is_video && !GI(msg.attachment_name || "").isVideo &&
+                              <div className={cn("flex items-center gap-2 p-2 rounded-xl", me ? "bg-primary-foreground/10" : "bg-secondary/50")}>
+                                <div className={cn("p-1.5 rounded-lg shrink-0", me ? "bg-primary-foreground/15" : "bg-background")}>{(() => { const i = GI(msg.attachment_name || ""); if (i.isImage) return <Image className="w-4 h-4" />; if (i.isVideo) return <Video className="w-4 h-4" />; if (i.isAudio) return <Music className="w-4 h-4" />; if (i.isPdf) return <FileText className="w-4 h-4" />; return <File className="w-4 h-4" />; })()}</div>
+                                <div className="min-w-0 flex-1"><p className="text-xs font-medium truncate">{msg.attachment_name || "File"}</p><p className={cn("text-[9px]", me ? "text-primary-foreground/60" : "text-muted-foreground")}>{FS(msg.file_size)}</p></div>
+                                <button onClick={() => setVf({ id: msg.id, name: msg.attachment_name || "file", url: msg.attachment_url, ...GI(msg.attachment_name || ""), size: msg.file_size })} className={cn("p-1.5 rounded-lg shrink-0 transition-colors", me ? "hover:bg-primary-foreground/15" : "hover:bg-secondary")} title="Lihat"><Eye className="w-3.5 h-3.5" /></button>
+                                <a href={msg.attachment_url} download={msg.attachment_name || "file"} className={cn("p-1.5 rounded-lg shrink-0 transition-colors", me ? "hover:bg-primary-foreground/15" : "hover:bg-secondary")} title="Unduh"><Download className="w-3.5 h-3.5" /></a>
+                              </div>}
                             {(msg.is_image || GI(msg.attachment_name || "").isImage) && !up2 && <p className={cn("text-[9px] opacity-60 text-center", me ? "text-primary-foreground" : "text-foreground")}>Ketuk untuk melihat</p>}
                           </div>
                         ) : <div className="whitespace-pre-wrap break-words leading-relaxed">{msg.content}</div>}
@@ -214,7 +242,7 @@ export default function DMChatPage() {
                           {opt && !up2 ? <span className={cn("text-[9px] flex items-center gap-1", me ? "text-primary-foreground/60" : "text-muted-foreground")}><Loader2 className="w-2.5 h-2.5 animate-spin" /> Kirim...</span>
                             : up2 ? null
                               : <span className={cn("text-[9px] flex items-center gap-0.5", me ? "text-primary-foreground/60" : "text-muted-foreground")}>
-                                {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                {d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                                 {me && (msg.is_read ? <CheckCheck className="w-3 h-3 text-blue-400" /> : msg.is_delivered ? <CheckCheck className="w-3 h-3 text-muted-foreground/60" /> : <Check className="w-3 h-3" />)}
                               </span>}
                         </div>
@@ -236,12 +264,13 @@ export default function DMChatPage() {
                     </div>
                   </div>
                 </div>
-              );
-            })}
-          </React.Fragment>
-        ))}
+              </div>
+            );
+          });
+        })()}
       </div>
 
+      {/* Input */}
       <div className="p-3.5 border-t border-border bg-card shrink-0">
         {em && <div className="mb-2.5 p-2.5 bg-secondary/50 rounded-xl flex items-center justify-between text-xs border border-border">
           <span className="truncate flex items-center gap-1.5 text-muted-foreground"><Edit2 className="w-3 h-3 shrink-0" /><span className="truncate">Mengedit pesan...</span></span>
