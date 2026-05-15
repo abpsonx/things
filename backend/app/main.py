@@ -27,6 +27,7 @@ async def lifespan(app: FastAPI):
         for col, col_type in [
             ("is_delivered", "BOOLEAN DEFAULT FALSE"),
             ("delivered_at", "TIMESTAMP WITH TIME ZONE"),
+            ("read_at", "TIMESTAMP WITH TIME ZONE"),
             ("reactions", "JSONB DEFAULT '{}'::jsonb"),
             ("attachment_url", "VARCHAR"),
             ("attachment_name", "VARCHAR"),
