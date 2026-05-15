@@ -44,6 +44,8 @@ export default function DMChatPage() {
   const ci = useRef<string | null>(null);
   const pi = useRef<any>(null);
   const init = useRef(false);
+  const uidRef = useRef(uid);
+  uidRef.current = uid;
   const scrollDown = useCallback(() => { setTimeout(() => { if (sc.current) sc.current.scrollTop = sc.current.scrollHeight; }, 50); }, []);
 
   // ─── WS ──────────────────────────────────────────────────────────────────
@@ -62,7 +64,7 @@ export default function DMChatPage() {
         const d = JSON.parse(e.data);
         if (d.type === "dm_received") {
           // Skip messages from self to avoid blink (HTTP already replaced optimistic)
-          if (d.message && d.message.user_id === uid) return;
+          if (d.message && d.message.user_id === uidRef.current) return;
           setMs(prev => {
             const i = prev.findIndex(m => d.message.temp_id && m.id === d.message.temp_id);
             if (i !== -1) { const n = [...prev]; n[i] = { ...d.message, reactions: d.message.reactions || {} }; return n; }
