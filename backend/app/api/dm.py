@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File,
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, and_
 from sqlalchemy.orm import selectinload
-from typing import List
+from typing import List, Optional
 import os, uuid, shutil
 from app.core.database import get_db
 from app.models.user import User
@@ -22,6 +22,7 @@ class DMChannelCreate(BaseModel):
 
 class DMMessageCreate(BaseModel):
     content: str
+    temp_id: Optional[str] = None
 
 
 # ─── REST Endpoints ──────────────────────────────────────────────────────────
@@ -127,7 +128,8 @@ async def send_dm_message(
                 "id": str(current_user.id),
                 "name": current_user.name,
                 "avatar_url": current_user.avatar_url
-            }
+            },
+            "temp_id": data.temp_id
         }
     }
     await dm_ws_manager.broadcast(channel_id, payload)

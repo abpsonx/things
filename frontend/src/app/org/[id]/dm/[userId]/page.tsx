@@ -93,7 +93,7 @@ export default function DMChatPage() {
           setMessages((prev) => {
             // Replace optimistic message if it exists
             const tempIndex = prev.findIndex(
-              (m) => m.id.startsWith("optimistic_") && m.content === data.message.content && m.user_id === data.message.user_id
+              (m) => data.message.temp_id && m.id === data.message.temp_id
             );
             if (tempIndex !== -1) {
               const next = [...prev];
@@ -157,12 +157,14 @@ export default function DMChatPage() {
         setChannel(res.data);
         channelIdRef.current = res.data.id;
 
+        // ✅ Connect WS DULU, sebelum fetch history agar tidak ada blind-spot pesan masuk
+        connectWs(res.data.id);
+
         const msgRes = await api.get(`/dm/channels/${res.data.id}/messages`);
         
         if (!mounted) return;
         
         setMessages(msgRes.data);
-        connectWs(res.data.id);
       } catch (err) {
         console.error("Failed to init DM", err);
       } finally {
@@ -202,9 +204,9 @@ export default function DMChatPage() {
     }
 
     setSending(true);
-    const optimisticId = `optimistic_${Date.now()}`;
+    const tempId = `optimistic_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     const optimistic = {
-      id: optimisticId,
+      id: tempId,
       content: newMessage,
       user_id: currentUser?.id,
       dm_channel_id: channel.id,
@@ -221,6 +223,7 @@ export default function DMChatPage() {
     try {
       const res = await api.post(`/dm/channels/${channel.id}/messages`, {
         content: optimistic.content,
+        temp_id: tempId,
       });
       // Do NOT replace the optimistic message here immediately!
       // Let the Native WebSocket (ws.onmessage) handle the replacement 
@@ -230,9 +233,9 @@ export default function DMChatPage() {
       // lakukan fallback replacement manual dari response HTTP.
       setTimeout(() => {
         setMessages((prev) => {
-          const stillOptimistic = prev.find((m) => m.id === optimisticId);
+          const stillOptimistic = prev.find((m) => m.id === tempId);
           if (stillOptimistic) {
-            return prev.map((m) => (m.id === optimisticId ? res.data : m));
+            return prev.map((m) => (m.id === tempId ? res.data : m));
           }
           return prev;
         });
@@ -240,7 +243,7 @@ export default function DMChatPage() {
     } catch (err) {
       console.error("Failed to send message", err);
       // Remove failed optimistic message
-      setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
       setNewMessage(optimistic.content); // restore text
     } finally {
       setSending(false);
