@@ -21,6 +21,7 @@ export default function DMChatPage() {
   const p = useParams();
   const oid = p?.id as string, tid = p?.userId as string;
   const { user: cu } = useAuthStore(); const uid = cu?.id;
+  console.log("🧑 uid:", uid);
 
   const [ch, setCh] = useState<any>(null);
   const [ms, setMs] = useState<any[]>([]);
@@ -44,9 +45,8 @@ export default function DMChatPage() {
   const ci = useRef<string | null>(null);
   const pi = useRef<any>(null);
   const init = useRef(false);
-  const uidRef = useRef(uid);
-  uidRef.current = uid;
-  const scrollDown = useCallback(() => { setTimeout(() => { if (sc.current) sc.current.scrollTop = sc.current.scrollHeight; }, 50); }, []);
+
+  const scrollDown = () => { setTimeout(() => { if (sc.current) sc.current.scrollTop = sc.current.scrollHeight; }, 50); };
 
   // ─── WS ──────────────────────────────────────────────────────────────────
   const connectWs = useCallback((cid: string) => {
@@ -62,9 +62,8 @@ export default function DMChatPage() {
       if (e.data === "pong") { clearTimeout(pt); return; }
       try {
         const d = JSON.parse(e.data);
+        console.log("📩 WS received:", d.type);
         if (d.type === "dm_received") {
-          // Skip messages from self to avoid blink (HTTP already replaced optimistic)
-          if (d.message && d.message.user_id === uidRef.current) return;
           setMs(prev => {
             const i = prev.findIndex(m => d.message.temp_id && m.id === d.message.temp_id);
             if (i !== -1) { const n = [...prev]; n[i] = { ...d.message, reactions: d.message.reactions || {} }; return n; }
@@ -91,17 +90,18 @@ export default function DMChatPage() {
     if (!tid || init.current) return; init.current = true; let mounted = true;
     (async () => {
       try {
+        console.log("🔄 init DM chat, tid:", tid);
         const r = await api.post("/dm/channels", { org_id: oid === "undefined" ? null : oid, other_user_id: tid });
+        console.log("✅ channel created:", r.data.id);
         if (!mounted) return; setCh(r.data); ci.current = r.data.id; connectWs(r.data.id);
         const mr = await api.get(`/dm/channels/${r.data.id}/messages`);
         if (!mounted) return; setMs((mr.data || []).map((m: any) => ({ ...m, reactions: m.reactions || {} })));
         setTimeout(() => { if (mounted) { scrollDown(); api.post(`/dm/channels/${ci.current}/read`, {}, { headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` } }).catch(() => { }); } }, 2000);
-      } catch (e) { console.error("init fail", e); init.current = false; }
+      } catch (e) { console.error("❌ init fail", e); init.current = false; }
       finally { if (mounted) setLd(false); }
     })();
     return () => { mounted = false; ci.current = null; if (rt.current) clearTimeout(rt.current); if (pi.current) clearInterval(pi.current); if (ws.current) { ws.current.onclose = null; ws.current.close(1000, "x"); } };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [oid, tid]);
+  }, [oid, tid, connectWs]);
 
   // ─── Send ────────────────────────────────────────────────────────────────
   const sendMsg = async (e?: React.FormEvent) => {
@@ -110,13 +110,19 @@ export default function DMChatPage() {
     if (em) { updateMsg(); return; }
     setSe(true);
     const id = `o${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    // Optimistic
     const o = { id, content: tx, user_id: uid, dm_channel_id: ch.id, created_at: new Date().toISOString(), attachment_url: null, attachment_name: null, is_read: false, is_delivered: false, reactions: {}, user: { id: uid, name: cu?.name, avatar_url: cu?.avatar_url }, _opt: true };
     setMs(p => [...p, o]); setTx(""); scrollDown();
+    console.log("✉️ sending message with temp_id:", id);
     try {
       const r = await api.post(`/dm/channels/${ch.id}/messages`, { content: o.content, temp_id: id });
-      // Replace optimistic immediately with server response
+      console.log("✅ send success, server ID:", r.data.id);
+      // Replace optimistic
       setMs(prev => prev.map(m => m.id === id ? { ...r.data, reactions: r.data.reactions || {} } : m));
-    } catch (err) { console.error("send fail", err); setMs(p => p.filter(m => m.id !== id)); setTx(o.content); }
+    } catch (err) {
+      console.error("❌ send fail:", err, (err as any)?.response?.data);
+      setMs(p => p.filter(m => m.id === id)); setTx(o.content);
+    }
     finally { setSe(false); }
   };
 
