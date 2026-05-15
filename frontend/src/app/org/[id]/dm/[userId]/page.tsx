@@ -100,7 +100,8 @@ export default function DMChatPage() {
         if (!mounted) return; setCh(r.data); ci.current = r.data.id; connectWs(r.data.id);
         const mr = await api.get(`/dm/channels/${r.data.id}/messages`);
         if (!mounted) return; setMs((mr.data || []).map((m: any) => ({ ...m, reactions: m.reactions || {} })));
-        setTimeout(() => { if (mounted) { scrollDown(); api.post(`/dm/channels/${ci.current}/read`, {}, { headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` } }).catch(() => { }); } }, 2000);
+        scrollDown(); // langsung scroll ke bawah setelah messages di-load
+        setTimeout(() => { if (mounted) { api.post(`/dm/channels/${ci.current}/read`, {}, { headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` } }).catch(() => { }); } }, 2000);
       } catch (e) { console.error("init fail", e); init.current = false; }
       finally { if (mounted) setLd(false); }
     })();
