@@ -122,9 +122,10 @@ async def send_dm_message(
     await db.commit()
     await db.refresh(message)
 
-    # Broadcast via native WebSocket to all clients in this channel
+    # Broadcast via native WebSocket to other clients (not sender)
     payload = {
         "type": "dm_received",
+        "sender_id": str(current_user.id),
         "channel_id": str(channel_id),
         "message": {
             "id": str(message.id),
@@ -432,7 +433,7 @@ async def dm_websocket(
         await websocket.close(code=4001)
         return
 
-    await dm_ws_manager.connect(websocket, channel_id)
+    await dm_ws_manager.connect(websocket, channel_id, user_id)
     
     # Send initial connection ack
     await websocket.send_json({
