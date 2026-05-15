@@ -26,7 +26,6 @@ import {
   Download,
   Eye,
   Clock,
-  Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import FileViewerModal from "@/components/ui/FileViewerModal";
@@ -46,16 +45,19 @@ type FileInfo = {
 
 const EMOJI_CATEGORIES: { name: string; emojis: string[] }[] = [
   { name: "Sering", emojis: ["👍", "❤️", "😂", "🔥", "😊", "🙏", "✅", "🎉", "🚀", "👏"] },
-  { name: "Wajah", emojis: ["😊", "😂", "🤣", "❤️", "🥰", "😍", "😘", "😅", "😁", "🤔", "😢", "😭", "😤", "😡", "🤗", "🙂", "😉", "😎", "🥺", "😴"] },
+  { name: "Wajah", emojis: ["😊", "😂", "🤣", "🥰", "😍", "😘", "😅", "😁", "🤔", "😢", "😭", "😤", "😡", "🤗", "🙂", "😉", "😎", "🥺", "😴"] },
   { name: "Tangan", emojis: ["👍", "👎", "👏", "🙌", "🤝", "✌️", "🤞", "👊", "✊", "🙏", "💪", "🖐️", "👋", "🤙"] },
-  { name: "Lambang", emojis: ["❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "💔", "💯", "🔥", "⭐", "✨", "💥", "🌈", "🎯", "🎉", "🎊", "🏆", "✅", "❌", "💀"] },
+  { name: "Lambang", emojis: ["❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "💔", "🔥", "⭐", "✨", "💥", "🌈", "🎯", "🎉", "🏆", "✅", "❌", "💀"] },
 ];
+
+const QUICK_REACTIONS = ["👍", "❤️", "😂", "🔥", "😊", "🙏", "🎉", "🚀", "👏", "😢"];
 
 export default function DMChatPage() {
   const params = useParams();
   const orgId = params?.id;
   const targetUserId = params?.userId;
   const { user: currentUser } = useAuthStore();
+  const currentUserId = currentUser?.id;
 
   const [channel, setChannel] = useState<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
@@ -71,7 +73,6 @@ export default function DMChatPage() {
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [uploadingFileName, setUploadingFileName] = useState<string>("");
   const [reactingMessage, setReactingMessage] = useState<string | null>(null);
-  const [readTooltip, setReadTooltip] = useState<{ msgId: string; x: number; y: number } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -79,10 +80,12 @@ export default function DMChatPage() {
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const channelIdRef = useRef<string | null>(null);
   const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const lastReadRef = useRef<string[]>([]);
+  const initLockRef = useRef(false);
+  const wsUrlRef = useRef<string>("");
+  const markReadLockRef = useRef(false);
 
-  // ─── Helper: detect file type from name ─────────────────────────────────
-  const getFileInfo = (name: string): { isImage: boolean; isVideo: boolean; isAudio: boolean; isPdf: boolean } => {
+  // ─── Helper ─────────────────────────────────────────────────────────────
+  const getFileInfo = (name: string) => {
     const ext = (name || "").toLowerCase().split(".").pop() || "";
     return {
       isImage: ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "ico"].includes(ext),
@@ -110,40 +113,24 @@ export default function DMChatPage() {
 
   const formatReadTime = (isoStr: string | null) => {
     if (!isoStr) return null;
-    const d = new Date(isoStr);
-    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    return new Date(isoStr).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
-  // ─── Mark channel as read ──────────────────────────────────────────────
-  const markAsRead = useCallback(async () => {
-    if (!channel) return;
-    try {
-      const res = await api.post(`/dm/channels/${channel.id}/read`);
-      if (res.data?.message_ids?.length > 0) {
-        lastReadRef.current = [...lastReadRef.current, ...res.data.message_ids];
-      }
-    } catch { } // silent
-  }, [channel]);
-
-  // ─── Connect native WebSocket ─────────────────────────────────────────────
-  const connectWsRef = useRef<any>(null);
-
+  // ─── WebSocket Connection ──────────────────────────────────────────────
   const connectWs = useCallback((channelId: string) => {
     if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
       wsRef.current.onclose = null;
       wsRef.current.close(1000);
     }
+    if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
 
-    if (pingIntervalRef.current) {
-      clearInterval(pingIntervalRef.current);
-    }
-
-    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+    const token = localStorage.getItem("access_token");
     if (!token) return;
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://dothings.id/api";
     const wsBase = apiUrl.replace(/^http/, "ws").replace(/\/api$/, "");
     const wsUrl = `${wsBase}/api/dm/ws/${channelId}?token=${encodeURIComponent(token)}`;
+    wsUrlRef.current = wsUrl;
 
     setWsStatus("connecting");
     const ws = new WebSocket(wsUrl);
@@ -156,178 +143,134 @@ export default function DMChatPage() {
       pingIntervalRef.current = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
           ws.send("ping");
-          pongTimeout = setTimeout(() => {
-            console.warn("[WS] Pong timeout! Force reconnect...");
-            ws.close();
-          }, 5000);
+          pongTimeout = setTimeout(() => ws.close(), 5000);
         }
       }, 25000);
     };
 
     ws.onmessage = (event) => {
-      if (event.data === "pong") {
-        clearTimeout(pongTimeout);
-        return;
-      }
-
+      if (event.data === "pong") { clearTimeout(pongTimeout); return; }
       try {
         const data = JSON.parse(event.data);
-
         if (data.type === "dm_received") {
           setMessages((prev) => {
-            const tempIndex = prev.findIndex(
-              (m) => data.message.temp_id && m.id === data.message.temp_id
-            );
-            if (tempIndex !== -1) {
+            const idx = prev.findIndex((m) => data.message.temp_id && m.id === data.message.temp_id);
+            if (idx !== -1) {
               const next = [...prev];
-              next[tempIndex] = { ...data.message, reactions: data.message.reactions || {} };
+              next[idx] = { ...data.message, reactions: data.message.reactions || {} };
               return next;
             }
             if (prev.find((m) => m.id === data.message.id)) return prev;
             return [...prev, { ...data.message, reactions: data.message.reactions || {} }];
           });
-          // Auto mark as read when receiving new message
-          setTimeout(() => markAsRead(), 500);
+          markRead();
         } else if (data.type === "dm_edited") {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === data.message.id ? { ...m, content: data.message.content } : m
-            )
-          );
+          setMessages((prev) => prev.map((m) => m.id === data.message.id ? { ...m, content: data.message.content } : m));
         } else if (data.type === "dm_deleted") {
           setMessages((prev) => prev.filter((m) => m.id !== data.message_id));
         } else if (data.type === "dm_reacted") {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === data.message_id ? { ...m, reactions: data.reactions || {} } : m
-            )
-          );
+          setMessages((prev) => prev.map((m) => m.id === data.message_id ? { ...m, reactions: data.reactions || {} } : m));
         } else if (data.type === "dm_read") {
-          // Update read status for delivered messages
-          setMessages((prev) =>
-            prev.map((m) => {
-              if (data.message_ids?.includes(m.id)) {
-                return { ...m, is_read: true, read_at: data.read_at, is_delivered: true };
-              }
-              return m;
-            })
-          );
-        } else if (data.type === "connected") {
-          // Connected successfully, mark existing messages as read
-          setTimeout(() => markAsRead(), 1000);
+          setMessages((prev) => prev.map((m) =>
+            data.message_ids?.includes(m.id)
+              ? { ...m, is_read: true, read_at: data.read_at, is_delivered: true }
+              : m
+          ));
         }
-      } catch {
-        // ignore
-      }
+      } catch { }
     };
 
     ws.onclose = (event) => {
       setWsStatus("disconnected");
       if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
-
       if (event.code !== 1000 && event.code !== 4001) {
         reconnectTimerRef.current = setTimeout(() => {
-          if (channelIdRef.current && connectWsRef.current) {
-            connectWsRef.current(channelIdRef.current);
-          }
+          if (channelIdRef.current) connectWs(channelIdRef.current);
         }, 3000);
       }
     };
 
-    ws.onerror = () => {
-      setWsStatus("disconnected");
-    };
-  }, [markAsRead]);
+    ws.onerror = () => setWsStatus("disconnected");
+  }, []);
 
-  useEffect(() => {
-    connectWsRef.current = connectWs;
-  }, [connectWs]);
+  // ─── Mark channel as read ──────────────────────────────────────────────
+  const markRead = useCallback(async () => {
+    if (!channelIdRef.current || markReadLockRef.current) return;
+    markReadLockRef.current = true;
+    try {
+      await fetch(`/api/dm/channels/${channelIdRef.current}/read`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
+      });
+    } catch { } finally {
+      setTimeout(() => { markReadLockRef.current = false; }, 2000);
+    }
+  }, []);
 
-  // ─── Init DM ──────────────────────────────────────────────────────────────
+  // ─── Init DM (ONCE only) ───────────────────────────────────────────────
   useEffect(() => {
+    if (!targetUserId || initLockRef.current) return;
+    initLockRef.current = true;
+
     let mounted = true;
-
     const initDM = async () => {
       try {
         const res = await api.post("/dm/channels", {
           org_id: orgId === "undefined" ? null : orgId,
           other_user_id: targetUserId,
         });
-
         if (!mounted) return;
 
-        setChannel(res.data);
-        channelIdRef.current = res.data.id;
+        const ch = res.data;
+        setChannel(ch);
+        channelIdRef.current = ch.id;
 
-        connectWs(res.data.id);
+        connectWs(ch.id);
 
-        const msgRes = await api.get(`/dm/channels/${res.data.id}/messages`);
-
+        const msgRes = await api.get(`/dm/channels/${ch.id}/messages`);
         if (!mounted) return;
 
-        // Ensure all messages have reactions field
         const msgs = (msgRes.data || []).map((m: any) => ({ ...m, reactions: m.reactions || {} }));
         setMessages(msgs);
 
-        // Mark as read after loading
-        setTimeout(() => {
-          if (!mounted) return;
-          fetch(`/api/dm/channels/${res.data.id}/read`, { method: "POST", headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` } }).catch(() => { });
-        }, 1000);
+        setTimeout(() => { if (mounted) markRead(); }, 1500);
       } catch (err) {
         console.error("Failed to init DM", err);
+        initLockRef.current = false; // allow retry on fail
       } finally {
         if (mounted) setLoading(false);
       }
     };
 
-    if (targetUserId) initDM();
+    initDM();
 
     return () => {
       mounted = false;
       channelIdRef.current = null;
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
       if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
-      if (wsRef.current) {
-        wsRef.current.onclose = null;
-        wsRef.current.close(1000, "page unmount");
-      }
+      if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(1000, "unmount"); }
     };
-  }, [orgId, targetUserId, connectWs]);
+  }, [orgId, targetUserId, connectWs, markRead]); // stable deps — connectWs & markRead are stable useCallback
 
-  // ─── Auto scroll ──────────────────────────────────────────────────────────
+  // Auto scroll
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages]);
 
-  // ─── Send text message ─────────────────────────────────────────────────────
+  // ─── Send text message ─────────────────────────────────────────────────
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!newMessage.trim() || !channel) return;
-
-    if (editingMessage) {
-      handleUpdateMessage();
-      return;
-    }
+    if (editingMessage) { handleUpdateMessage(); return; }
 
     setSending(true);
-    const tempId = `optimistic_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const tempId = `opt_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     const optimistic = {
-      id: tempId,
-      content: newMessage,
-      user_id: currentUser?.id,
-      dm_channel_id: channel.id,
-      created_at: new Date().toISOString(),
-      attachment_url: null,
-      attachment_name: null,
-      is_read: false,
-      is_delivered: false,
-      read_at: null,
-      delivered_at: null,
-      reactions: {},
-      user: { id: currentUser?.id, name: currentUser?.name, avatar_url: currentUser?.avatar_url },
+      id: tempId, content: newMessage, user_id: currentUserId, dm_channel_id: channel.id,
+      created_at: new Date().toISOString(), attachment_url: null, attachment_name: null,
+      is_read: false, is_delivered: false, read_at: null, delivered_at: null, reactions: {},
+      user: { id: currentUserId, name: currentUser?.name, avatar_url: currentUser?.avatar_url },
       _optimistic: true,
     };
 
@@ -335,19 +278,9 @@ export default function DMChatPage() {
     setNewMessage("");
 
     try {
-      const res = await api.post(`/dm/channels/${channel.id}/messages`, {
-        content: optimistic.content,
-        temp_id: tempId,
-      });
-
+      const res = await api.post(`/dm/channels/${channel.id}/messages`, { content: optimistic.content, temp_id: tempId });
       setTimeout(() => {
-        setMessages((prev) => {
-          const stillOptimistic = prev.find((m) => m.id === tempId);
-          if (stillOptimistic) {
-            return prev.map((m) => (m.id === tempId ? { ...res.data, reactions: res.data.reactions || {} } : m));
-          }
-          return prev;
-        });
+        setMessages((prev) => prev.map((m) => m.id === tempId ? { ...res.data, reactions: res.data.reactions || {} } : m));
       }, 3000);
     } catch (err) {
       console.error("Failed to send message", err);
@@ -360,88 +293,56 @@ export default function DMChatPage() {
 
   const handleUpdateMessage = async () => {
     try {
-      const res = await api.put(`/dm/messages/${editingMessage.id}`, {
-        content: newMessage,
-      });
-      setMessages((prev) =>
-        prev.map((m) => (m.id === editingMessage.id ? { ...m, content: res.data.content } : m))
-      );
-      setEditingMessage(null);
-      setNewMessage("");
-    } catch (err) {
-      console.error("Failed to update message", err);
-    }
+      const res = await api.put(`/dm/messages/${editingMessage.id}`, { content: newMessage });
+      setMessages((prev) => prev.map((m) => (m.id === editingMessage.id ? { ...m, content: res.data.content } : m)));
+      setEditingMessage(null); setNewMessage("");
+    } catch (err) { console.error("Failed to update message", err); }
   };
 
   const handleDeleteMessage = async (id: string) => {
     if (!confirm("Hapus pesan ini?")) return;
     setMessages((prev) => prev.filter((m) => m.id !== id));
-    try {
-      await api.delete(`/dm/messages/${id}`);
-    } catch (err) {
-      console.error("Failed to delete message", err);
-    }
+    try { await api.delete(`/dm/messages/${id}`); } catch (err) { console.error("Failed to delete message", err); }
   };
 
-  // ─── Reactions ─────────────────────────────────────────────────────────────
+  // ─── Reactions ─────────────────────────────────────────────────────────
   const handleReact = async (messageId: string, emoji: string) => {
     setReactingMessage(null);
     try {
       const res = await api.post(`/dm/messages/${messageId}/react`, { emoji });
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === messageId ? { ...m, reactions: res.data.reactions || {} } : m
-        )
-      );
-    } catch (err) {
-      console.error("Failed to react", err);
-    }
+      setMessages((prev) => prev.map((m) => m.id === messageId ? { ...m, reactions: res.data.reactions || {} } : m));
+    } catch (err) { console.error("Failed to react", err); }
   };
 
   const getReactionCounts = (reactions: Record<string, string>) => {
     const counts: Record<string, { count: number; users: string[] }> = {};
     if (!reactions) return counts;
-    Object.entries(reactions).forEach(([userId, emoji]) => {
+    Object.entries(reactions).forEach(([uid, emoji]) => {
       if (!counts[emoji]) counts[emoji] = { count: 0, users: [] };
       counts[emoji].count++;
-      if (userId === currentUser?.id) counts[emoji].users.push("me");
+      if (uid === currentUserId) counts[emoji].users.push("me");
     });
     return counts;
   };
 
-  // ─── Upload file ───────────────────────────────────────────────────────────
+  // ─── Upload file ───────────────────────────────────────────────────────
   const doUploadFile = async (file: File) => {
     if (!channel) return;
-
-    const tempId = `optimistic_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const tempId = `opt_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     const fileInfo = getFileInfo(file.name);
     const uploadUrl = URL.createObjectURL(file);
 
     const optimisticMsg = {
-      id: tempId,
-      content: file.name,
-      user_id: currentUser?.id,
-      dm_channel_id: channel.id,
-      created_at: new Date().toISOString(),
-      attachment_url: uploadUrl,
-      attachment_name: file.name,
-      file_size: file.size,
-      is_image: fileInfo.isImage,
-      is_video: fileInfo.isVideo,
-      is_audio: fileInfo.isAudio,
-      is_pdf: fileInfo.isPdf,
-      is_read: false,
-      is_delivered: false,
-      reactions: {},
-      user: { id: currentUser?.id, name: currentUser?.name, avatar_url: currentUser?.avatar_url },
-      _optimistic: true,
-      _uploading: true,
-      _upload_progress: 0,
+      id: tempId, content: file.name, user_id: currentUserId, dm_channel_id: channel.id,
+      created_at: new Date().toISOString(), attachment_url: uploadUrl, attachment_name: file.name,
+      file_size: file.size, is_image: fileInfo.isImage, is_video: fileInfo.isVideo, is_audio: fileInfo.isAudio, is_pdf: fileInfo.isPdf,
+      is_read: false, is_delivered: false, reactions: {},
+      user: { id: currentUserId, name: currentUser?.name, avatar_url: currentUser?.avatar_url },
+      _optimistic: true, _uploading: true, _upload_progress: 0,
     };
 
     setMessages((prev) => [...prev, optimisticMsg]);
-    setUploadingFileName(file.name);
-    setUploadProgress(0);
+    setUploadingFileName(file.name); setUploadProgress(0);
 
     const formData = new FormData();
     formData.append("file", file);
@@ -450,49 +351,30 @@ export default function DMChatPage() {
       const progressInterval = setInterval(() => {
         setUploadProgress((prev) => {
           const next = Math.min((prev || 0) + (Math.random() * 15 + 5), 90);
-          setMessages((msgs) =>
-            msgs.map((m) =>
-              m.id === tempId ? { ...m, _upload_progress: next } : m
-            )
-          );
+          setMessages((msgs) => msgs.map((m) => m.id === tempId ? { ...m, _upload_progress: next } : m));
           return next;
         });
       }, 300);
 
       const res = await api.post(`/dm/channels/${channel.id}/attachments`, formData, {
-        params: { temp_id: tempId },
-        headers: { "Content-Type": "multipart/form-data" },
+        params: { temp_id: tempId }, headers: { "Content-Type": "multipart/form-data" },
       });
 
       clearInterval(progressInterval);
       setUploadProgress(100);
+      setMessages((msgs) => msgs.map((m) => m.id === tempId ? { ...m, _upload_progress: 100 } : m));
 
-      setMessages((msgs) =>
-        msgs.map((m) =>
-          m.id === tempId ? { ...m, _upload_progress: 100 } : m
-        )
-      );
+      const realData = { ...res.data, reactions: res.data.reactions || {}, id: res.data.id || res.data.message?.id, user: { id: currentUserId, name: currentUser?.name, avatar_url: currentUser?.avatar_url } };
 
       setTimeout(() => {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === tempId
-              ? { ...res.data, reactions: res.data.reactions || {}, id: res.data.id || res.data.message?.id, user: { id: currentUser?.id, name: currentUser?.name, avatar_url: currentUser?.avatar_url } }
-              : m
-          )
-        );
+        setMessages((prev) => prev.map((m) => m.id === tempId ? realData : m));
         URL.revokeObjectURL(uploadUrl);
       }, 500);
 
       setTimeout(() => {
         setMessages((prev) => {
-          const stillOpt = prev.find((m) => m.id === tempId && m._optimistic);
-          if (stillOpt) {
-            return prev.map((m) =>
-              m.id === tempId
-                ? { ...res.data, reactions: res.data.reactions || {}, id: res.data.id || res.data.message?.id, user: { id: currentUser?.id, name: currentUser?.name, avatar_url: currentUser?.avatar_url } }
-                : m
-            );
+          if (prev.find((m) => m.id === tempId && m._optimistic)) {
+            return prev.map((m) => m.id === tempId ? realData : m);
           }
           return prev;
         });
@@ -502,8 +384,7 @@ export default function DMChatPage() {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
       URL.revokeObjectURL(uploadUrl);
     } finally {
-      setUploadProgress(null);
-      setUploadingFileName("");
+      setUploadProgress(null); setUploadingFileName("");
     }
   };
 
@@ -513,24 +394,14 @@ export default function DMChatPage() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const handleDropFile = (file: File) => {
-    doUploadFile(file);
-  };
+  const handleDropFile = (file: File) => doUploadFile(file);
 
-  // ─── Open file viewer ──────────────────────────────────────────────────────
   const openFileViewer = (msg: any) => {
     const name = msg.attachment_name || msg.content || "file";
     const info = msg.is_image !== undefined
       ? { isImage: msg.is_image, isVideo: msg.is_video, isAudio: msg.is_audio, isPdf: msg.is_pdf }
       : getFileInfo(name);
-
-    setViewingFile({
-      id: msg.id,
-      name: name,
-      url: msg.attachment_url,
-      ...info,
-      size: msg.file_size,
-    });
+    setViewingFile({ id: msg.id, name, url: msg.attachment_url, ...info, size: msg.file_size });
   };
 
   if (loading) {
@@ -541,10 +412,7 @@ export default function DMChatPage() {
     );
   }
 
-  const otherUser = channel?.user1_id === currentUser?.id ? channel?.user2 : channel?.user1;
-
-  // Check if current user has read receipts enabled
-  const hasReadReceipt = true;
+  const otherUser = channel?.user1_id === currentUserId ? channel?.user2 : channel?.user1;
 
   return (
     <div className="flex flex-col h-[calc(100vh-160px)] bg-card border border-border rounded-3xl overflow-hidden shadow-sm">
@@ -563,7 +431,6 @@ export default function DMChatPage() {
             <p className="text-[10px] text-muted-foreground">Aktif sekarang</p>
           </div>
         </div>
-
         <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
           {wsStatus === "connected" ? (
             <><Wifi className="w-3 h-3 text-emerald-500" /><span className="text-emerald-500">Live</span></>
@@ -575,21 +442,14 @@ export default function DMChatPage() {
         </div>
       </div>
 
-      {/* Messages area */}
+      {/* Messages */}
       <div
         ref={scrollRef}
         onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
         onDragLeave={() => setIsDragging(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setIsDragging(false);
-          const file = e.dataTransfer.files?.[0];
-          if (file && channel) {
-            handleDropFile(file);
-          }
-        }}
+        onDrop={(e) => { e.preventDefault(); setIsDragging(false); const f = e.dataTransfer.files?.[0]; if (f && channel) handleDropFile(f); }}
         className="flex-1 overflow-y-auto px-4 py-4 space-y-1 bg-secondary/[0.02] relative"
-        onClick={() => { setReadTooltip(null); setReactingMessage(null); }}
+        onClick={() => setReactingMessage(null)}
       >
         {isDragging && (
           <div className="absolute inset-0 bg-primary/10 backdrop-blur-[2px] z-50 flex items-center justify-center border-2 border-dashed border-primary m-3 rounded-3xl animate-in fade-in zoom-in-95">
@@ -612,17 +472,17 @@ export default function DMChatPage() {
         )}
 
         {messages.map((msg, idx) => {
-          const isMe = msg.user_id === currentUser?.id;
-          const isOptimistic = msg._optimistic === true;
-          const isUploading = msg._uploading === true;
-          const uploadPct = msg._upload_progress || 0;
-          const prevMsg = idx > 0 ? messages[idx - 1] : null;
-          const isSameSender = prevMsg && prevMsg.user_id === msg.user_id;
-          const showAvatar = !isMe && !isSameSender;
+          const isMe = msg.user_id === currentUserId;
+          const isOpt = msg._optimistic === true;
+          const isUp = msg._uploading === true;
+          const pct = msg._upload_progress || 0;
+          const prev = idx > 0 ? messages[idx - 1] : null;
+          const sameSender = prev && prev.user_id === msg.user_id;
+          const showAvatar = !isMe && !sameSender;
           const reactions = msg.reactions || {};
-          const reactionCounts = getReactionCounts(reactions);
-          const hasReactions = Object.keys(reactionCounts).length > 0;
-          const myReactedEmoji = reactions[currentUser?.id || ""] || null;
+          const rCounts = getReactionCounts(reactions);
+          const hasRx = Object.keys(rCounts).length > 0;
+          const myEmoji = reactions[currentUserId || ""] || null;
 
           return (
             <div key={msg.id} className={cn("flex group relative", isMe ? "justify-end" : "justify-start")}>
@@ -637,172 +497,91 @@ export default function DMChatPage() {
 
                 <div className={cn("flex flex-col", isMe ? "items-end" : "items-start")}>
                   {showAvatar && !isMe && (
-                    <span className="text-[10px] text-muted-foreground font-medium mb-0.5 ml-1">
-                      {otherUser?.name}
-                    </span>
+                    <span className="text-[10px] text-muted-foreground font-medium mb-0.5 ml-1">{otherUser?.name}</span>
                   )}
 
-                  {/* Message bubble */}
                   <div className={cn(
                     "relative px-3.5 py-2 text-sm shadow-sm transition-all",
-                    isMe
-                      ? "bg-primary text-primary-foreground rounded-[18px] rounded-br-[4px]"
-                      : "bg-card border border-border rounded-[18px] rounded-bl-[4px] text-foreground",
-                    isOptimistic && "opacity-70",
-                    isUploading && "min-w-[160px]"
+                    isMe ? "bg-primary text-primary-foreground rounded-[18px] rounded-br-[4px]" : "bg-card border border-border rounded-[18px] rounded-bl-[4px] text-foreground",
+                    isOpt && "opacity-70", isUp && "min-w-[160px]"
                   )}>
                     {msg.attachment_url ? (
                       <div className="space-y-1.5">
-                        {(msg.is_image || getFileInfo(msg.attachment_name || "").isImage) && !isUploading ? (
-                          <div
-                            className="relative group/img cursor-pointer rounded-lg overflow-hidden max-w-[240px]"
-                            onClick={() => openFileViewer(msg)}
-                          >
-                            <img
-                              src={msg.attachment_url}
-                              alt={msg.attachment_name || "Gambar"}
-                              className="w-full rounded-lg max-h-[200px] object-cover"
-                              loading="lazy"
-                            />
+                        {(msg.is_image || getFileInfo(msg.attachment_name || "").isImage) && !isUp ? (
+                          <div className="relative group/img cursor-pointer rounded-lg overflow-hidden max-w-[240px]" onClick={() => openFileViewer(msg)}>
+                            <img src={msg.attachment_url} alt={msg.attachment_name || "Gambar"} className="w-full rounded-lg max-h-[200px] object-cover" loading="lazy" />
                             <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/10 transition-all flex items-center justify-center">
-                              <div className="opacity-0 group-hover/img:opacity-100 transition-opacity bg-black/50 text-white p-1.5 rounded-full">
-                                <Eye className="w-4 h-4" />
-                              </div>
+                              <div className="opacity-0 group-hover/img:opacity-100 transition-opacity bg-black/50 text-white p-1.5 rounded-full"><Eye className="w-4 h-4" /></div>
                             </div>
                           </div>
-                        ) : msg.is_video || getFileInfo(msg.attachment_name || "").isVideo ? (
+                        ) : (msg.is_video || getFileInfo(msg.attachment_name || "").isVideo) ? (
                           <div className="relative rounded-lg overflow-hidden max-w-[240px]">
-                            <video
-                              src={msg.attachment_url}
-                              className="w-full rounded-lg max-h-[200px]"
-                              controls
-                              preload="metadata"
-                            />
+                            <video src={msg.attachment_url} className="w-full rounded-lg max-h-[200px]" controls preload="metadata" />
                           </div>
                         ) : null}
 
-                        {!msg.is_image && !getFileInfo(msg.attachment_name || "").isImage &&
-                          !msg.is_video && !getFileInfo(msg.attachment_name || "").isVideo && (
-                            <div className={cn(
-                              "flex items-center gap-2 p-2 rounded-xl",
-                              isMe ? "bg-primary-foreground/10" : "bg-secondary/50"
-                            )}>
-                              <div className={cn("p-1.5 rounded-lg shrink-0", isMe ? "bg-primary-foreground/15" : "bg-background")}>
-                                {getFileIcon(msg.attachment_name || "")}
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <p className="text-xs font-medium truncate">{msg.attachment_name || "File"}</p>
-                                <p className={cn("text-[9px]", isMe ? "text-primary-foreground/60" : "text-muted-foreground")}>
-                                  {formatFileSize(msg.file_size)}
-                                </p>
-                              </div>
-                              <button onClick={() => openFileViewer(msg)}
-                                className={cn("p-1.5 rounded-lg shrink-0 transition-colors", isMe ? "hover:bg-primary-foreground/15" : "hover:bg-secondary")}
-                                title="Lihat file"><Eye className="w-3.5 h-3.5" /></button>
-                              <a href={msg.attachment_url} download={msg.attachment_name || "file"}
-                                className={cn("p-1.5 rounded-lg shrink-0 transition-colors", isMe ? "hover:bg-primary-foreground/15" : "hover:bg-secondary")}
-                                title="Unduh"><Download className="w-3.5 h-3.5" /></a>
+                        {!msg.is_image && !getFileInfo(msg.attachment_name || "").isImage && !msg.is_video && !getFileInfo(msg.attachment_name || "").isVideo && (
+                          <div className={cn("flex items-center gap-2 p-2 rounded-xl", isMe ? "bg-primary-foreground/10" : "bg-secondary/50")}>
+                            <div className={cn("p-1.5 rounded-lg shrink-0", isMe ? "bg-primary-foreground/15" : "bg-background")}>{getFileIcon(msg.attachment_name || "")}</div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-medium truncate">{msg.attachment_name || "File"}</p>
+                              <p className={cn("text-[9px]", isMe ? "text-primary-foreground/60" : "text-muted-foreground")}>{formatFileSize(msg.file_size)}</p>
                             </div>
-                          )}
-
-                        {(msg.is_image || getFileInfo(msg.attachment_name || "").isImage) && !isUploading && (
-                          <p className={cn("text-[9px] opacity-60 text-center", isMe ? "text-primary-foreground" : "text-foreground")}>
-                            Ketuk untuk melihat
-                          </p>
+                            <button onClick={() => openFileViewer(msg)} className={cn("p-1.5 rounded-lg shrink-0 transition-colors", isMe ? "hover:bg-primary-foreground/15" : "hover:bg-secondary")} title="Lihat file"><Eye className="w-3.5 h-3.5" /></button>
+                            <a href={msg.attachment_url} download={msg.attachment_name || "file"} className={cn("p-1.5 rounded-lg shrink-0 transition-colors", isMe ? "hover:bg-primary-foreground/15" : "hover:bg-secondary")} title="Unduh"><Download className="w-3.5 h-3.5" /></a>
+                          </div>
+                        )}
+                        {(msg.is_image || getFileInfo(msg.attachment_name || "").isImage) && !isUp && (
+                          <p className={cn("text-[9px] opacity-60 text-center", isMe ? "text-primary-foreground" : "text-foreground")}>Ketuk untuk melihat</p>
                         )}
                       </div>
                     ) : (
-                      <div className="whitespace-pre-wrap break-words leading-relaxed">
-                        {msg.content}
-                      </div>
+                      <div className="whitespace-pre-wrap break-words leading-relaxed">{msg.content}</div>
                     )}
 
-                    {/* Upload progress */}
-                    {isUploading && (
+                    {isUp && (
                       <div className="mt-2 space-y-1">
                         <div className={cn("flex items-center gap-2", isMe ? "text-primary-foreground/70" : "text-muted-foreground")}>
-                          <Clock className="w-3 h-3 animate-pulse" />
-                          <span className="text-[10px]">Mengirim file...</span>
+                          <Clock className="w-3 h-3 animate-pulse" /><span className="text-[10px]">Mengirim file...</span>
                         </div>
                         <div className={cn("h-1.5 rounded-full overflow-hidden", isMe ? "bg-primary-foreground/20" : "bg-secondary")}>
-                          <div className={cn("h-full rounded-full transition-all duration-300 ease-out", isMe ? "bg-primary-foreground/60" : "bg-primary")}
-                            style={{ width: `${uploadPct}%` }} />
+                          <div className={cn("h-full rounded-full transition-all duration-300 ease-out", isMe ? "bg-primary-foreground/60" : "bg-primary")} style={{ width: `${pct}%` }} />
                         </div>
-                        <p className={cn("text-[9px] text-right", isMe ? "text-primary-foreground/50" : "text-muted-foreground")}>
-                          {Math.round(uploadPct)}%
-                        </p>
+                        <p className={cn("text-[9px] text-right", isMe ? "text-primary-foreground/50" : "text-muted-foreground")}>{Math.round(pct)}%</p>
                       </div>
                     )}
 
-                    {/* Timestamp + read status */}
-                    <div className={cn(
-                      "flex items-center gap-0.5 mt-1",
-                      isMe ? "justify-end" : "justify-start"
-                    )}>
-                      {isOptimistic && !isUploading ? (
+                    <div className={cn("flex items-center gap-0.5 mt-1", isMe ? "justify-end" : "justify-start")}>
+                      {isOpt && !isUp ? (
                         <span className={cn("text-[9px] flex items-center gap-1", isMe ? "text-primary-foreground/60" : "text-muted-foreground")}>
-                          <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                          Mengirim...
+                          <Loader2 className="w-2.5 h-2.5 animate-spin" /> Mengirim...
                         </span>
-                      ) : isUploading ? null : (
+                      ) : isUp ? null : (
                         <span className={cn("text-[9px] flex items-center gap-0.5", isMe ? "text-primary-foreground/60" : "text-muted-foreground")}>
                           {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                           {isMe && (
-                            <>
-                              {msg.is_read ? (
-                                <span
-                                  className="relative inline-flex items-center"
-                                  onMouseEnter={(e) => {
-                                    const rect = (e.target as HTMLElement).getBoundingClientRect();
-                                    setReadTooltip({ msgId: msg.id, x: rect.left - 60, y: rect.top - 30 });
-                                  }}
-                                  onMouseLeave={() => setReadTooltip(null)}
-                                >
-                                  <CheckCheck className="w-3 h-3 text-blue-400" />
-                                </span>
-                              ) : msg.is_delivered ? (
-                                <CheckCheck className="w-3 h-3 text-muted-foreground/60" />
-                              ) : (
-                                <Check className="w-3 h-3" />
-                              )}
-                            </>
+                            msg.is_read ? <CheckCheck className="w-3 h-3 text-blue-400" />
+                              : msg.is_delivered ? <CheckCheck className="w-3 h-3 text-muted-foreground/60" />
+                                : <Check className="w-3 h-3" />
                           )}
                         </span>
                       )}
                     </div>
 
-                    {/* Edit/Delete */}
-                    {isMe && !isOptimistic && !isUploading && (
-                      <div className={cn(
-                        "absolute top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-1",
-                        isMe ? "-left-10" : "-right-10"
-                      )}>
-                        <button onClick={() => { setEditingMessage(msg); setNewMessage(msg.content); }}
-                          className="p-1 hover:bg-secondary rounded-lg text-muted-foreground bg-background/80 backdrop-blur-sm shadow-sm"><Edit2 className="w-3 h-3" /></button>
-                        <button onClick={() => handleDeleteMessage(msg.id)}
-                          className="p-1 hover:bg-destructive/10 rounded-lg text-destructive bg-background/80 backdrop-blur-sm shadow-sm"><Trash2 className="w-3 h-3" /></button>
+                    {isMe && !isOpt && !isUp && (
+                      <div className={cn("absolute top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-1", isMe ? "-left-10" : "-right-10")}>
+                        <button onClick={() => { setEditingMessage(msg); setNewMessage(msg.content); }} className="p-1 hover:bg-secondary rounded-lg text-muted-foreground bg-background/80 backdrop-blur-sm shadow-sm"><Edit2 className="w-3 h-3" /></button>
+                        <button onClick={() => handleDeleteMessage(msg.id)} className="p-1 hover:bg-destructive/10 rounded-lg text-destructive bg-background/80 backdrop-blur-sm shadow-sm"><Trash2 className="w-3 h-3" /></button>
                       </div>
                     )}
                   </div>
 
-                  {/* Reactions row */}
-                  {hasReactions && !isUploading && (
-                    <div className={cn(
-                      "flex gap-1 mt-0.5",
-                      isMe ? "justify-end" : "justify-start"
-                    )}>
-                      {Object.entries(reactionCounts).map(([emoji, info]) => (
-                        <button
-                          key={emoji}
-                          onClick={() => handleReact(msg.id, emoji)}
-                          className={cn(
-                            "inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs border transition-all hover:scale-110",
-                            info.users.includes("me")
-                              ? "bg-primary/10 border-primary/30 text-foreground"
-                              : "bg-secondary/30 border-border/50 text-muted-foreground"
-                          )}
-                          title={info.users.includes("me") ? "Tap to remove" : "React"}
-                        >
+                  {hasRx && !isUp && (
+                    <div className={cn("flex gap-1 mt-0.5", isMe ? "justify-end" : "justify-start")}>
+                      {Object.entries(rCounts).map(([emoji, info]) => (
+                        <button key={emoji} onClick={() => handleReact(msg.id, emoji)}
+                          className={cn("inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs border transition-all hover:scale-110",
+                            info.users.includes("me") ? "bg-primary/10 border-primary/30 text-foreground" : "bg-secondary/30 border-border/50 text-muted-foreground")}>
                           <span className="text-sm">{emoji}</span>
                           <span className="text-[10px] font-medium">{info.count}</span>
                         </button>
@@ -810,53 +589,22 @@ export default function DMChatPage() {
                     </div>
                   )}
 
-                  {/* Reaction button (appears on hover) */}
-                  {!isOptimistic && !isUploading && (
-                    <div className={cn(
-                      "opacity-0 group-hover:opacity-100 transition-opacity mt-0.5",
-                      isMe ? "text-right" : "text-left"
-                    )}>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setReactingMessage(reactingMessage === msg.id ? null : msg.id); }}
-                        className="p-0.5 rounded-full hover:bg-secondary transition-colors text-muted-foreground"
-                        title="Beri reaksi"
-                      >
+                  {!isOpt && !isUp && (
+                    <div className={cn("opacity-0 group-hover:opacity-100 transition-opacity mt-0.5", isMe ? "text-right" : "text-left")}>
+                      <button onClick={(e) => { e.stopPropagation(); setReactingMessage(reactingMessage === msg.id ? null : msg.id); }}
+                        className="p-0.5 rounded-full hover:bg-secondary transition-colors text-muted-foreground" title="Beri reaksi">
                         <Smile className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   )}
 
-                  {/* Inline emoji picker for reaction */}
                   {reactingMessage === msg.id && (
-                    <div className={cn(
-                      "mt-1 p-1.5 bg-background border border-border rounded-xl shadow-xl flex gap-1 flex-wrap max-w-[240px] z-10",
-                      isMe ? "justify-end" : "justify-start"
-                    )}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {["👍", "❤️", "😂", "🔥", "😊", "🙏", "🎉", "🚀", "👏", "😢"].map((emoji) => (
-                        <button
-                          key={emoji}
-                          onClick={() => handleReact(msg.id, emoji)}
-                          className={cn(
-                            "text-lg hover:scale-125 transition-transform p-0.5 rounded",
-                            myReactedEmoji === emoji ? "bg-primary/10 scale-110" : ""
-                          )}
-                        >
-                          {emoji}
-                        </button>
+                    <div className={cn("mt-1 p-1.5 bg-background border border-border rounded-xl shadow-xl flex gap-1 flex-wrap max-w-[240px] z-10", isMe ? "justify-end" : "justify-start")}
+                      onClick={(e) => e.stopPropagation()}>
+                      {QUICK_REACTIONS.map((emoji) => (
+                        <button key={emoji} onClick={() => handleReact(msg.id, emoji)}
+                          className={cn("text-lg hover:scale-125 transition-transform p-0.5 rounded", myEmoji === emoji ? "bg-primary/10 scale-110" : "")}>{emoji}</button>
                       ))}
-                    </div>
-                  )}
-
-                  {/* Read tooltip */}
-                  {readTooltip && readTooltip.msgId === msg.id && msg.read_at && msg.is_read && (
-                    <div
-                      className="fixed z-[60] px-2 py-1 bg-foreground text-background text-[9px] rounded-lg shadow-xl whitespace-nowrap"
-                      style={{ left: readTooltip.x, top: readTooltip.y }}
-                      onMouseEnter={() => setReadTooltip(null)}
-                    >
-                      Dilihat {formatReadTime(msg.read_at)}
                     </div>
                   )}
                 </div>
@@ -871,45 +619,25 @@ export default function DMChatPage() {
         {editingMessage && (
           <div className="mb-2.5 p-2.5 bg-secondary/50 rounded-xl flex items-center justify-between text-xs border border-border">
             <span className="truncate flex items-center gap-1.5 text-muted-foreground">
-              <Edit2 className="w-3 h-3 shrink-0" />
-              <span className="truncate">Mengedit pesan...</span>
+              <Edit2 className="w-3 h-3 shrink-0" /> <span className="truncate">Mengedit pesan...</span>
             </span>
-            <button onClick={() => { setEditingMessage(null); setNewMessage(""); }}
-              className="p-1 hover:bg-secondary rounded-lg shrink-0"><X className="w-4 h-4" /></button>
+            <button onClick={() => { setEditingMessage(null); setNewMessage(""); }} className="p-1 hover:bg-secondary rounded-lg shrink-0"><X className="w-4 h-4" /></button>
           </div>
         )}
 
-        {/* Expanded emoji picker */}
         {showEmojis && (
           <div className="mb-2.5 bg-background border border-border rounded-2xl shadow-xl overflow-hidden">
-            {/* Category tabs */}
             <div className="flex gap-1 p-1.5 border-b border-border bg-secondary/20 overflow-x-auto">
               {EMOJI_CATEGORIES.map((cat, i) => (
-                <button
-                  key={cat.name}
-                  onClick={() => setEmojiCategory(i)}
-                  className={cn(
-                    "px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors shrink-0",
-                    emojiCategory === i ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary"
-                  )}
-                >
-                  {cat.name}
-                </button>
+                <button key={cat.name} onClick={() => setEmojiCategory(i)}
+                  className={cn("px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors shrink-0",
+                    emojiCategory === i ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary")}>{cat.name}</button>
               ))}
             </div>
-            {/* Emoji grid */}
             <div className="p-2 flex flex-wrap gap-1 max-h-[150px] overflow-y-auto">
               {EMOJI_CATEGORIES[emojiCategory].emojis.map((emoji) => (
-                <button
-                  key={emoji}
-                  onClick={() => {
-                    setNewMessage((prev) => prev + emoji);
-                  }}
-                  className="text-xl hover:scale-125 transition-transform p-1 hover:bg-secondary rounded-lg"
-                  title={emoji}
-                >
-                  {emoji}
-                </button>
+                <button key={emoji} onClick={() => setNewMessage((prev) => prev + emoji)}
+                  className="text-xl hover:scale-125 transition-transform p-1 hover:bg-secondary rounded-lg">{emoji}</button>
               ))}
             </div>
           </div>
@@ -917,9 +645,7 @@ export default function DMChatPage() {
 
         {uploadProgress !== null && (
           <div className="mb-2.5 p-2.5 bg-secondary/30 rounded-xl border border-border flex items-center gap-2.5 text-xs">
-            <div className="p-1.5 rounded-lg bg-primary/10">
-              <Paperclip className="w-4 h-4 text-primary animate-pulse" />
-            </div>
+            <div className="p-1.5 rounded-lg bg-primary/10"><Paperclip className="w-4 h-4 text-primary animate-pulse" /></div>
             <div className="flex-1 min-w-0">
               <p className="truncate font-medium">{uploadingFileName}</p>
               <div className="h-1 bg-secondary rounded-full mt-1 overflow-hidden">
@@ -933,29 +659,15 @@ export default function DMChatPage() {
         <form onSubmit={handleSendMessage} className="flex gap-2 items-end">
           <input type="file" ref={fileInputRef} onChange={handleFileInputChange} className="hidden" accept="*/*" />
           <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadProgress !== null}
-            className="p-3 bg-secondary/50 rounded-xl hover:bg-secondary transition-colors disabled:opacity-40" title="Lampirkan file">
-            <Paperclip className="w-5 h-5 text-muted-foreground" />
-          </button>
+            className="p-3 bg-secondary/50 rounded-xl hover:bg-secondary transition-colors disabled:opacity-40" title="Lampirkan file"><Paperclip className="w-5 h-5 text-muted-foreground" /></button>
           <button type="button" onClick={() => setShowEmojis(!showEmojis)}
-            className="p-3 bg-secondary/50 rounded-xl hover:bg-secondary transition-colors">
-            <Smile className="w-5 h-5 text-muted-foreground" />
-          </button>
+            className="p-3 bg-secondary/50 rounded-xl hover:bg-secondary transition-colors"><Smile className="w-5 h-5 text-muted-foreground" /></button>
 
           <div className="flex-1 relative">
-            <textarea
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.nativeEvent.isComposing) return;
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendMessage();
-                }
-              }}
-              placeholder="Tulis pesan..."
-              rows={1}
-              className="w-full px-4 py-3 bg-secondary/30 border border-border rounded-2xl focus:outline-none focus:ring-1 focus:ring-primary/20 transition-all text-sm resize-none"
-            />
+            <textarea value={newMessage} onChange={(e) => setNewMessage(e.target.value)}
+              onKeyDown={(e) => { if (e.nativeEvent.isComposing) return; if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
+              placeholder="Tulis pesan..." rows={1}
+              className="w-full px-4 py-3 bg-secondary/30 border border-border rounded-2xl focus:outline-none focus:ring-1 focus:ring-primary/20 transition-all text-sm resize-none" />
           </div>
 
           <button type="submit" disabled={!newMessage.trim() || sending || uploadProgress !== null}
@@ -966,16 +678,9 @@ export default function DMChatPage() {
       </div>
 
       {viewingFile && (
-        <FileViewerModal
-          isOpen={!!viewingFile}
-          onClose={() => setViewingFile(null)}
-          fileUrl={viewingFile.url}
-          fileName={viewingFile.name}
-          isImage={viewingFile.isImage}
-          isVideo={viewingFile.isVideo}
-          isAudio={viewingFile.isAudio}
-          isPdf={viewingFile.isPdf}
-        />
+        <FileViewerModal isOpen={!!viewingFile} onClose={() => setViewingFile(null)}
+          fileUrl={viewingFile.url} fileName={viewingFile.name}
+          isImage={viewingFile.isImage} isVideo={viewingFile.isVideo} isAudio={viewingFile.isAudio} isPdf={viewingFile.isPdf} />
       )}
     </div>
   );
