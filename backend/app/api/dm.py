@@ -4,7 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, and_
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
-import os, uuid, shutil
+import os, uuid, shutil, logging
+logger = logging.getLogger(__name__)
 from app.core.database import get_db
 from app.models.user import User
 from app.models.dm import DMChannel, DMMessage
@@ -197,29 +198,38 @@ async def delete_dm_message(
 async def upload_dm_attachment(
     channel_id: UUID,
     file: UploadFile = File(...),
+    temp_id: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Upload a file in a DM channel."""
+    """Upload a file in a DM channel. Supports any file type."""
     os.makedirs("uploads", exist_ok=True)
     
-    file_ext = os.path.splitext(file.filename)[1]
+    file_ext = os.path.splitext(file.filename)[1] if file.filename else ""
     unique_filename = f"{uuid.uuid4()}{file_ext}"
     file_path = os.path.join("uploads", unique_filename)
 
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     
+    file_size = os.path.getsize(file_path)
+    
     message = DMMessage(
         dm_channel_id=channel_id,
         user_id=current_user.id,
-        content=f"Sent a file: {file.filename}",
+        content=file.filename or "Sent a file",
         attachment_url=f"/api/uploads/{unique_filename}",
-        attachment_name=file.filename
+        attachment_name=file.filename or "file"
     )
     db.add(message)
     await db.commit()
     await db.refresh(message)
+    
+    # Detect file type for preview
+    is_image = bool(file.filename and file.filename.lower().split('.')[-1] in ('jpg','jpeg','png','gif','webp','svg','bmp','ico'))
+    is_video = bool(file.filename and file.filename.lower().split('.')[-1] in ('mp4','webm','mov','avi','mkv','wmv'))
+    is_audio = bool(file.filename and file.filename.lower().split('.')[-1] in ('mp3','wav','ogg','aac','flac','m4a'))
+    is_pdf = bool(file.filename and file.filename.lower().split('.')[-1] == 'pdf')
     
     # Broadcast via native WebSocket
     await dm_ws_manager.broadcast(str(channel_id), {
@@ -233,15 +243,40 @@ async def upload_dm_attachment(
             "created_at": message.created_at.isoformat(),
             "attachment_url": message.attachment_url,
             "attachment_name": message.attachment_name,
+            "file_size": file_size,
+            "is_image": is_image,
+            "is_video": is_video,
+            "is_audio": is_audio,
+            "is_pdf": is_pdf,
             "user": {
                 "id": str(current_user.id),
                 "name": current_user.name,
                 "avatar_url": current_user.avatar_url
-            }
+            },
+            "temp_id": temp_id
         }
     })
     
-    return message
+    return {
+        "id": str(message.id),
+        "content": message.content,
+        "user_id": str(current_user.id),
+        "dm_channel_id": str(channel_id),
+        "created_at": message.created_at.isoformat(),
+        "attachment_url": message.attachment_url,
+        "attachment_name": message.attachment_name,
+        "file_size": file_size,
+        "is_image": is_image,
+        "is_video": is_video,
+        "is_audio": is_audio,
+        "is_pdf": is_pdf,
+        "user": {
+            "id": str(current_user.id),
+            "name": current_user.name,
+            "avatar_url": current_user.avatar_url
+        },
+        "temp_id": temp_id
+    }
 
 
 # ─── Native WebSocket Endpoint ────────────────────────────────────────────────
@@ -280,8 +315,6 @@ async def dm_websocket(
                 if data == "ping":
                     await websocket.send_text("pong")
             except asyncio.TimeoutError:
-                import logging
-                logger = logging.getLogger(__name__)
                 logger.warning(f"[DM-WS] Client timeout (no ping for 60s), closing {channel_id}")
                 break
     except Exception as e:
