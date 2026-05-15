@@ -100,7 +100,8 @@ export default function DMChatPage() {
       finally { if (mounted) setLd(false); }
     })();
     return () => { mounted = false; ci.current = null; if (rt.current) clearTimeout(rt.current); if (pi.current) clearInterval(pi.current); if (ws.current) { ws.current.onclose = null; ws.current.close(1000, "x"); } };
-  }, [oid, tid, connectWs, scrollDown]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [oid, tid]);
 
   // ─── Send ────────────────────────────────────────────────────────────────
   const sendMsg = async (e?: React.FormEvent) => {
