@@ -195,11 +195,14 @@ export default function DMChatPage() {
 
         {(() => {
           let lastDate = "";
-          return ms.map((msg) => {
+          return ms.map((msg, idx) => {
             const me = msg.user_id === uid;
             const opt = msg._opt === true;
             const up2 = msg._up === true;
             const pct = msg._upP || 0;
+            const prev = idx > 0 ? ms[idx - 1] : null;
+            const same = prev && prev.user_id === msg.user_id;
+            const av = !me && !same;
             const rx = msg.reactions || {};
             const rc = getRC(rx);
             const hrx = Object.keys(rc).length > 0;
@@ -213,8 +216,8 @@ export default function DMChatPage() {
                 {showDate && <div className="flex justify-center my-3"><span className="text-[10px] text-muted-foreground bg-secondary/50 px-3 py-1 rounded-full border border-border/50">{dateStr}</span></div>}
                 <div className={cn("flex group relative", me ? "justify-end" : "justify-start")}>
                   <div className={cn("flex gap-1.5 max-w-[80%] md:max-w-[65%]", me ? "flex-row-reverse" : "flex-row")}>
-                    <div className={cn("w-8 shrink-0", (me || !ms.find((m, i) => i === 0 ? false : false)) && "invisible")}>
-                      {!me && <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold">{(ou?.name || "?").charAt(0).toUpperCase()}</div>}
+                    <div className={cn("w-8 shrink-0", !av && "invisible")}>
+                      {av && <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold">{(ou?.name || "?").charAt(0).toUpperCase()}</div>}
                     </div>
                     <div className={cn("flex flex-col", me ? "items-end" : "items-start")}>
                       <div className={cn("relative px-3.5 py-2 text-sm shadow-sm transition-all", me ? "bg-primary text-primary-foreground rounded-[18px] rounded-br-[4px]" : "bg-card border border-border rounded-[18px] rounded-bl-[4px] text-foreground", opt && "opacity-70", up2 && "min-w-[160px]")}>
