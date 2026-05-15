@@ -26,7 +26,7 @@ import {
   Download,
   Eye,
   Clock,
-  AlertCircle,
+  Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import FileViewerModal from "@/components/ui/FileViewerModal";
@@ -44,6 +44,13 @@ type FileInfo = {
   size?: number;
 };
 
+const EMOJI_CATEGORIES: { name: string; emojis: string[] }[] = [
+  { name: "Sering", emojis: ["👍", "❤️", "😂", "🔥", "😊", "🙏", "✅", "🎉", "🚀", "👏"] },
+  { name: "Wajah", emojis: ["😊", "😂", "🤣", "❤️", "🥰", "😍", "😘", "😅", "😁", "🤔", "😢", "😭", "😤", "😡", "🤗", "🙂", "😉", "😎", "🥺", "😴"] },
+  { name: "Tangan", emojis: ["👍", "👎", "👏", "🙌", "🤝", "✌️", "🤞", "👊", "✊", "🙏", "💪", "🖐️", "👋", "🤙"] },
+  { name: "Lambang", emojis: ["❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "💔", "💯", "🔥", "⭐", "✨", "💥", "🌈", "🎯", "🎉", "🎊", "🏆", "✅", "❌", "💀"] },
+];
+
 export default function DMChatPage() {
   const params = useParams();
   const orgId = params?.id;
@@ -57,11 +64,14 @@ export default function DMChatPage() {
   const [newMessage, setNewMessage] = useState("");
   const [editingMessage, setEditingMessage] = useState<any>(null);
   const [showEmojis, setShowEmojis] = useState(false);
+  const [emojiCategory, setEmojiCategory] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [wsStatus, setWsStatus] = useState<WsStatus>("disconnected");
   const [viewingFile, setViewingFile] = useState<FileInfo | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [uploadingFileName, setUploadingFileName] = useState<string>("");
+  const [reactingMessage, setReactingMessage] = useState<string | null>(null);
+  const [readTooltip, setReadTooltip] = useState<{ msgId: string; x: number; y: number } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -69,8 +79,7 @@ export default function DMChatPage() {
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const channelIdRef = useRef<string | null>(null);
   const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const emojis = ["😊", "😂", "👍", "🔥", "🙏", "❤️", "🙌", "✅", "🚀", "🤔"];
+  const lastReadRef = useRef<string[]>([]);
 
   // ─── Helper: detect file type from name ─────────────────────────────────
   const getFileInfo = (name: string): { isImage: boolean; isVideo: boolean; isAudio: boolean; isPdf: boolean } => {
@@ -85,11 +94,11 @@ export default function DMChatPage() {
 
   const getFileIcon = (name: string) => {
     const info = getFileInfo(name);
-    if (info.isImage) return <Image className="w-5 h-5" />;
-    if (info.isVideo) return <Video className="w-5 h-5" />;
-    if (info.isAudio) return <Music className="w-5 h-5" />;
-    if (info.isPdf) return <FileText className="w-5 h-5" />;
-    return <File className="w-5 h-5" />;
+    if (info.isImage) return <Image className="w-4 h-4" />;
+    if (info.isVideo) return <Video className="w-4 h-4" />;
+    if (info.isAudio) return <Music className="w-4 h-4" />;
+    if (info.isPdf) return <FileText className="w-4 h-4" />;
+    return <File className="w-4 h-4" />;
   };
 
   const formatFileSize = (bytes?: number) => {
@@ -98,6 +107,23 @@ export default function DMChatPage() {
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
+
+  const formatReadTime = (isoStr: string | null) => {
+    if (!isoStr) return null;
+    const d = new Date(isoStr);
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
+
+  // ─── Mark channel as read ──────────────────────────────────────────────
+  const markAsRead = useCallback(async () => {
+    if (!channel) return;
+    try {
+      const res = await api.post(`/dm/channels/${channel.id}/read`);
+      if (res.data?.message_ids?.length > 0) {
+        lastReadRef.current = [...lastReadRef.current, ...res.data.message_ids];
+      }
+    } catch { } // silent
+  }, [channel]);
 
   // ─── Connect native WebSocket ─────────────────────────────────────────────
   const connectWsRef = useRef<any>(null);
@@ -154,12 +180,14 @@ export default function DMChatPage() {
             );
             if (tempIndex !== -1) {
               const next = [...prev];
-              next[tempIndex] = data.message;
+              next[tempIndex] = { ...data.message, reactions: data.message.reactions || {} };
               return next;
             }
             if (prev.find((m) => m.id === data.message.id)) return prev;
-            return [...prev, data.message];
+            return [...prev, { ...data.message, reactions: data.message.reactions || {} }];
           });
+          // Auto mark as read when receiving new message
+          setTimeout(() => markAsRead(), 500);
         } else if (data.type === "dm_edited") {
           setMessages((prev) =>
             prev.map((m) =>
@@ -168,6 +196,25 @@ export default function DMChatPage() {
           );
         } else if (data.type === "dm_deleted") {
           setMessages((prev) => prev.filter((m) => m.id !== data.message_id));
+        } else if (data.type === "dm_reacted") {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === data.message_id ? { ...m, reactions: data.reactions || {} } : m
+            )
+          );
+        } else if (data.type === "dm_read") {
+          // Update read status for delivered messages
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (data.message_ids?.includes(m.id)) {
+                return { ...m, is_read: true, read_at: data.read_at, is_delivered: true };
+              }
+              return m;
+            })
+          );
+        } else if (data.type === "connected") {
+          // Connected successfully, mark existing messages as read
+          setTimeout(() => markAsRead(), 1000);
         }
       } catch {
         // ignore
@@ -190,7 +237,7 @@ export default function DMChatPage() {
     ws.onerror = () => {
       setWsStatus("disconnected");
     };
-  }, []);
+  }, [markAsRead]);
 
   useEffect(() => {
     connectWsRef.current = connectWs;
@@ -218,7 +265,15 @@ export default function DMChatPage() {
 
         if (!mounted) return;
 
-        setMessages(msgRes.data);
+        // Ensure all messages have reactions field
+        const msgs = (msgRes.data || []).map((m: any) => ({ ...m, reactions: m.reactions || {} }));
+        setMessages(msgs);
+
+        // Mark as read after loading
+        setTimeout(() => {
+          if (!mounted) return;
+          fetch(`/api/dm/channels/${res.data.id}/read`, { method: "POST", headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` } }).catch(() => { });
+        }, 1000);
       } catch (err) {
         console.error("Failed to init DM", err);
       } finally {
@@ -267,6 +322,11 @@ export default function DMChatPage() {
       created_at: new Date().toISOString(),
       attachment_url: null,
       attachment_name: null,
+      is_read: false,
+      is_delivered: false,
+      read_at: null,
+      delivered_at: null,
+      reactions: {},
       user: { id: currentUser?.id, name: currentUser?.name, avatar_url: currentUser?.avatar_url },
       _optimistic: true,
     };
@@ -284,7 +344,7 @@ export default function DMChatPage() {
         setMessages((prev) => {
           const stillOptimistic = prev.find((m) => m.id === tempId);
           if (stillOptimistic) {
-            return prev.map((m) => (m.id === tempId ? res.data : m));
+            return prev.map((m) => (m.id === tempId ? { ...res.data, reactions: res.data.reactions || {} } : m));
           }
           return prev;
         });
@@ -323,6 +383,32 @@ export default function DMChatPage() {
     }
   };
 
+  // ─── Reactions ─────────────────────────────────────────────────────────────
+  const handleReact = async (messageId: string, emoji: string) => {
+    setReactingMessage(null);
+    try {
+      const res = await api.post(`/dm/messages/${messageId}/react`, { emoji });
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId ? { ...m, reactions: res.data.reactions || {} } : m
+        )
+      );
+    } catch (err) {
+      console.error("Failed to react", err);
+    }
+  };
+
+  const getReactionCounts = (reactions: Record<string, string>) => {
+    const counts: Record<string, { count: number; users: string[] }> = {};
+    if (!reactions) return counts;
+    Object.entries(reactions).forEach(([userId, emoji]) => {
+      if (!counts[emoji]) counts[emoji] = { count: 0, users: [] };
+      counts[emoji].count++;
+      if (userId === currentUser?.id) counts[emoji].users.push("me");
+    });
+    return counts;
+  };
+
   // ─── Upload file ───────────────────────────────────────────────────────────
   const doUploadFile = async (file: File) => {
     if (!channel) return;
@@ -331,7 +417,6 @@ export default function DMChatPage() {
     const fileInfo = getFileInfo(file.name);
     const uploadUrl = URL.createObjectURL(file);
 
-    // Show optimistic message with local preview
     const optimisticMsg = {
       id: tempId,
       content: file.name,
@@ -345,6 +430,9 @@ export default function DMChatPage() {
       is_video: fileInfo.isVideo,
       is_audio: fileInfo.isAudio,
       is_pdf: fileInfo.isPdf,
+      is_read: false,
+      is_delivered: false,
+      reactions: {},
       user: { id: currentUser?.id, name: currentUser?.name, avatar_url: currentUser?.avatar_url },
       _optimistic: true,
       _uploading: true,
@@ -359,7 +447,6 @@ export default function DMChatPage() {
     formData.append("file", file);
 
     try {
-      // Simulate upload progress
       const progressInterval = setInterval(() => {
         setUploadProgress((prev) => {
           const next = Math.min((prev || 0) + (Math.random() * 15 + 5), 90);
@@ -380,41 +467,30 @@ export default function DMChatPage() {
       clearInterval(progressInterval);
       setUploadProgress(100);
 
-      // Mark as 100% then replace with real data after short delay
       setMessages((msgs) =>
         msgs.map((m) =>
           m.id === tempId ? { ...m, _upload_progress: 100 } : m
         )
       );
 
-      // Replace optimistic message with real one
       setTimeout(() => {
         setMessages((prev) =>
           prev.map((m) =>
             m.id === tempId
-              ? {
-                ...res.data,
-                id: res.data.id || res.data.message?.id,
-                user: { id: currentUser?.id, name: currentUser?.name, avatar_url: currentUser?.avatar_url },
-              }
+              ? { ...res.data, reactions: res.data.reactions || {}, id: res.data.id || res.data.message?.id, user: { id: currentUser?.id, name: currentUser?.name, avatar_url: currentUser?.avatar_url } }
               : m
           )
         );
         URL.revokeObjectURL(uploadUrl);
       }, 500);
 
-      // Fallback: jika WS tidak merespon dalam 5 detik
       setTimeout(() => {
         setMessages((prev) => {
           const stillOpt = prev.find((m) => m.id === tempId && m._optimistic);
           if (stillOpt) {
             return prev.map((m) =>
               m.id === tempId
-                ? {
-                  ...res.data,
-                  id: res.data.id || res.data.message?.id,
-                  user: { id: currentUser?.id, name: currentUser?.name, avatar_url: currentUser?.avatar_url },
-                }
+                ? { ...res.data, reactions: res.data.reactions || {}, id: res.data.id || res.data.message?.id, user: { id: currentUser?.id, name: currentUser?.name, avatar_url: currentUser?.avatar_url } }
                 : m
             );
           }
@@ -467,6 +543,9 @@ export default function DMChatPage() {
 
   const otherUser = channel?.user1_id === currentUser?.id ? channel?.user2 : channel?.user1;
 
+  // Check if current user has read receipts enabled
+  const hasReadReceipt = true;
+
   return (
     <div className="flex flex-col h-[calc(100vh-160px)] bg-card border border-border rounded-3xl overflow-hidden shadow-sm">
       {/* Header */}
@@ -509,9 +588,9 @@ export default function DMChatPage() {
             handleDropFile(file);
           }
         }}
-        className="flex-1 overflow-y-auto px-4 py-4 space-y-1.5 bg-secondary/[0.02] relative"
+        className="flex-1 overflow-y-auto px-4 py-4 space-y-1 bg-secondary/[0.02] relative"
+        onClick={() => { setReadTooltip(null); setReactingMessage(null); }}
       >
-        {/* Drag overlay */}
         {isDragging && (
           <div className="absolute inset-0 bg-primary/10 backdrop-blur-[2px] z-50 flex items-center justify-center border-2 border-dashed border-primary m-3 rounded-3xl animate-in fade-in zoom-in-95">
             <div className="bg-background px-8 py-6 rounded-2xl shadow-xl flex flex-col items-center gap-3">
@@ -522,7 +601,6 @@ export default function DMChatPage() {
           </div>
         )}
 
-        {/* Empty state */}
         {messages.length === 0 && !loading && (
           <div className="flex flex-col items-center justify-center h-full text-center py-12">
             <div className="w-16 h-16 rounded-2xl bg-secondary/50 flex items-center justify-center mb-4">
@@ -530,15 +608,6 @@ export default function DMChatPage() {
             </div>
             <p className="text-sm font-bold text-muted-foreground">Belum ada pesan</p>
             <p className="text-[11px] text-muted-foreground/60 mt-1">Kirim pesan atau file untuk memulai percakapan</p>
-          </div>
-        )}
-
-        {/* Date separator for today */}
-        {messages.length > 0 && (
-          <div className="flex items-center justify-center my-3">
-            <div className="px-3 py-1 bg-secondary/50 rounded-full text-[10px] text-muted-foreground font-medium">
-              Hari ini
-            </div>
           </div>
         )}
 
@@ -550,11 +619,14 @@ export default function DMChatPage() {
           const prevMsg = idx > 0 ? messages[idx - 1] : null;
           const isSameSender = prevMsg && prevMsg.user_id === msg.user_id;
           const showAvatar = !isMe && !isSameSender;
+          const reactions = msg.reactions || {};
+          const reactionCounts = getReactionCounts(reactions);
+          const hasReactions = Object.keys(reactionCounts).length > 0;
+          const myReactedEmoji = reactions[currentUser?.id || ""] || null;
 
           return (
-            <div key={msg.id} className={cn("flex group", isMe ? "justify-end" : "justify-start")}>
+            <div key={msg.id} className={cn("flex group relative", isMe ? "justify-end" : "justify-start")}>
               <div className={cn("flex gap-1.5 max-w-[80%] md:max-w-[65%]", isMe ? "flex-row-reverse" : "flex-row")}>
-                {/* Avatar space for alignment */}
                 <div className={cn("w-8 shrink-0", !showAvatar && "invisible")}>
                   {showAvatar && (
                     <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold">
@@ -564,7 +636,6 @@ export default function DMChatPage() {
                 </div>
 
                 <div className={cn("flex flex-col", isMe ? "items-end" : "items-start")}>
-                  {/* Sender name for first message */}
                   {showAvatar && !isMe && (
                     <span className="text-[10px] text-muted-foreground font-medium mb-0.5 ml-1">
                       {otherUser?.name}
@@ -580,10 +651,8 @@ export default function DMChatPage() {
                     isOptimistic && "opacity-70",
                     isUploading && "min-w-[160px]"
                   )}>
-                    {/* Attachment content */}
                     {msg.attachment_url ? (
                       <div className="space-y-1.5">
-                        {/* Image preview */}
                         {(msg.is_image || getFileInfo(msg.attachment_name || "").isImage) && !isUploading ? (
                           <div
                             className="relative group/img cursor-pointer rounded-lg overflow-hidden max-w-[240px]"
@@ -612,149 +681,184 @@ export default function DMChatPage() {
                           </div>
                         ) : null}
 
-                        {/* File card for non-image, non-video */}
                         {!msg.is_image && !getFileInfo(msg.attachment_name || "").isImage &&
                           !msg.is_video && !getFileInfo(msg.attachment_name || "").isVideo && (
                             <div className={cn(
-                              "flex items-center gap-2.5 p-2.5 rounded-xl",
+                              "flex items-center gap-2 p-2 rounded-xl",
                               isMe ? "bg-primary-foreground/10" : "bg-secondary/50"
                             )}>
-                              <div className={cn(
-                                "p-2 rounded-lg shrink-0",
-                                isMe ? "bg-primary-foreground/15" : "bg-background"
-                              )}>
+                              <div className={cn("p-1.5 rounded-lg shrink-0", isMe ? "bg-primary-foreground/15" : "bg-background")}>
                                 {getFileIcon(msg.attachment_name || "")}
                               </div>
                               <div className="min-w-0 flex-1">
                                 <p className="text-xs font-medium truncate">{msg.attachment_name || "File"}</p>
-                                <p className={cn(
-                                  "text-[9px]",
-                                  isMe ? "text-primary-foreground/60" : "text-muted-foreground"
-                                )}>
+                                <p className={cn("text-[9px]", isMe ? "text-primary-foreground/60" : "text-muted-foreground")}>
                                   {formatFileSize(msg.file_size)}
                                 </p>
                               </div>
-                              <button
-                                onClick={() => openFileViewer(msg)}
-                                className={cn(
-                                  "p-1.5 rounded-lg shrink-0 transition-colors",
-                                  isMe ? "hover:bg-primary-foreground/15" : "hover:bg-secondary"
-                                )}
-                                title="Lihat file"
-                              >
-                                <Eye className="w-4 h-4" />
-                              </button>
-                              <a
-                                href={msg.attachment_url}
-                                download={msg.attachment_name || "file"}
-                                className={cn(
-                                  "p-1.5 rounded-lg shrink-0 transition-colors",
-                                  isMe ? "hover:bg-primary-foreground/15" : "hover:bg-secondary"
-                                )}
-                                title="Unduh"
-                              >
-                                <Download className="w-4 h-4" />
-                              </a>
+                              <button onClick={() => openFileViewer(msg)}
+                                className={cn("p-1.5 rounded-lg shrink-0 transition-colors", isMe ? "hover:bg-primary-foreground/15" : "hover:bg-secondary")}
+                                title="Lihat file"><Eye className="w-3.5 h-3.5" /></button>
+                              <a href={msg.attachment_url} download={msg.attachment_name || "file"}
+                                className={cn("p-1.5 rounded-lg shrink-0 transition-colors", isMe ? "hover:bg-primary-foreground/15" : "hover:bg-secondary")}
+                                title="Unduh"><Download className="w-3.5 h-3.5" /></a>
                             </div>
                           )}
 
-                        {/* Image clicked to view hint */}
                         {(msg.is_image || getFileInfo(msg.attachment_name || "").isImage) && !isUploading && (
-                          <p className={cn(
-                            "text-[10px] opacity-60 text-center",
-                            isMe ? "text-primary-foreground" : "text-foreground"
-                          )}>
+                          <p className={cn("text-[9px] opacity-60 text-center", isMe ? "text-primary-foreground" : "text-foreground")}>
                             Ketuk untuk melihat
                           </p>
                         )}
                       </div>
                     ) : (
-                      /* Text content with word wrap */
                       <div className="whitespace-pre-wrap break-words leading-relaxed">
                         {msg.content}
                       </div>
                     )}
 
-                    {/* Upload progress bar */}
+                    {/* Upload progress */}
                     {isUploading && (
-                      <div className="mt-2 space-y-1.5">
-                        <div className={cn(
-                          "flex items-center gap-2",
-                          isMe ? "text-primary-foreground/70" : "text-muted-foreground"
-                        )}>
+                      <div className="mt-2 space-y-1">
+                        <div className={cn("flex items-center gap-2", isMe ? "text-primary-foreground/70" : "text-muted-foreground")}>
                           <Clock className="w-3 h-3 animate-pulse" />
                           <span className="text-[10px]">Mengirim file...</span>
                         </div>
-                        <div className={cn(
-                          "h-1.5 rounded-full overflow-hidden",
-                          isMe ? "bg-primary-foreground/20" : "bg-secondary"
-                        )}>
-                          <div
-                            className={cn(
-                              "h-full rounded-full transition-all duration-300 ease-out",
-                              isMe ? "bg-primary-foreground/60" : "bg-primary"
-                            )}
-                            style={{ width: `${uploadPct}%` }}
-                          />
+                        <div className={cn("h-1.5 rounded-full overflow-hidden", isMe ? "bg-primary-foreground/20" : "bg-secondary")}>
+                          <div className={cn("h-full rounded-full transition-all duration-300 ease-out", isMe ? "bg-primary-foreground/60" : "bg-primary")}
+                            style={{ width: `${uploadPct}%` }} />
                         </div>
-                        <p className={cn(
-                          "text-[9px] text-right",
-                          isMe ? "text-primary-foreground/50" : "text-muted-foreground"
-                        )}>
+                        <p className={cn("text-[9px] text-right", isMe ? "text-primary-foreground/50" : "text-muted-foreground")}>
                           {Math.round(uploadPct)}%
                         </p>
                       </div>
                     )}
 
-                    {/* Timestamp + status */}
+                    {/* Timestamp + read status */}
                     <div className={cn(
-                      "flex items-center gap-1 mt-1",
+                      "flex items-center gap-0.5 mt-1",
                       isMe ? "justify-end" : "justify-start"
                     )}>
                       {isOptimistic && !isUploading ? (
-                        <span className={cn(
-                          "text-[9px] flex items-center gap-1",
-                          isMe ? "text-primary-foreground/60" : "text-muted-foreground"
-                        )}>
+                        <span className={cn("text-[9px] flex items-center gap-1", isMe ? "text-primary-foreground/60" : "text-muted-foreground")}>
                           <Loader2 className="w-2.5 h-2.5 animate-spin" />
                           Mengirim...
                         </span>
                       ) : isUploading ? null : (
-                        <span className={cn(
-                          "text-[9px]",
-                          isMe ? "text-primary-foreground/60" : "text-muted-foreground"
-                        )}>
+                        <span className={cn("text-[9px] flex items-center gap-0.5", isMe ? "text-primary-foreground/60" : "text-muted-foreground")}>
                           {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                          {isMe && (msg.is_read ? (
-                            <CheckCheck className="w-3 h-3 inline ml-1 text-blue-300" />
-                          ) : (
-                            <Check className="w-3 h-3 inline ml-1" />
-                          ))}
+                          {isMe && (
+                            <>
+                              {msg.is_read ? (
+                                <span
+                                  className="relative inline-flex items-center"
+                                  onMouseEnter={(e) => {
+                                    const rect = (e.target as HTMLElement).getBoundingClientRect();
+                                    setReadTooltip({ msgId: msg.id, x: rect.left - 60, y: rect.top - 30 });
+                                  }}
+                                  onMouseLeave={() => setReadTooltip(null)}
+                                >
+                                  <CheckCheck className="w-3 h-3 text-blue-400" />
+                                </span>
+                              ) : msg.is_delivered ? (
+                                <CheckCheck className="w-3 h-3 text-muted-foreground/60" />
+                              ) : (
+                                <Check className="w-3 h-3" />
+                              )}
+                            </>
+                          )}
                         </span>
                       )}
                     </div>
 
-                    {/* Edit/Delete actions */}
+                    {/* Edit/Delete */}
                     {isMe && !isOptimistic && !isUploading && (
                       <div className={cn(
                         "absolute top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-1",
                         isMe ? "-left-10" : "-right-10"
                       )}>
-                        <button
-                          onClick={() => { setEditingMessage(msg); setNewMessage(msg.content); }}
-                          className="p-1.5 hover:bg-secondary rounded-lg text-muted-foreground bg-background/80 backdrop-blur-sm shadow-sm"
-                        >
-                          <Edit2 className="w-3 h-3" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteMessage(msg.id)}
-                          className="p-1.5 hover:bg-destructive/10 rounded-lg text-destructive bg-background/80 backdrop-blur-sm shadow-sm"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
+                        <button onClick={() => { setEditingMessage(msg); setNewMessage(msg.content); }}
+                          className="p-1 hover:bg-secondary rounded-lg text-muted-foreground bg-background/80 backdrop-blur-sm shadow-sm"><Edit2 className="w-3 h-3" /></button>
+                        <button onClick={() => handleDeleteMessage(msg.id)}
+                          className="p-1 hover:bg-destructive/10 rounded-lg text-destructive bg-background/80 backdrop-blur-sm shadow-sm"><Trash2 className="w-3 h-3" /></button>
                       </div>
                     )}
                   </div>
+
+                  {/* Reactions row */}
+                  {hasReactions && !isUploading && (
+                    <div className={cn(
+                      "flex gap-1 mt-0.5",
+                      isMe ? "justify-end" : "justify-start"
+                    )}>
+                      {Object.entries(reactionCounts).map(([emoji, info]) => (
+                        <button
+                          key={emoji}
+                          onClick={() => handleReact(msg.id, emoji)}
+                          className={cn(
+                            "inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs border transition-all hover:scale-110",
+                            info.users.includes("me")
+                              ? "bg-primary/10 border-primary/30 text-foreground"
+                              : "bg-secondary/30 border-border/50 text-muted-foreground"
+                          )}
+                          title={info.users.includes("me") ? "Tap to remove" : "React"}
+                        >
+                          <span className="text-sm">{emoji}</span>
+                          <span className="text-[10px] font-medium">{info.count}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Reaction button (appears on hover) */}
+                  {!isOptimistic && !isUploading && (
+                    <div className={cn(
+                      "opacity-0 group-hover:opacity-100 transition-opacity mt-0.5",
+                      isMe ? "text-right" : "text-left"
+                    )}>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setReactingMessage(reactingMessage === msg.id ? null : msg.id); }}
+                        className="p-0.5 rounded-full hover:bg-secondary transition-colors text-muted-foreground"
+                        title="Beri reaksi"
+                      >
+                        <Smile className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Inline emoji picker for reaction */}
+                  {reactingMessage === msg.id && (
+                    <div className={cn(
+                      "mt-1 p-1.5 bg-background border border-border rounded-xl shadow-xl flex gap-1 flex-wrap max-w-[240px] z-10",
+                      isMe ? "justify-end" : "justify-start"
+                    )}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {["👍", "❤️", "😂", "🔥", "😊", "🙏", "🎉", "🚀", "👏", "😢"].map((emoji) => (
+                        <button
+                          key={emoji}
+                          onClick={() => handleReact(msg.id, emoji)}
+                          className={cn(
+                            "text-lg hover:scale-125 transition-transform p-0.5 rounded",
+                            myReactedEmoji === emoji ? "bg-primary/10 scale-110" : ""
+                          )}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Read tooltip */}
+                  {readTooltip && readTooltip.msgId === msg.id && msg.read_at && msg.is_read && (
+                    <div
+                      className="fixed z-[60] px-2 py-1 bg-foreground text-background text-[9px] rounded-lg shadow-xl whitespace-nowrap"
+                      style={{ left: readTooltip.x, top: readTooltip.y }}
+                      onMouseEnter={() => setReadTooltip(null)}
+                    >
+                      Dilihat {formatReadTime(msg.read_at)}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -770,30 +874,47 @@ export default function DMChatPage() {
               <Edit2 className="w-3 h-3 shrink-0" />
               <span className="truncate">Mengedit pesan...</span>
             </span>
-            <button
-              onClick={() => { setEditingMessage(null); setNewMessage(""); }}
-              className="p-1 hover:bg-secondary rounded-lg shrink-0"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            <button onClick={() => { setEditingMessage(null); setNewMessage(""); }}
+              className="p-1 hover:bg-secondary rounded-lg shrink-0"><X className="w-4 h-4" /></button>
           </div>
         )}
 
+        {/* Expanded emoji picker */}
         {showEmojis && (
-          <div className="mb-2.5 p-2 bg-secondary/30 rounded-xl flex gap-2 overflow-x-auto border border-border shadow-inner">
-            {emojis.map((e) => (
-              <button
-                key={e}
-                onClick={() => { setNewMessage((prev) => prev + e); setShowEmojis(false); }}
-                className="text-lg hover:scale-125 transition-transform shrink-0"
-              >
-                {e}
-              </button>
-            ))}
+          <div className="mb-2.5 bg-background border border-border rounded-2xl shadow-xl overflow-hidden">
+            {/* Category tabs */}
+            <div className="flex gap-1 p-1.5 border-b border-border bg-secondary/20 overflow-x-auto">
+              {EMOJI_CATEGORIES.map((cat, i) => (
+                <button
+                  key={cat.name}
+                  onClick={() => setEmojiCategory(i)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors shrink-0",
+                    emojiCategory === i ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary"
+                  )}
+                >
+                  {cat.name}
+                </button>
+              ))}
+            </div>
+            {/* Emoji grid */}
+            <div className="p-2 flex flex-wrap gap-1 max-h-[150px] overflow-y-auto">
+              {EMOJI_CATEGORIES[emojiCategory].emojis.map((emoji) => (
+                <button
+                  key={emoji}
+                  onClick={() => {
+                    setNewMessage((prev) => prev + emoji);
+                  }}
+                  className="text-xl hover:scale-125 transition-transform p-1 hover:bg-secondary rounded-lg"
+                  title={emoji}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
-        {/* Upload progress banner */}
         {uploadProgress !== null && (
           <div className="mb-2.5 p-2.5 bg-secondary/30 rounded-xl border border-border flex items-center gap-2.5 text-xs">
             <div className="p-1.5 rounded-lg bg-primary/10">
@@ -802,40 +923,21 @@ export default function DMChatPage() {
             <div className="flex-1 min-w-0">
               <p className="truncate font-medium">{uploadingFileName}</p>
               <div className="h-1 bg-secondary rounded-full mt-1 overflow-hidden">
-                <div
-                  className="h-full bg-primary rounded-full transition-all duration-300 ease-out"
-                  style={{ width: `${uploadProgress}%` }}
-                />
+                <div className="h-full bg-primary rounded-full transition-all duration-300 ease-out" style={{ width: `${uploadProgress}%` }} />
               </div>
             </div>
-            <span className="text-muted-foreground font-mono text-[10px] shrink-0">
-              {Math.round(uploadProgress)}%
-            </span>
+            <span className="text-muted-foreground font-mono text-[10px] shrink-0">{Math.round(uploadProgress)}%</span>
           </div>
         )}
 
         <form onSubmit={handleSendMessage} className="flex gap-2 items-end">
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileInputChange}
-            className="hidden"
-            accept="*/*"
-          />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploadProgress !== null}
-            className="p-3 bg-secondary/50 rounded-xl hover:bg-secondary transition-colors disabled:opacity-40"
-            title="Lampirkan file"
-          >
+          <input type="file" ref={fileInputRef} onChange={handleFileInputChange} className="hidden" accept="*/*" />
+          <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadProgress !== null}
+            className="p-3 bg-secondary/50 rounded-xl hover:bg-secondary transition-colors disabled:opacity-40" title="Lampirkan file">
             <Paperclip className="w-5 h-5 text-muted-foreground" />
           </button>
-          <button
-            type="button"
-            onClick={() => setShowEmojis(!showEmojis)}
-            className="p-3 bg-secondary/50 rounded-xl hover:bg-secondary transition-colors"
-          >
+          <button type="button" onClick={() => setShowEmojis(!showEmojis)}
+            className="p-3 bg-secondary/50 rounded-xl hover:bg-secondary transition-colors">
             <Smile className="w-5 h-5 text-muted-foreground" />
           </button>
 
@@ -856,17 +958,13 @@ export default function DMChatPage() {
             />
           </div>
 
-          <button
-            type="submit"
-            disabled={!newMessage.trim() || sending || uploadProgress !== null}
-            className="p-3 bg-primary text-primary-foreground rounded-xl hover:shadow-lg transition-all disabled:opacity-50"
-          >
+          <button type="submit" disabled={!newMessage.trim() || sending || uploadProgress !== null}
+            className="p-3 bg-primary text-primary-foreground rounded-xl hover:shadow-lg transition-all disabled:opacity-50">
             {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
           </button>
         </form>
       </div>
 
-      {/* File Viewer Modal */}
       {viewingFile && (
         <FileViewerModal
           isOpen={!!viewingFile}

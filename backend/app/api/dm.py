@@ -1,10 +1,10 @@
 """Direct Messaging endpoints."""
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, WebSocket, WebSocketDisconnect, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_, and_
+from sqlalchemy import select, or_, and_, update
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
-import os, uuid, shutil, logging
+import os, uuid, shutil, logging, json
 logger = logging.getLogger(__name__)
 from app.core.database import get_db
 from app.models.user import User
@@ -13,7 +13,7 @@ from app.dependencies import get_current_user
 from app.sockets.dm_ws import dm_ws_manager
 from pydantic import BaseModel
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 import asyncio
 
 router = APIRouter(prefix="/dm", tags=["Direct Messages"])
@@ -25,6 +25,9 @@ class DMChannelCreate(BaseModel):
 class DMMessageCreate(BaseModel):
     content: str
     temp_id: Optional[str] = None
+
+class ReactionCreate(BaseModel):
+    emoji: str
 
 
 # ─── REST Endpoints ──────────────────────────────────────────────────────────
@@ -105,10 +108,15 @@ async def send_dm_message(
     current_user: User = Depends(get_current_user),
 ):
     """Send a message in a DM channel."""
+    now = datetime.now(timezone.utc)
     message = DMMessage(
         dm_channel_id=channel_id,
         user_id=current_user.id,
-        content=data.content
+        content=data.content,
+        is_delivered=False,
+        is_read=False,
+        delivered_at=None,
+        read_at=None,
     )
     db.add(message)
     await db.commit()
@@ -126,6 +134,11 @@ async def send_dm_message(
             "created_at": message.created_at.isoformat(),
             "attachment_url": None,
             "attachment_name": None,
+            "is_read": False,
+            "is_delivered": False,
+            "read_at": None,
+            "delivered_at": None,
+            "reactions": {},
             "user": {
                 "id": str(current_user.id),
                 "name": current_user.name,
@@ -136,7 +149,20 @@ async def send_dm_message(
     }
     await dm_ws_manager.broadcast(channel_id, payload)
     
-    return message
+    return {
+        "id": str(message.id),
+        "content": message.content,
+        "user_id": str(current_user.id),
+        "dm_channel_id": str(channel_id),
+        "created_at": message.created_at.isoformat(),
+        "is_read": False,
+        "is_delivered": False,
+        "read_at": None,
+        "delivered_at": None,
+        "reactions": {},
+        "user": {"id": str(current_user.id), "name": current_user.name, "avatar_url": current_user.avatar_url},
+        "temp_id": data.temp_id
+    }
 
 @router.put("/messages/{message_id}")
 async def edit_dm_message(
@@ -219,7 +245,9 @@ async def upload_dm_attachment(
         user_id=current_user.id,
         content=file.filename or "Sent a file",
         attachment_url=f"/api/uploads/{unique_filename}",
-        attachment_name=file.filename or "file"
+        attachment_name=file.filename or "file",
+        is_delivered=False,
+        is_read=False,
     )
     db.add(message)
     await db.commit()
@@ -248,6 +276,11 @@ async def upload_dm_attachment(
             "is_video": is_video,
             "is_audio": is_audio,
             "is_pdf": is_pdf,
+            "is_read": False,
+            "is_delivered": False,
+            "read_at": None,
+            "delivered_at": None,
+            "reactions": {},
             "user": {
                 "id": str(current_user.id),
                 "name": current_user.name,
@@ -270,6 +303,11 @@ async def upload_dm_attachment(
         "is_video": is_video,
         "is_audio": is_audio,
         "is_pdf": is_pdf,
+        "is_read": False,
+        "is_delivered": False,
+        "read_at": None,
+        "delivered_at": None,
+        "reactions": {},
         "user": {
             "id": str(current_user.id),
             "name": current_user.name,
@@ -277,6 +315,98 @@ async def upload_dm_attachment(
         },
         "temp_id": temp_id
     }
+
+
+# ─── Reactions ────────────────────────────────────────────────────────────────
+
+@router.post("/messages/{message_id}/react")
+async def react_to_message(
+    message_id: UUID,
+    data: ReactionCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Add or remove emoji reaction on a message. Toggle: add if not exists, remove if exists."""
+    result = await db.execute(
+        select(DMMessage).where(DMMessage.id == message_id)
+    )
+    message = result.scalar_one_or_none()
+    if not message:
+        raise HTTPException(status_code=404, detail="Pesan tidak ditemukan")
+    
+    # Initialize reactions if None
+    if message.reactions is None:
+        message.reactions = {}
+    
+    user_id_str = str(current_user.id)
+    reactions = dict(message.reactions)
+    
+    # Toggle: if same user already reacted with same emoji, remove it
+    if user_id_str in reactions and reactions[user_id_str] == data.emoji:
+        del reactions[user_id_str]
+    else:
+        reactions[user_id_str] = data.emoji
+    
+    message.reactions = reactions
+    await db.commit()
+    
+    # Broadcast reaction update
+    await dm_ws_manager.broadcast(str(message.dm_channel_id), {
+        "type": "dm_reacted",
+        "channel_id": str(message.dm_channel_id),
+        "message_id": str(message.id),
+        "reactions": reactions,
+        "user_id": user_id_str,
+        "emoji": data.emoji
+    })
+    
+    return {"message_id": str(message.id), "reactions": reactions}
+
+
+# ─── Read receipts ────────────────────────────────────────────────────────────
+
+@router.post("/channels/{channel_id}/read")
+async def mark_channel_read(
+    channel_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Mark all unread messages in a channel as read (by the other user)."""
+    now = datetime.now(timezone.utc)
+    
+    # Update all messages from other user that are not read
+    result = await db.execute(
+        select(DMMessage).where(
+            and_(
+                DMMessage.dm_channel_id == channel_id,
+                DMMessage.user_id != current_user.id,
+                DMMessage.is_read == False
+            )
+        )
+    )
+    unread_messages = result.scalars().all()
+    
+    updated_ids = []
+    for msg in unread_messages:
+        msg.is_read = True
+        msg.read_at = now
+        msg.is_delivered = True
+        msg.delivered_at = msg.delivered_at or now
+        updated_ids.append(str(msg.id))
+    
+    await db.commit()
+    
+    if updated_ids:
+        # Broadcast read receipts
+        await dm_ws_manager.broadcast(str(channel_id), {
+            "type": "dm_read",
+            "channel_id": str(channel_id),
+            "message_ids": updated_ids,
+            "read_by": str(current_user.id),
+            "read_at": now.isoformat()
+        })
+    
+    return {"updated": len(updated_ids), "message_ids": updated_ids}
 
 
 # ─── Native WebSocket Endpoint ────────────────────────────────────────────────
@@ -303,10 +433,17 @@ async def dm_websocket(
         return
 
     await dm_ws_manager.connect(websocket, channel_id)
+    
+    # Send initial connection ack
+    await websocket.send_json({
+        "type": "connected",
+        "user_id": user_id,
+        "channel_id": channel_id
+    })
+    
     try:
         while True:
             # Keep connection alive — client sends ping, we echo pong
-            # Jika tidak ada ping dalam 60 detik, anggap klien mati
             try:
                 data = await asyncio.wait_for(
                     websocket.receive_text(),

@@ -30,6 +30,10 @@ class DMMessage(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     content = Column(Text, nullable=False)
     is_read = Column(Boolean, default=False)
+    is_delivered = Column(Boolean, default=False)
+    read_at = Column(DateTime(timezone=True), nullable=True)
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
+    reactions = Column(JSONB, default=dict)  # {"user_id": "👍", "user2_id": "❤️"}
     attachment_url = Column(String, nullable=True)
     attachment_name = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
