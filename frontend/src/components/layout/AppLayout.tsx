@@ -12,27 +12,37 @@ import PushAutoPrompt from "@/components/notifications/PushAutoPrompt";
 import { Loader2, Menu } from "lucide-react";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, user } = useAuthStore();
+  const { isAuthenticated } = useAuthStore();
   const router = useRouter();
   const pathname = usePathname();
-  const [isReady, setIsReady] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // Wait until zustand persist actually finished loading from localStorage
+  // before deciding whether the user is logged in. Without this, the first
+  // render sees isAuthenticated=false (initial store) and bounces us to
+  // /login even though the token is still in localStorage.
   useEffect(() => {
-    // Wait for hydration
-    setIsReady(true);
+    if (useAuthStore.persist.hasHydrated()) {
+      setHydrated(true);
+      return;
+    }
+    const unsub = useAuthStore.persist.onFinishHydration(() => setHydrated(true));
+    return unsub;
+  }, []);
 
-    if (isReady && !isAuthenticated) {
+  useEffect(() => {
+    if (hydrated && !isAuthenticated) {
       router.push("/login");
     }
-  }, [isAuthenticated, router, isReady]);
+  }, [hydrated, isAuthenticated, router]);
 
   // Auto-close mobile sidebar when route changes
   useEffect(() => {
     setSidebarOpen(false);
   }, [pathname]);
 
-  if (!isReady || !isAuthenticated) {
+  if (!hydrated || !isAuthenticated) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-background">
         <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />

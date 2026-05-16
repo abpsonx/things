@@ -6,7 +6,7 @@ interface User {
   name: string;
   email: string;
   avatar_url?: string | null;
-  is_verified: bool;
+  is_verified: boolean;
 }
 
 interface AuthState {
