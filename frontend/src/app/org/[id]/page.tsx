@@ -286,8 +286,12 @@ export default function OrgPage() {
           <div className="flex flex-wrap gap-4">
             {org?.members.map((member) => (
               <div key={member.id} className="flex items-center gap-3 p-3 border border-border rounded-xl bg-card min-w-[200px]">
-                <div className="w-10 h-10 rounded-full bg-secondary border border-border flex items-center justify-center font-bold text-xs">
-                  {member.user.name.charAt(0)}
+                <div className="w-10 h-10 rounded-full bg-secondary border border-border flex items-center justify-center font-bold text-xs overflow-hidden shrink-0">
+                  {member.user?.avatar_url ? (
+                    <img src={member.user.avatar_url} alt={member.user.name} className="w-full h-full object-cover" />
+                  ) : (
+                    member.user?.name?.charAt(0)?.toUpperCase()
+                  )}
                 </div>
                 <div>
                   <p className="text-sm font-bold truncate max-w-[120px]">{member.user.name}</p>

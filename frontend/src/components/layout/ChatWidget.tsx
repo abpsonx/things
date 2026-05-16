@@ -9,6 +9,7 @@ import api from "@/lib/api";
 import { useParams, useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useNotificationsStore } from "@/store/useNotificationsStore";
+import { usePresenceStore } from "@/store/usePresenceStore";
 
 export default function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
@@ -28,6 +29,10 @@ export default function ChatWidget() {
   const items = useNotificationsStore((s) => s.items);
   const dmSummaryBySender = useNotificationsStore((s) => s.dmSummaryBySender);
   const markDMsFromSenderRead = useNotificationsStore((s) => s.markDMsFromSenderRead);
+  const isOnline = usePresenceStore((s) => s.isOnline);
+  // Subscribe to the Set so dots re-render on presence_update.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _online = usePresenceStore((s) => s.online);
 
   // Recompute DM summary whenever the notifications list changes.
   const dmBySender = useMemo(() => dmSummaryBySender(), [items, dmSummaryBySender]);
@@ -181,7 +186,9 @@ export default function ChatWidget() {
                             member.user.name.charAt(0)
                           )}
                         </div>
-                        <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-card shadow-sm" />
+                        {isOnline(member.user_id) && (
+                          <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-card shadow-sm" />
+                        )}
                       </div>
                       <div className="flex-1 text-left min-w-0">
                         <div className="flex items-center justify-between gap-2">

@@ -1,6 +1,6 @@
 """Socket.IO manager for real-time features."""
 import socketio
-from typing import Dict, Any
+from typing import Dict, Any, Set
 
 sio = socketio.AsyncServer(
     async_mode="asgi",
@@ -13,15 +13,22 @@ sio = socketio.AsyncServer(
 # sid -> user_id
 active_users: Dict[str, str] = {}
 
+
+def online_user_ids() -> Set[str]:
+    """User IDs currently connected (deduped across multiple tabs/devices)."""
+    return set(active_users.values())
+
+
 @sio.event
 async def connect(sid, environ):
     print(f"User connected: {sid}")
 
 @sio.event
 async def disconnect(sid):
-    if sid in active_users:
-        del active_users[sid]
+    user_id = active_users.pop(sid, None)
     print(f"User disconnected: {sid}")
+    if user_id and user_id not in active_users.values():
+        await sio.emit("presence_update", {"user_id": user_id, "online": False})
 
 @sio.event
 async def join_channel(sid, data):
@@ -35,7 +42,11 @@ async def join_user(sid, data):
     user_id = data.get("user_id")
     if user_id:
         await sio.enter_room(sid, f"user_{user_id}")
+        # First connection for this user → broadcast online
+        was_offline = user_id not in active_users.values()
         active_users[sid] = user_id
+        if was_offline:
+            await sio.emit("presence_update", {"user_id": user_id, "online": True})
         print(f"User {sid} registered as: {user_id}")
 
 

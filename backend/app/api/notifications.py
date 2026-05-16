@@ -12,6 +12,17 @@ from app.schemas import NotificationResponse
 
 router = APIRouter(prefix="/users/me/notifications", tags=["Notifications"])
 
+# Presence endpoint lives on a different prefix but is small enough to ship
+# from this file. Frontend hits /users/online to seed its presence store
+# and then listens to the `presence_update` Socket.IO event for diffs.
+presence_router = APIRouter(prefix="/users", tags=["Presence"])
+
+
+@presence_router.get("/online")
+async def list_online_users(current_user: User = Depends(get_current_user)):
+    from app.sockets.manager import online_user_ids
+    return {"online": sorted(online_user_ids())}
+
 @router.get("", response_model=List[NotificationResponse])
 async def get_notifications(
     db: AsyncSession = Depends(get_db),

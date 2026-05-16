@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useParams } from "next/navigation";
 import { useAuthStore } from "@/store/useAuthStore";
+import { usePresenceStore } from "@/store/usePresenceStore";
 import { cn } from "@/lib/utils";
 import api from "@/lib/api";
 import {
@@ -34,6 +35,10 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const orgId = params?.id;
   const projectId = params?.projectId;
   const { user, logout } = useAuthStore();
+  const isOnline = usePresenceStore((s) => s.isOnline);
+  // Subscribe to the Set so the dots re-render on presence_update.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _online = usePresenceStore((s) => s.online);
   const [members, setMembers] = useState<any[]>([]);
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
@@ -249,7 +254,9 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                       member.user.name.charAt(0)
                     )}
                   </div>
-                  <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 border-2 border-card" />
+                  {isOnline(member.user_id) && (
+                    <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 border-2 border-card" />
+                  )}
                 </div>
                 <span className="truncate">{member.user.name}</span>
               </Link>

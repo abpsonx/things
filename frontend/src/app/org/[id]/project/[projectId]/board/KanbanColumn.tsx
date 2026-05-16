@@ -47,9 +47,23 @@ export default function KanbanColumn({ id, title, tasks, projectId, onTaskAdded,
             {tasks.length}
           </span>
         </div>
-        <button className="text-muted-foreground hover:text-foreground transition-colors">
-          <MoreHorizontal className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-0.5">
+          <button
+            type="button"
+            onClick={() => setIsAdding(true)}
+            title="Tambah tugas baru"
+            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            title="Opsi kolom"
+            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          >
+            <MoreHorizontal className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       <div ref={setNodeRef} className="flex-1 overflow-y-auto min-h-[100px]">

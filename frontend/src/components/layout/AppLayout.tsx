@@ -9,6 +9,7 @@ import { ThemeToggle } from "./ThemeToggle";
 import { GlobalSearch } from "./GlobalSearch";
 import ChatWidget from "./ChatWidget";
 import PushAutoPrompt from "@/components/notifications/PushAutoPrompt";
+import { usePresenceStore } from "@/store/usePresenceStore";
 import { Menu } from "lucide-react";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -93,6 +94,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setSidebarOpen(false);
   }, [pathname]);
+
+  // Wire presence: fetch online list + listen for presence_update events.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const { fetch: fetchPresence, bindSocket } = usePresenceStore.getState();
+    fetchPresence();
+    bindSocket();
+  }, [isAuthenticated]);
 
   if (checking || !isAuthenticated) {
     return (
