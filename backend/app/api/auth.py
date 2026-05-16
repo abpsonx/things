@@ -75,7 +75,7 @@ async def register(request: Request, data: RegisterRequest, db: AsyncSession = D
     await db.refresh(user)
 
     # Generate tokens
-    token_data = {"sub": str(user.id)}
+    token_data = {"sub": str(user.id), "role": user.role}
     access_token = create_access_token(token_data)
     refresh_token = create_refresh_token(token_data)
 
@@ -102,7 +102,7 @@ async def login(request: Request, data: LoginRequest, db: AsyncSession = Depends
         )
 
     # Generate tokens
-    token_data = {"sub": str(user.id)}
+    token_data = {"sub": str(user.id), "role": user.role}
     access_token = create_access_token(token_data)
     refresh_token = create_refresh_token(token_data)
 
@@ -156,7 +156,7 @@ async def refresh_token(request: Request, db: AsyncSession = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=401, detail="User tidak ditemukan")
 
-    token_data = {"sub": str(user.id)}
+    token_data = {"sub": str(user.id), "role": user.role}
     return TokenResponse(
         access_token=create_access_token(token_data),
         refresh_token=create_refresh_token(token_data),

@@ -17,19 +17,26 @@ from app.schemas import (
 )
 from app.dependencies import get_current_user
 from app.services import log_activity
+from app.core.permissions import SUPERUSER_ROLES
 
 router = APIRouter(prefix="/organizations/{org_id}/teams", tags=["Teams"])
 
 
 async def _check_org_membership(db: AsyncSession, org_id: str, user_id) -> OrgMember:
-    """Verify user is a member of the organization."""
+    """Verify user is a member of the organization.
+
+    Superusers (admin/developer) bypass and get a synthetic owner membership.
+    """
     result = await db.execute(
         select(OrgMember).where(OrgMember.org_id == org_id, OrgMember.user_id == user_id)
     )
     member = result.scalar_one_or_none()
-    if not member:
-        raise HTTPException(status_code=403, detail="Anda bukan member organization ini")
-    return member
+    if member:
+        return member
+    role_res = await db.execute(select(User.role).where(User.id == user_id))
+    if role_res.scalar() in SUPERUSER_ROLES:
+        return OrgMember(org_id=org_id, user_id=user_id, role="owner")
+    raise HTTPException(status_code=403, detail="Anda bukan member organization ini")
 
 
 @router.post("", response_model=TeamResponse, status_code=status.HTTP_201_CREATED)

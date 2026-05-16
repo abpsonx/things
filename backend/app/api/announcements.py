@@ -10,6 +10,7 @@ from app.models.project import ProjectMember
 from app.schemas import AnnouncementCreate, AnnouncementUpdate, AnnouncementResponse
 from app.dependencies import get_current_user
 from app.services import log_activity
+from app.core.permissions import is_superuser
 
 router = APIRouter(prefix="/projects/{project_id}/announcements", tags=["Announcements"])
 
@@ -34,7 +35,7 @@ async def create_announcement(
         raise HTTPException(status_code=404, detail="Project tidak ditemukan")
 
     is_manager = any(m.user_id == current_user.id and m.role == "manager" for m in project.members)
-    if not is_manager:
+    if not is_manager and not is_superuser(current_user):
         raise HTTPException(status_code=403, detail="Hanya project manager yang bisa membuat pengumuman")
 
     announcement = Announcement(
@@ -140,7 +141,7 @@ async def delete_announcement(
     )
     is_manager = member_res.scalar_one_or_none()
     
-    if announcement.creator_id != current_user.id and not is_manager:
+    if announcement.creator_id != current_user.id and not is_manager and not is_superuser(current_user):
         raise HTTPException(status_code=403, detail="Hanya pembuat atau manager yang bisa menghapus")
 
     await db.delete(announcement)

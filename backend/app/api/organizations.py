@@ -13,6 +13,7 @@ from app.schemas import OrgCreate, OrgResponse, OrgDetailResponse, OrgMemberResp
 from app.dependencies import get_current_user
 from app.services import log_activity
 from app.core.config import get_settings
+from app.core.permissions import is_superuser
 
 router = APIRouter(prefix="/organizations", tags=["Organizations"])
 
@@ -32,6 +33,13 @@ async def create_organization(
     member = OrgMember(org_id=org.id, user_id=current_user.id, role="owner")
     db.add(member)
 
+    # Auto-add every developer as an owner of this org
+    dev_result = await db.execute(
+        select(User.id).where(User.role == "developer", User.id != current_user.id)
+    )
+    for dev_id in dev_result.scalars().all():
+        db.add(OrgMember(org_id=org.id, user_id=dev_id, role="owner"))
+
     await log_activity(
         db, org_id=org.id, user_id=current_user.id,
         action="org_created", entity_type="organization", entity_id=org.id,
@@ -48,13 +56,21 @@ async def list_organizations(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List all organizations the current user belongs to."""
-    result = await db.execute(
-        select(Organization)
-        .join(OrgMember, OrgMember.org_id == Organization.id)
-        .where(OrgMember.user_id == current_user.id)
-        .order_by(Organization.created_at.desc())
-    )
+    """List all organizations the current user belongs to.
+
+    Developers see every organization in the system.
+    """
+    if is_superuser(current_user):
+        result = await db.execute(
+            select(Organization).order_by(Organization.created_at.desc())
+        )
+    else:
+        result = await db.execute(
+            select(Organization)
+            .join(OrgMember, OrgMember.org_id == Organization.id)
+            .where(OrgMember.user_id == current_user.id)
+            .order_by(Organization.created_at.desc())
+        )
     orgs = result.scalars().all()
     return [OrgResponse.model_validate(o) for o in orgs]
 
@@ -76,9 +92,9 @@ async def get_organization(
     if not org:
         raise HTTPException(status_code=404, detail="Organization tidak ditemukan")
 
-    # Check membership
+    # Check membership (developers bypass — they have global access)
     is_member = any(m.user_id == current_user.id for m in org.members)
-    if not is_member:
+    if not is_member and not is_superuser(current_user):
         raise HTTPException(status_code=403, detail="Anda bukan member organization ini")
 
     return OrgDetailResponse(
@@ -108,17 +124,18 @@ async def invite_member(
 ):
     """Invite a user to the organization (by existing user or pending invite)."""
     from app.models.invitation import Invitation
-    
-    # Check if current user is owner/manager
-    result = await db.execute(
-        select(OrgMember).where(
-            OrgMember.org_id == org_id,
-            OrgMember.user_id == current_user.id,
-            OrgMember.role.in_(["owner", "manager"]),
+
+    # Check if current user is owner/manager (developers bypass)
+    if not is_superuser(current_user):
+        result = await db.execute(
+            select(OrgMember).where(
+                OrgMember.org_id == org_id,
+                OrgMember.user_id == current_user.id,
+                OrgMember.role.in_(["owner", "manager"]),
+            )
         )
-    )
-    if not result.scalar_one_or_none():
-        raise HTTPException(status_code=403, detail="Hanya owner/manager yang bisa invite member")
+        if not result.scalar_one_or_none():
+            raise HTTPException(status_code=403, detail="Hanya owner/manager yang bisa invite member")
 
     # Find user by email
     result = await db.execute(select(User).where(User.email == data.email))
@@ -204,17 +221,20 @@ async def update_member_role(
     current_user: User = Depends(get_current_user),
 ):
     """Update a member's role (owner/manager only)."""
-    # Check permissions
-    result = await db.execute(
-        select(OrgMember).where(
-            OrgMember.org_id == org_id,
-            OrgMember.user_id == current_user.id,
-            OrgMember.role.in_(["owner", "manager"]),
+    # Check permissions (developers bypass)
+    dev_bypass = is_superuser(current_user)
+    admin = None
+    if not dev_bypass:
+        result = await db.execute(
+            select(OrgMember).where(
+                OrgMember.org_id == org_id,
+                OrgMember.user_id == current_user.id,
+                OrgMember.role.in_(["owner", "manager"]),
+            )
         )
-    )
-    admin = result.scalar_one_or_none()
-    if not admin:
-        raise HTTPException(status_code=403, detail="Hanya owner/manager yang bisa edit role")
+        admin = result.scalar_one_or_none()
+        if not admin:
+            raise HTTPException(status_code=403, detail="Hanya owner/manager yang bisa edit role")
 
     # Get target member
     result = await db.execute(select(OrgMember).where(OrgMember.id == member_id))
@@ -222,7 +242,7 @@ async def update_member_role(
     if not member:
         raise HTTPException(status_code=404, detail="Member tidak ditemukan")
 
-    if member.role == "owner" and admin.role != "owner":
+    if member.role == "owner" and not dev_bypass and admin.role != "owner":
         raise HTTPException(status_code=403, detail="Hanya owner yang bisa edit owner lain")
 
     member.role = data.get("role", member.role)
@@ -238,17 +258,20 @@ async def remove_member(
     current_user: User = Depends(get_current_user),
 ):
     """Remove a member from organization (owner/manager only)."""
-    # Check permissions
-    result = await db.execute(
-        select(OrgMember).where(
-            OrgMember.org_id == org_id,
-            OrgMember.user_id == current_user.id,
-            OrgMember.role.in_(["owner", "manager"]),
+    # Check permissions (developers bypass)
+    dev_bypass = is_superuser(current_user)
+    admin = None
+    if not dev_bypass:
+        result = await db.execute(
+            select(OrgMember).where(
+                OrgMember.org_id == org_id,
+                OrgMember.user_id == current_user.id,
+                OrgMember.role.in_(["owner", "manager"]),
+            )
         )
-    )
-    admin = result.scalar_one_or_none()
-    if not admin:
-        raise HTTPException(status_code=403, detail="Hanya owner/manager yang bisa hapus member")
+        admin = result.scalar_one_or_none()
+        if not admin:
+            raise HTTPException(status_code=403, detail="Hanya owner/manager yang bisa hapus member")
 
     # Get target member
     result = await db.execute(select(OrgMember).where(OrgMember.id == member_id))
@@ -259,7 +282,7 @@ async def remove_member(
     if member.user_id == current_user.id:
         raise HTTPException(status_code=400, detail="Anda tidak bisa menghapus diri sendiri dari sini")
 
-    if member.role == "owner" and admin.role != "owner":
+    if member.role == "owner" and not dev_bypass and admin.role != "owner":
         raise HTTPException(status_code=403, detail="Hanya owner yang bisa hapus owner lain")
 
     await db.delete(member)
