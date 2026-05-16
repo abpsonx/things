@@ -1,5 +1,5 @@
-// SW_VERSION 2026-05-16-03 — bump this string to force re-install on clients
-const SW_VERSION = '2026-05-16-03';
+// SW_VERSION 2026-05-16-04 — bump this string to force re-install on clients
+const SW_VERSION = '2026-05-16-04';
 
 self.addEventListener('install', (event) => {
   console.log('[SW] install', SW_VERSION);
@@ -35,7 +35,9 @@ self.addEventListener('push', function(event) {
   const options = {
     body: data.body || '',
     icon: data.icon || '/assets/logo.png',
-    badge: '/assets/logo.png',
+    // Android tints `badge` as a monochrome silhouette; it MUST be a
+    // white-on-transparent PNG or Android renders an empty outlined square.
+    badge: '/assets/badge.png',
     tag: tag,
     renotify: true,
     vibrate: [100, 50, 100],
