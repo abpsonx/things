@@ -16,6 +16,7 @@ from app.models.system_setting import SystemSetting
 from app.models.team import Team, TeamMember, TeamMessage
 from app.models.document import Document
 from app.models.announcement import Announcement
+from app.models.board_column import BoardColumn
 
 __all__ = [
     "User",
@@ -33,5 +34,6 @@ __all__ = [
     "Invitation",
     "SystemSetting",
     "Document",
-    "Announcement"
+    "Announcement",
+    "BoardColumn",
 ]

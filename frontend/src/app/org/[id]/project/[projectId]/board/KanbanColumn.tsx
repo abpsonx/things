@@ -1,34 +1,62 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import TaskCard from "./TaskCard";
-import { Plus, MoreHorizontal } from "lucide-react";
+import { Plus, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import api from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 interface ColumnProps {
-  id: string;
+  id: string;          // slug used by tasks.status and as dnd droppable id
+  columnId?: string;   // UUID for the BoardColumn row (for rename/delete API calls)
   title: string;
   tasks: any[];
   projectId: string;
   onTaskAdded: () => void;
   onTaskClick: (id: string) => void;
+  onRename?: (newTitle: string) => void | Promise<void>;
+  onDelete?: () => void | Promise<void>;
 }
 
-export default function KanbanColumn({ id, title, tasks, projectId, onTaskAdded, onTaskClick }: ColumnProps) {
+export default function KanbanColumn({
+  id,
+  title,
+  tasks,
+  projectId,
+  onTaskAdded,
+  onTaskClick,
+  onRename,
+  onDelete,
+}: ColumnProps) {
   const [isAdding, setIsAdding] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [editTitle, setEditTitle] = useState(title);
+  const menuRef = useRef<HTMLDivElement>(null);
   const { setNodeRef } = useDroppable({ id });
+
+  // close menu on outside click
+  useEffect(() => {
+    if (!isMenuOpen) return;
+    const close = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    };
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [isMenuOpen]);
 
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle.trim()) return;
-
     try {
       await api.post(`/projects/${projectId}/tasks`, {
         title: newTaskTitle,
-        status: id
+        status: id,
       });
       setNewTaskTitle("");
       setIsAdding(false);
@@ -38,16 +66,37 @@ export default function KanbanColumn({ id, title, tasks, projectId, onTaskAdded,
     }
   };
 
+  const submitRename = async () => {
+    const t = editTitle.trim();
+    if (!t || t === title) { setIsRenaming(false); setEditTitle(title); return; }
+    if (onRename) await onRename(t);
+    setIsRenaming(false);
+  };
+
   return (
     <div className="flex flex-col w-[300px] min-w-[300px] bg-secondary/30 rounded-2xl p-4 border border-border/50">
       <div className="flex items-center justify-between mb-4 px-1">
-        <div className="flex items-center gap-2">
-          <h3 className="font-bold text-sm tracking-tight">{title}</h3>
-          <span className="text-[10px] font-bold bg-secondary text-muted-foreground px-1.5 py-0.5 rounded-full border border-border">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          {isRenaming ? (
+            <input
+              autoFocus
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+              onBlur={submitRename}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { e.preventDefault(); submitRename(); }
+                if (e.key === "Escape") { setIsRenaming(false); setEditTitle(title); }
+              }}
+              className="font-bold text-sm tracking-tight bg-card border border-primary/30 rounded px-1.5 py-0.5 min-w-0 flex-1 focus:outline-none"
+            />
+          ) : (
+            <h3 className="font-bold text-sm tracking-tight truncate">{title}</h3>
+          )}
+          <span className="text-[10px] font-bold bg-secondary text-muted-foreground px-1.5 py-0.5 rounded-full border border-border shrink-0">
             {tasks.length}
           </span>
         </div>
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-0.5 shrink-0">
           <button
             type="button"
             onClick={() => setIsAdding(true)}
@@ -56,13 +105,42 @@ export default function KanbanColumn({ id, title, tasks, projectId, onTaskAdded,
           >
             <Plus className="w-4 h-4" />
           </button>
-          <button
-            type="button"
-            title="Opsi kolom"
-            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-          >
-            <MoreHorizontal className="w-4 h-4" />
-          </button>
+          <div className="relative" ref={menuRef}>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setIsMenuOpen((m) => !m); }}
+              title="Opsi kolom"
+              className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+            >
+              <MoreHorizontal className="w-4 h-4" />
+            </button>
+            {isMenuOpen && (
+              <div className="absolute right-0 top-full mt-1 w-40 bg-background border border-border rounded-xl shadow-xl z-30 p-1 animate-in fade-in slide-in-from-top-1">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); setIsRenaming(true); setEditTitle(title); }}
+                  disabled={!onRename}
+                  className={cn(
+                    "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs text-left transition-colors",
+                    onRename ? "hover:bg-secondary" : "opacity-40 cursor-not-allowed",
+                  )}
+                >
+                  <Pencil className="w-3.5 h-3.5 opacity-70" /> Ubah Nama
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); onDelete?.(); }}
+                  disabled={!onDelete}
+                  className={cn(
+                    "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs text-left transition-colors",
+                    onDelete ? "hover:bg-destructive/10 text-destructive" : "opacity-40 cursor-not-allowed",
+                  )}
+                >
+                  <Trash2 className="w-3.5 h-3.5 opacity-70" /> Hapus Kolom
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -74,49 +152,39 @@ export default function KanbanColumn({ id, title, tasks, projectId, onTaskAdded,
         </SortableContext>
       </div>
 
-      <div className="mt-2">
-        {isAdding ? (
-          <form onSubmit={handleCreateTask} className="bg-card p-3 rounded-xl border border-primary/30 shadow-sm space-y-2 animate-in fade-in zoom-in-95 duration-200">
-            <textarea
-              autoFocus
-              value={newTaskTitle}
-              onChange={(e) => setNewTaskTitle(e.target.value)}
-              placeholder="Apa yang perlu dikerjakan?"
-              className="w-full text-sm bg-transparent border-none focus:ring-0 resize-none p-0 min-h-[60px]"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleCreateTask(e);
-                }
-                if (e.key === "Escape") setIsAdding(false);
-              }}
-            />
-            <div className="flex items-center gap-2">
-              <button 
-                type="submit"
-                className="flex-1 bg-primary text-primary-foreground text-xs font-bold py-1.5 rounded-md hover:bg-primary/90 transition-colors"
-              >
-                Tambah
-              </button>
-              <button 
-                type="button"
-                onClick={() => setIsAdding(false)}
-                className="px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Batal
-              </button>
-            </div>
-          </form>
-        ) : (
-          <button
-            onClick={() => setIsAdding(true)}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary rounded-xl transition-all group"
-          >
-            <Plus className="w-4 h-4 group-hover:scale-110 transition-transform" />
-            Tambah Tugas
-          </button>
-        )}
-      </div>
+      {isAdding && (
+        <form onSubmit={handleCreateTask} className="mt-2 bg-card p-3 rounded-xl border border-primary/30 shadow-sm space-y-2 animate-in fade-in zoom-in-95 duration-200">
+          <textarea
+            autoFocus
+            value={newTaskTitle}
+            onChange={(e) => setNewTaskTitle(e.target.value)}
+            placeholder="Apa yang perlu dikerjakan?"
+            className="w-full text-sm bg-transparent border-none focus:ring-0 resize-none p-0 min-h-[60px]"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleCreateTask(e);
+              }
+              if (e.key === "Escape") setIsAdding(false);
+            }}
+          />
+          <div className="flex items-center gap-2">
+            <button
+              type="submit"
+              className="flex-1 bg-primary text-primary-foreground text-xs font-bold py-1.5 rounded-md hover:bg-primary/90 transition-colors"
+            >
+              Tambah
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsAdding(false)}
+              className="px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Batal
+            </button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }

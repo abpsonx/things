@@ -46,7 +46,7 @@ interface Task {
   id: string;
   title: string;
   description: string;
-  status: "todo" | "in_progress" | "pending" | "done";
+  status: string;
   priority: "low" | "medium" | "high";
   assignee_id?: string;
   position: number;
@@ -55,16 +55,17 @@ interface Task {
   attachments_count?: number;
 }
 
-const COLUMNS = [
-  { id: "todo", title: "To Do" },
-  { id: "in_progress", title: "In Progress" },
-  { id: "pending", title: "Pending" },
-  { id: "done", title: "Done" },
-];
+interface BoardColumnRow {
+  id: string;
+  slug: string;
+  title: string;
+  position: number;
+}
 
 export default function KanbanBoard() {
   const { id: orgId, projectId } = useParams();
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [columns, setColumns] = useState<BoardColumnRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -72,15 +73,27 @@ export default function KanbanBoard() {
   const [projectNote, setProjectNote] = useState("");
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [isNotesVisible, setIsNotesVisible] = useState(true);
+  const [isAddingColumn, setIsAddingColumn] = useState(false);
+  const [newColumnTitle, setNewColumnTitle] = useState("");
+
+  const fetchColumns = useCallback(async () => {
+    try {
+      const r = await api.get(`/projects/${projectId}/columns`);
+      setColumns(Array.isArray(r.data) ? r.data : []);
+    } catch (err) {
+      console.error("Failed to fetch columns", err);
+    }
+  }, [projectId]);
 
   const fetchTasks = useCallback(async () => {
     try {
-      const response = await api.get(`/projects/${projectId}/tasks`);
-      setTasks(response.data);
-      
-      const projResponse = await api.get(`/organizations/${orgId}/projects/${projectId}`);
-      if (projResponse.data.description) {
-        setProjectNote(projResponse.data.description);
+      const [taskRes, projRes] = await Promise.all([
+        api.get(`/projects/${projectId}/tasks`),
+        api.get(`/organizations/${orgId}/projects/${projectId}`),
+      ]);
+      setTasks(taskRes.data);
+      if (projRes.data.description) {
+        setProjectNote(projRes.data.description);
       }
     } catch (err) {
       console.error("Failed to fetch data", err);
@@ -88,6 +101,38 @@ export default function KanbanBoard() {
       setLoading(false);
     }
   }, [orgId, projectId]);
+
+  const createColumn = async () => {
+    const title = newColumnTitle.trim();
+    if (!title) return;
+    try {
+      await api.post(`/projects/${projectId}/columns`, { title });
+      setNewColumnTitle("");
+      setIsAddingColumn(false);
+      await fetchColumns();
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || "Gagal membuat kolom");
+    }
+  };
+
+  const renameColumn = async (columnId: string, newTitle: string) => {
+    try {
+      await api.patch(`/projects/${projectId}/columns/${columnId}`, { title: newTitle });
+      await fetchColumns();
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || "Gagal rename kolom");
+    }
+  };
+
+  const deleteColumn = async (columnId: string, title: string) => {
+    if (!confirm(`Hapus kolom "${title}"? Task di dalamnya akan dipindah ke kolom pertama.`)) return;
+    try {
+      await api.delete(`/projects/${projectId}/columns/${columnId}`);
+      await Promise.all([fetchColumns(), fetchTasks()]);
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || "Gagal hapus kolom");
+    }
+  };
 
   const saveNote = async (noteContent: string) => {
     setIsSavingNote(true);
@@ -102,7 +147,8 @@ export default function KanbanBoard() {
 
   useEffect(() => {
     fetchTasks();
-    
+    fetchColumns();
+
     // Join project room
     socket.emit("join_project", { project_id: projectId });
 
@@ -126,7 +172,7 @@ export default function KanbanBoard() {
       socket.off("task_deleted");
       socket.off("task_created");
     };
-  }, [fetchTasks, projectId]);
+  }, [fetchTasks, fetchColumns, projectId]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -149,13 +195,13 @@ export default function KanbanBoard() {
     const activeTask = tasks.find((t) => t.id === activeId);
     if (!activeTask) return;
 
-    // Check if dragging over a column or another task
-    const isOverColumn = COLUMNS.some(col => col.id === overId);
-    
+    // Check if dragging over a column (overId is column.slug) or another task
+    const isOverColumn = columns.some((col) => col.slug === overId);
+
     if (isOverColumn) {
-      const newStatus = overId as any;
+      const newStatus = overId;
       if (activeTask.status !== newStatus) {
-        setTasks(prev => prev.map(t => 
+        setTasks(prev => prev.map(t =>
           t.id === activeId ? { ...t, status: newStatus } : t
         ));
       }
@@ -185,7 +231,7 @@ export default function KanbanBoard() {
       // Find new index in the specific status list
       const columnTasks = tasks.filter(t => t.status === finalTask.status);
       const oldIndex = columnTasks.findIndex(t => t.id === activeId);
-      const isOverTask = !COLUMNS.some(col => col.id === overId);
+      const isOverTask = !columns.some((col) => col.slug === overId);
       
       let newIndex = oldIndex;
       if (isOverTask) {
@@ -223,20 +269,67 @@ export default function KanbanBoard() {
         <div className="flex gap-6 h-full w-full">
           {/* Columns */}
           <div className="flex-1 flex gap-6 overflow-x-auto pb-4 scrollbar-hide">
-            {COLUMNS.map((col) => (
+            {columns.map((col) => (
               <KanbanColumn
                 key={col.id}
-                id={col.id}
+                id={col.slug}
+                columnId={col.id}
                 title={col.title}
-                tasks={tasks.filter((t) => t.status === col.id)}
+                tasks={tasks.filter((t) => t.status === col.slug)}
                 projectId={projectId as string}
                 onTaskAdded={fetchTasks}
                 onTaskClick={(id) => {
                   setSelectedTaskId(id);
                   setIsModalOpen(true);
                 }}
+                onRename={(newTitle) => renameColumn(col.id, newTitle)}
+                onDelete={() => deleteColumn(col.id, col.title)}
               />
             ))}
+
+            {/* "Buat List" — create a new column */}
+            <div className="w-[280px] min-w-[280px] shrink-0">
+              {isAddingColumn ? (
+                <div className="bg-card p-3 rounded-2xl border border-primary/30 shadow-sm space-y-2 animate-in fade-in zoom-in-95 duration-200">
+                  <input
+                    autoFocus
+                    value={newColumnTitle}
+                    onChange={(e) => setNewColumnTitle(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") { e.preventDefault(); createColumn(); }
+                      if (e.key === "Escape") { setIsAddingColumn(false); setNewColumnTitle(""); }
+                    }}
+                    placeholder="Nama list (mis. Review)"
+                    className="w-full bg-transparent border-none focus:outline-none focus:ring-0 text-sm font-bold p-1"
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={createColumn}
+                      className="flex-1 bg-primary text-primary-foreground text-xs font-bold py-1.5 rounded-md hover:bg-primary/90 transition-colors"
+                    >
+                      Buat
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setIsAddingColumn(false); setNewColumnTitle(""); }}
+                      className="px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Batal
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsAddingColumn(true)}
+                  className="w-full flex items-center gap-2 px-4 py-3 text-sm font-medium text-muted-foreground hover:text-foreground bg-secondary/30 hover:bg-secondary border border-dashed border-border rounded-2xl transition-all"
+                >
+                  <Plus className="w-4 h-4" />
+                  Buat List
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Notes Sidebar */}

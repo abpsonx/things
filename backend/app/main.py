@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 
 from app.core.config import get_settings
 from app.core.database import engine, Base
-from app.api import auth, projects, teams, organizations, channels, tasks, attachments, events, comments, subtasks, labels, notifications, search, stats, settings as settings_api, dm, google, documents, reports, announcements
+from app.api import auth, projects, teams, organizations, channels, tasks, attachments, events, comments, subtasks, labels, notifications, search, stats, settings as settings_api, dm, google, documents, reports, announcements, board_columns
 
 
 settings = get_settings()
@@ -46,6 +46,37 @@ async def lifespan(app: FastAPI):
                 await conn.execute(text(f"ALTER TABLE notifications ADD COLUMN IF NOT EXISTS {col} {col_type}"))
             except Exception:
                 pass
+
+        # Dynamic kanban columns: drop the legacy status enum constraint so
+        # tasks can sit in user-defined columns, then seed the four defaults
+        # ("To Do", "In Progress", "Pending", "Done") for any project that
+        # doesn't have columns yet. Default column slugs match the historical
+        # status values so existing tasks keep landing in the right column
+        # without a data migration.
+        try:
+            await conn.execute(text("ALTER TABLE tasks DROP CONSTRAINT IF EXISTS ck_task_status"))
+        except Exception:
+            pass
+
+        try:
+            res = await conn.execute(text(
+                "SELECT p.id FROM projects p "
+                "WHERE NOT EXISTS (SELECT 1 FROM board_columns bc WHERE bc.project_id = p.id)"
+            ))
+            project_ids_without_columns = [row[0] for row in res]
+            for pid in project_ids_without_columns:
+                for slug, title, pos in [
+                    ("todo", "To Do", 0),
+                    ("in_progress", "In Progress", 1),
+                    ("pending", "Pending", 2),
+                    ("done", "Done", 3),
+                ]:
+                    await conn.execute(text(
+                        "INSERT INTO board_columns (id, project_id, slug, title, position, created_at) "
+                        "VALUES (gen_random_uuid(), :pid, :slug, :title, :pos, NOW())"
+                    ), {"pid": str(pid), "slug": slug, "title": title, "pos": pos})
+        except Exception as e:
+            print(f"[boot] board_columns seed skipped: {e}")
         
     # Start background scheduler
     from app.services.scheduler import check_reminders
@@ -103,6 +134,7 @@ app.include_router(google.router, prefix="/api")
 app.include_router(documents.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
 app.include_router(announcements.router, prefix="/api")
+app.include_router(board_columns.router, prefix="/api")
 
 
 # Static Files
