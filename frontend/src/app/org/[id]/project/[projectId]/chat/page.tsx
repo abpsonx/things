@@ -67,6 +67,12 @@ export default function ChatPage() {
   const EMOJIS = ["😀", "😂", "🤣", "😊", "😍", "🙏", "👍", "🙌", "🔥", "🎉", "✨", "❤️", "💡", "✅", "👀", "🚀"];
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // @mention picker state
+  const [members, setMembers] = useState<any[]>([]);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionHighlight, setMentionHighlight] = useState(0);
 
   // Fetch Current User
   useEffect(() => {
@@ -119,6 +125,55 @@ export default function ChatPage() {
     window.addEventListener("click", handleOutsideClick);
     return () => window.removeEventListener("click", handleOutsideClick);
   }, [showHeaderMenu]);
+
+  // Fetch project members so the @mention picker has someone to suggest
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    api.get(`/organizations/${orgId}/projects/${projectId}/members`)
+      .then((res) => {
+        if (cancelled) return;
+        setMembers(Array.isArray(res.data) ? res.data : []);
+      })
+      .catch((err) => console.error("Failed to fetch project members", err));
+    return () => { cancelled = true; };
+  }, [orgId, projectId]);
+
+  // Members filtered by what the user typed after @
+  const mentionMatches =
+    mentionQuery === null
+      ? []
+      : members
+          .filter((m) =>
+            (m.user?.name || "")
+              .toLowerCase()
+              .includes(mentionQuery.toLowerCase()),
+          )
+          .filter((m) => m.user_id !== currentUser?.id)
+          .slice(0, 6);
+
+  const insertMention = (member: any) => {
+    if (!textareaRef.current) return;
+    const ta = textareaRef.current;
+    const cursor = ta.selectionStart ?? newMessage.length;
+    const before = newMessage.slice(0, cursor);
+    const after = newMessage.slice(cursor);
+    const atIdx = before.lastIndexOf("@");
+    if (atIdx === -1) return;
+    const name = member.user?.name || "user";
+    const token = `@[${name}](${member.user_id}) `;
+    const next = before.slice(0, atIdx) + token + after;
+    setNewMessage(next);
+    setMentionQuery(null);
+    setMentionHighlight(0);
+    // restore caret after the inserted token
+    requestAnimationFrame(() => {
+      if (!textareaRef.current) return;
+      const pos = atIdx + token.length;
+      textareaRef.current.focus();
+      textareaRef.current.setSelectionRange(pos, pos);
+    });
+  };
 
   const clearChat = async () => {
     if (!activeChannel || !window.confirm("Hapus semua pesan di channel ini?")) return;
@@ -190,11 +245,33 @@ export default function ChatPage() {
 
   const renderMessageContent = (content: string) => {
     if (!content) return null;
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-    const parts = content.split(urlRegex);
+    // Split on URL OR mention token, keeping the delimiters
+    const TOKEN_RE = /(https?:\/\/[^\s]+|@\[[^\]]+\]\([0-9a-fA-F-]{36}\))/g;
+    const parts = content.split(TOKEN_RE);
+    const MENTION_RE = /^@\[([^\]]+)\]\(([0-9a-fA-F-]{36})\)$/;
+    const URL_RE = /^https?:\/\//;
 
     return parts.map((part, i) => {
-      if (part.match(urlRegex)) {
+      if (!part) return null;
+      const mentionMatch = part.match(MENTION_RE);
+      if (mentionMatch) {
+        const [, name, userId] = mentionMatch;
+        const isMe = currentUser?.id === userId;
+        return (
+          <span
+            key={i}
+            className={cn(
+              "inline-flex items-center px-1.5 rounded-md font-semibold",
+              isMe
+                ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                : "bg-primary/10 text-primary",
+            )}
+          >
+            @{name}
+          </span>
+        );
+      }
+      if (URL_RE.test(part)) {
         return (
           <a
             key={i}
@@ -208,7 +285,7 @@ export default function ChatPage() {
           </a>
         );
       }
-      return part;
+      return <span key={i}>{part}</span>;
     });
   };
 
@@ -790,22 +867,74 @@ export default function ChatPage() {
                       <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2.5 text-muted-foreground hover:text-foreground transition-all"><Paperclip className="w-5 h-5" /></button>
                     </div>
 
-                    <textarea
-                      rows={1}
-                      value={newMessage}
-                      onChange={(e) => {
-                        setNewMessage(e.target.value);
-                        e.target.style.height = 'auto';
-                        e.target.style.height = Math.min(e.target.scrollHeight, 150) + 'px';
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(e); }
-                        if (e.key === 'Escape') { setEditingMessage(null); setReplyingTo(null); setNewMessage(""); }
-                      }}
-                      placeholder={editingMessage ? "Perbaiki pesan..." : "Ketik pesan..."}
-                      className="flex-1 bg-transparent border-none focus:outline-none focus:ring-0 resize-none text-sm px-3 py-3.5 custom-scrollbar min-h-[48px]"
-                      style={{ height: '48px' }}
-                    />
+                    <div className="relative flex-1">
+                      {mentionQuery !== null && mentionMatches.length > 0 && (
+                        <div className="absolute bottom-full left-0 right-0 mb-2 bg-card border border-border rounded-2xl shadow-xl overflow-hidden z-30 max-h-[240px] overflow-y-auto">
+                          <div className="px-3 py-1.5 border-b border-border text-[10px] font-bold text-muted-foreground uppercase tracking-wide bg-secondary/30">
+                            Tag anggota
+                          </div>
+                          {mentionMatches.map((m, i) => (
+                            <button
+                              key={m.user_id}
+                              type="button"
+                              onMouseDown={(e) => { e.preventDefault(); insertMention(m); }}
+                              onMouseEnter={() => setMentionHighlight(i)}
+                              className={cn(
+                                "w-full flex items-center gap-3 px-3 py-2 text-left transition-colors",
+                                i === mentionHighlight ? "bg-primary/10" : "hover:bg-secondary/50",
+                              )}
+                            >
+                              <div className="w-7 h-7 rounded-full bg-secondary border border-border flex items-center justify-center overflow-hidden text-xs font-bold shrink-0">
+                                {m.user?.avatar_url ? (
+                                  <img src={m.user.avatar_url} alt="" className="w-full h-full object-cover" />
+                                ) : (
+                                  (m.user?.name || "?").charAt(0).toUpperCase()
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-bold truncate">{m.user?.name || "User"}</p>
+                                <p className="text-[10px] text-muted-foreground capitalize">{m.role}</p>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <textarea
+                        ref={textareaRef}
+                        rows={1}
+                        value={newMessage}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setNewMessage(val);
+                          e.target.style.height = 'auto';
+                          e.target.style.height = Math.min(e.target.scrollHeight, 150) + 'px';
+                          // Detect @ token at caret to open/update the picker
+                          const caret = e.target.selectionStart ?? val.length;
+                          const upToCaret = val.slice(0, caret);
+                          const atIdx = upToCaret.lastIndexOf("@");
+                          if (atIdx === -1) { setMentionQuery(null); return; }
+                          const charBeforeAt = atIdx === 0 ? " " : upToCaret[atIdx - 1];
+                          const isWordBoundary = /[\s\n]/.test(charBeforeAt);
+                          const query = upToCaret.slice(atIdx + 1);
+                          if (!isWordBoundary || /\s/.test(query)) { setMentionQuery(null); return; }
+                          setMentionQuery(query);
+                          setMentionHighlight(0);
+                        }}
+                        onKeyDown={(e) => {
+                          if (mentionQuery !== null && mentionMatches.length > 0) {
+                            if (e.key === 'ArrowDown') { e.preventDefault(); setMentionHighlight((h) => (h + 1) % mentionMatches.length); return; }
+                            if (e.key === 'ArrowUp') { e.preventDefault(); setMentionHighlight((h) => (h - 1 + mentionMatches.length) % mentionMatches.length); return; }
+                            if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); insertMention(mentionMatches[mentionHighlight]); return; }
+                            if (e.key === 'Escape') { e.preventDefault(); setMentionQuery(null); return; }
+                          }
+                          if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(e); }
+                          if (e.key === 'Escape') { setEditingMessage(null); setReplyingTo(null); setNewMessage(""); }
+                        }}
+                        placeholder={editingMessage ? "Perbaiki pesan..." : "Ketik pesan... (@ untuk tag)"}
+                        className="w-full bg-transparent border-none focus:outline-none focus:ring-0 resize-none text-sm px-3 py-3.5 custom-scrollbar min-h-[48px]"
+                        style={{ height: '48px' }}
+                      />
+                    </div>
                   </div>
                 </div>
 

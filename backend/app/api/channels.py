@@ -144,6 +144,42 @@ async def create_message(
         }
     }, room=f"channel_{channel_id}")
 
+    # Notify any users tagged via @[Name](uuid) in the message content
+    if data.content:
+        import re
+        from app.models.channel import Channel
+        from app.models.project import Project
+        from app.services.notification import notify_user
+
+        mention_re = re.compile(r"@\[[^\]]+\]\(([0-9a-fA-F-]{36})\)")
+        mentioned_ids = {m for m in mention_re.findall(data.content) if m != str(current_user.id)}
+        if mentioned_ids:
+            # Fetch project/org for deep-link URL
+            ch_res = await db.execute(
+                select(Channel).options(selectinload(Channel.project)).where(Channel.id == channel_id)
+            )
+            ch_row = ch_res.scalar_one_or_none()
+            org_id = str(ch_row.project.org_id) if ch_row and ch_row.project else None
+            proj_id = str(ch_row.project.id) if ch_row and ch_row.project else None
+            ch_name = ch_row.name if ch_row else "channel"
+            snippet = (data.content or "").strip()
+            # strip mention tokens for a cleaner snippet
+            snippet = mention_re.sub(lambda m: "@" + (m.group(0).split("[")[1].split("]")[0]), snippet)
+            if len(snippet) > 80:
+                snippet = snippet[:77] + "..."
+            url = f"/org/{org_id}/project/{proj_id}/chat" if org_id and proj_id else "/dashboard"
+            for uid in mentioned_ids:
+                await notify_user(
+                    db,
+                    user_id=uid,
+                    type="mention",
+                    title=f"{current_user.name} menyebut kamu di #{ch_name}",
+                    content=snippet or "Kamu di-tag dalam pesan",
+                    ref_id=str(full_message.id),
+                    org_id=org_id,
+                    url=url,
+                )
+
     return full_message
 
 
