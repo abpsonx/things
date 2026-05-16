@@ -128,11 +128,66 @@ async def send_test_push(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    from app.services.notification import notify_user
-    await notify_user(
-        db,
-        user_id=str(current_user.id),
-        type="test",
-        content="Ini adalah notifikasi percobaan dari Things! 🚀"
+    """Send a test push to the caller and report what happened to each
+    of their push subscriptions, so the UI can show actionable feedback."""
+    from app.models.notification import PushSubscription
+    from app.services.push import send_push_notification
+    from app.core.config import get_settings
+    from sqlalchemy import delete
+    import json as _json
+
+    cfg = get_settings()
+    diag = {
+        "vapid_public_key_len": len(cfg.VAPID_PUBLIC_KEY or ""),
+        "vapid_private_key_len": len(cfg.VAPID_PRIVATE_KEY or ""),
+        "vapid_email": cfg.VAPID_CLAIMS_EMAIL,
+    }
+
+    result = await db.execute(
+        select(PushSubscription).where(PushSubscription.user_id == current_user.id)
     )
-    return {"status": "success"}
+    subs = result.scalars().all()
+    diag["subscription_count"] = len(subs)
+
+    if not subs:
+        return {
+            "status": "no_subscription",
+            "message": "Browser ini belum subscribe push. Pastikan klik Allow saat browser tanya, lalu reload.",
+            "diag": diag,
+        }
+
+    payload = {
+        "title": "Things",
+        "body": "Ini notif percobaan dari server 🚀",
+        "url": "/dashboard",
+        "icon": "/assets/logo.png",
+        "tag": "test-push",
+    }
+
+    outcomes = []
+    dead_ids = []
+    for sub in subs:
+        sub_info = {
+            "endpoint": sub.endpoint,
+            "keys": {"p256dh": sub.p256dh, "auth": sub.auth},
+        }
+        outcome = send_push_notification(sub_info, payload)
+        outcomes.append({"endpoint": sub.endpoint[:60] + "...", "outcome": outcome})
+        if outcome == "dead":
+            dead_ids.append(sub.id)
+
+    if dead_ids:
+        await db.execute(delete(PushSubscription).where(PushSubscription.id.in_(dead_ids)))
+        await db.commit()
+
+    any_sent = any(o["outcome"] == "sent" for o in outcomes)
+    return {
+        "status": "ok" if any_sent else "all_failed",
+        "message": (
+            "Push terkirim ke push service. Cek notification center OS Anda."
+            if any_sent
+            else "Push gagal terkirim. Cek diag + outcomes untuk detail."
+        ),
+        "diag": diag,
+        "outcomes": outcomes,
+    }

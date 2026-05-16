@@ -5,12 +5,20 @@ import api from "@/lib/api";
 import { Bell, BellOff, Loader2, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+type TestResult = {
+  status: string;
+  message: string;
+  diag?: Record<string, unknown>;
+  outcomes?: { endpoint: string; outcome: string }[];
+};
+
 export default function PushNotificationManager() {
   const [isSupported, setIsSupported] = useState(false);
   const [subscription, setSubscription] = useState<PushSubscription | null>(null);
   const [loading, setLoading] = useState(true);
   const [testingNotif, setTestingNotif] = useState(false);
   const [error, setError] = useState("");
+  const [testResult, setTestResult] = useState<TestResult | null>(null);
 
   const checkSubscription = async () => {
     try {
@@ -122,15 +130,18 @@ export default function PushNotificationManager() {
 
         {subscription ? (
           <div className="flex items-center gap-2">
-            <button 
+            <button
               disabled={testingNotif}
               onClick={async () => {
                 setTestingNotif(true);
-                try { 
-                  await api.post("/users/me/notifications/test-push"); 
-                } catch(e) { 
-                  console.error(e); 
-                  setError("Gagal mengirim notifikasi tes");
+                setError("");
+                setTestResult(null);
+                try {
+                  const res = await api.post("/users/me/notifications/test-push");
+                  setTestResult(res.data as TestResult);
+                } catch(e: any) {
+                  console.error(e);
+                  setError(e?.response?.data?.detail || "Gagal mengirim notifikasi tes");
                 } finally {
                   setTestingNotif(false);
                 }
@@ -160,6 +171,38 @@ export default function PushNotificationManager() {
         )}
       </div>
       {error && <p className="text-[10px] text-destructive font-bold ml-1">{error}</p>}
+
+      {testResult && (
+        <div
+          className={cn(
+            "rounded-2xl p-4 text-[11px] font-mono space-y-2 mt-2 border",
+            testResult.status === "ok"
+              ? "bg-emerald-500/5 border-emerald-500/20 text-emerald-700 dark:text-emerald-400"
+              : "bg-destructive/5 border-destructive/20 text-destructive",
+          )}
+        >
+          <p className="font-sans font-bold text-xs">
+            {testResult.status === "ok" ? "✅" : "❌"} {testResult.message}
+          </p>
+          {testResult.diag && (
+            <div className="space-y-0.5 opacity-80">
+              <p>vapid_public_key_len: {String(testResult.diag.vapid_public_key_len)}</p>
+              <p>vapid_private_key_len: {String(testResult.diag.vapid_private_key_len)}</p>
+              <p>vapid_email: {String(testResult.diag.vapid_email)}</p>
+              <p>subscription_count: {String(testResult.diag.subscription_count)}</p>
+            </div>
+          )}
+          {testResult.outcomes && testResult.outcomes.length > 0 && (
+            <div className="space-y-0.5 opacity-80 pt-1 border-t border-current/10">
+              {testResult.outcomes.map((o, i) => (
+                <p key={i}>
+                  [{o.outcome}] {o.endpoint}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
