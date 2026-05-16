@@ -6,23 +6,29 @@ import { usePathname, useParams } from "next/navigation";
 import { useAuthStore } from "@/store/useAuthStore";
 import { cn } from "@/lib/utils";
 import api from "@/lib/api";
-import { 
-  LayoutDashboard, 
-  Briefcase, 
-  MessageSquare, 
-  Calendar, 
-  Settings, 
+import {
+  LayoutDashboard,
+  Briefcase,
+  MessageSquare,
+  Calendar,
+  Settings,
   LogOut,
   User,
   Plus,
   Activity,
   Folder,
-  Users
+  Users,
+  X
 } from "lucide-react";
 import CreateTeamModal from "@/components/team/CreateTeamModal";
 import CreateOrgModal from "@/components/org/CreateOrgModal";
 
-export default function Sidebar() {
+type SidebarProps = {
+  isOpen?: boolean;
+  onClose?: () => void;
+};
+
+export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const params = useParams();
   const orgId = params?.id;
@@ -100,12 +106,29 @@ export default function Sidebar() {
   ];
 
   return (
-    <aside className="w-64 border-r border-border h-screen flex flex-col bg-card sticky top-0 z-[50]">
-      <div className="p-6">
+    <aside
+      className={cn(
+        "w-64 border-r border-border h-screen flex flex-col bg-card z-[50]",
+        // Desktop: part of normal flex layout, always visible
+        "md:sticky md:top-0 md:translate-x-0",
+        // Mobile: fixed slide-out drawer
+        "fixed inset-y-0 left-0 transition-transform duration-200 ease-out",
+        isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+      )}
+    >
+      <div className="p-6 flex items-center justify-between">
         <Link href="/dashboard" className="flex items-center gap-2 font-bold text-xl tracking-tighter text-primary">
           <img src="/assets/logo.png" alt="Logo" className="w-8 h-8 object-contain" />
           <span>Things</span>
         </Link>
+        <button
+          type="button"
+          onClick={onClose}
+          className="md:hidden p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          aria-label="Tutup menu"
+        >
+          <X className="w-4 h-4" />
+        </button>
       </div>
 
       <nav className="flex-1 px-4 space-y-8 overflow-y-auto">
