@@ -18,48 +18,73 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [checking, setChecking] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Bootstrap: runs once on mount. localStorage is the source of truth for
-  // tokens; if any are present we trust them and rehydrate user info via
-  // /auth/me when the zustand store is empty (Android PWA cold start has
-  // persisted localStorage but a fresh in-memory store).
+  // Bootstrap: synchronously trust the tokens in localStorage as the
+  // source of truth. If they exist, we ARE logged in — even if zustand
+  // persist hasn't finished hydrating yet (Android PWA quirk where
+  // initial in-memory store is empty while localStorage already has
+  // auth-storage). Restore the cached user manually and render
+  // immediately; /auth/me fires in the background to refresh details.
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const accessToken = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
-      const refreshToken = typeof window !== "undefined" ? localStorage.getItem("refresh_token") : null;
-      if (!accessToken && !refreshToken) {
-        router.replace("/login");
-        return;
-      }
-      // Already hydrated from persist — done.
-      if (useAuthStore.getState().user && useAuthStore.getState().isAuthenticated) {
-        if (!cancelled) setChecking(false);
-        return;
-      }
+    if (typeof window === "undefined") return;
+
+    const accessToken = localStorage.getItem("access_token");
+    const refreshToken = localStorage.getItem("refresh_token");
+
+    if (!accessToken && !refreshToken) {
+      router.replace("/login");
+      return;
+    }
+
+    // Restore user from the persist payload if zustand hasn't done it yet.
+    if (!useAuthStore.getState().isAuthenticated) {
       try {
-        const { default: api } = await import("@/lib/api");
-        const me = await api.get("/auth/me");
-        const freshAccess = localStorage.getItem("access_token") || accessToken || "";
-        const freshRefresh = localStorage.getItem("refresh_token") || refreshToken || "";
-        setAuth(me.data, freshAccess, freshRefresh);
+        const raw = localStorage.getItem("auth-storage");
+        const parsed = raw ? JSON.parse(raw) : null;
+        const cachedUser = parsed?.state?.user;
+        if (cachedUser) {
+          setAuth(cachedUser, accessToken || "", refreshToken || "");
+        }
       } catch {
-        // interceptor already handled 401/403 redirect; just stop the spinner
-      } finally {
-        if (!cancelled) setChecking(false);
+        // ignore parse errors — /auth/me below will populate it
       }
-    })();
+    }
+
+    setChecking(false);
+
+    // Background refresh of profile (avatar/name/etc). Non-blocking; if
+    // /auth/me 401s the interceptor handles refresh+wipe on its own.
+    let cancelled = false;
+    import("@/lib/api").then(({ default: api }) => {
+      api.get("/auth/me")
+        .then((res) => {
+          if (cancelled) return;
+          setAuth(
+            res.data,
+            localStorage.getItem("access_token") || "",
+            localStorage.getItem("refresh_token") || "",
+          );
+        })
+        .catch(() => {
+          /* keep cached user; nothing to do */
+        });
+    });
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // React to logout / auth state changes that happen AFTER bootstrap
-  // (e.g. the Keluar button calls store.logout() which sets
-  // isAuthenticated=false). Without this the spinner would render forever.
+  // Watcher: only kick to /login when tokens are truly gone (after logout
+  // or after the interceptor wiped them on a real 401/403 from refresh).
+  // If isAuthenticated flips false while tokens still exist (e.g. a
+  // background /auth/me race), don't bounce — the dashboard stays usable.
   useEffect(() => {
     if (checking) return;
-    if (!isAuthenticated) {
+    if (isAuthenticated) return;
+    if (typeof window === "undefined") return;
+    const hasTokens =
+      !!localStorage.getItem("access_token") || !!localStorage.getItem("refresh_token");
+    if (!hasTokens) {
       router.replace("/login");
     }
   }, [checking, isAuthenticated, router]);
