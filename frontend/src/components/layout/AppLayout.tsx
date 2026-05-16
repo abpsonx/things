@@ -12,17 +12,16 @@ import PushAutoPrompt from "@/components/notifications/PushAutoPrompt";
 import { Loader2, Menu } from "lucide-react";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, user, setAuth } = useAuthStore();
+  const { isAuthenticated, setAuth } = useAuthStore();
   const router = useRouter();
   const pathname = usePathname();
   const [checking, setChecking] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Authoritative auth check that doesn't depend on zustand persist timing.
-  // localStorage is the source of truth for tokens; if a token exists we
-  // trust it and (re)hydrate user info via /auth/me when the zustand store
-  // is empty (e.g. Android PWA with fresh in-memory state but persisted
-  // localStorage). Only kick to /login when there is truly no token.
+  // Bootstrap: runs once on mount. localStorage is the source of truth for
+  // tokens; if any are present we trust them and rehydrate user info via
+  // /auth/me when the zustand store is empty (Android PWA cold start has
+  // persisted localStorage but a fresh in-memory store).
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -32,13 +31,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         router.replace("/login");
         return;
       }
-      // If we already have user info in the persisted store, we're done.
-      if (user && isAuthenticated) {
+      // Already hydrated from persist — done.
+      if (useAuthStore.getState().user && useAuthStore.getState().isAuthenticated) {
         if (!cancelled) setChecking(false);
         return;
       }
-      // Token in storage but no user object — rehydrate from /auth/me.
-      // axios interceptor will auto-refresh via refresh_token on 401.
       try {
         const { default: api } = await import("@/lib/api");
         const me = await api.get("/auth/me");
@@ -46,8 +43,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         const freshRefresh = localStorage.getItem("refresh_token") || refreshToken || "";
         setAuth(me.data, freshAccess, freshRefresh);
       } catch {
-        // /auth/me failed AND refresh failed — token truly invalid.
-        // The interceptor already redirected; nothing else to do.
+        // interceptor already handled 401/403 redirect; just stop the spinner
       } finally {
         if (!cancelled) setChecking(false);
       }
@@ -57,6 +53,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // React to logout / auth state changes that happen AFTER bootstrap
+  // (e.g. the Keluar button calls store.logout() which sets
+  // isAuthenticated=false). Without this the spinner would render forever.
+  useEffect(() => {
+    if (checking) return;
+    if (!isAuthenticated) {
+      router.replace("/login");
+    }
+  }, [checking, isAuthenticated, router]);
 
   // Auto-close mobile sidebar when route changes
   useEffect(() => {
