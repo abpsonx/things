@@ -14,9 +14,9 @@ import {
   PointerSensor, 
   useSensor, 
   useSensors,
-  DragStart,
-  DragOver,
-  DragEnd,
+  DragStartEvent,
+  DragOverEvent,
+  DragEndEvent,
   defaultDropAnimationSideEffects
 } from "@dnd-kit/core";
 import { 
@@ -133,13 +133,13 @@ export default function KanbanBoard() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  const handleDragStart = (event: DragStart) => {
+  const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
     const task = tasks.find((t) => t.id === active.id);
     if (task) setActiveTask(task);
   };
 
-  const handleDragOver = (event: DragOver) => {
+  const handleDragOver = (event: DragOverEvent) => {
     const { active, over } = event;
     if (!over) return;
 
@@ -170,7 +170,7 @@ export default function KanbanBoard() {
     }
   };
 
-  const handleDragEnd = async (event: DragEnd) => {
+  const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveTask(null);
     if (!over) return;

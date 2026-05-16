@@ -13,9 +13,9 @@ import {
   PointerSensor, 
   useSensor, 
   useSensors,
-  DragStart,
-  DragOver,
-  DragEnd,
+  DragStartEvent,
+  DragOverEvent,
+  DragEndEvent,
 } from "@dnd-kit/core";
 import { 
   arrayMove, 
@@ -131,7 +131,7 @@ export default function TeamBoardPage() {
     }
   };
 
-  const onDragStart = (event: DragStart) => {
+  const onDragStart = (event: DragStartEvent) => {
     if (event.active.data.current?.type === "Task") {
       setActiveTask(event.active.data.current.task);
       return;
@@ -140,7 +140,7 @@ export default function TeamBoardPage() {
     if (task) setActiveTask(task);
   };
 
-  const onDragOver = (event: DragOver) => {
+  const onDragOver = (event: DragOverEvent) => {
     const { active, over } = event;
     if (!over) return;
 
@@ -180,7 +180,7 @@ export default function TeamBoardPage() {
     }
   };
 
-  const onDragEnd = async (event: DragEnd) => {
+  const onDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveTask(null);
 

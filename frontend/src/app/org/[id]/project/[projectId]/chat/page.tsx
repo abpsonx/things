@@ -23,7 +23,6 @@ import {
   CornerDownRight,
   MessageSquare,
   Pin,
-  PushPin,
   Star,
   Image,
   FileText,
@@ -290,9 +289,9 @@ export default function ChatPage() {
           <span
             key={i}
             className={cn(
-              "inline-flex items-center px-1.5 rounded-md font-semibold",
+              "inline-flex items-center px-1 rounded font-extrabold",
               onGreen
-                ? "bg-white/20 text-white"
+                ? "text-white underline underline-offset-2 decoration-white/60"
                 : isViewer
                   ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
                   : "bg-primary/10 text-primary",
