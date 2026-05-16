@@ -1,5 +1,5 @@
-// SW_VERSION 2026-05-16-02 — bump this string to force re-install on clients
-const SW_VERSION = '2026-05-16-02';
+// SW_VERSION 2026-05-16-03 — bump this string to force re-install on clients
+const SW_VERSION = '2026-05-16-03';
 
 self.addEventListener('install', (event) => {
   console.log('[SW] install', SW_VERSION);
@@ -28,11 +28,16 @@ self.addEventListener('push', function(event) {
   }
 
   const title = data.title || 'Things';
+  // Always use a unique tag if none provided so each push pops a fresh
+  // banner instead of silently replacing the previous one in the
+  // Notification Center. renotify forces a re-alert when the tag matches.
+  const tag = data.tag || `things-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const options = {
     body: data.body || '',
     icon: data.icon || '/assets/logo.png',
     badge: '/assets/logo.png',
-    tag: data.tag || undefined,
+    tag: tag,
+    renotify: true,
     vibrate: [100, 50, 100],
     requireInteraction: false,
     data: {

@@ -156,12 +156,15 @@ async def send_test_push(
             "diag": diag,
         }
 
+    import uuid as _uuid
     payload = {
         "title": "Things",
         "body": "Ini notif percobaan dari server 🚀",
         "url": "/dashboard",
         "icon": "/assets/logo.png",
-        "tag": "test-push",
+        # Unique tag per test so macOS always shows it as a fresh banner
+        # instead of silently merging into the previous test notif.
+        "tag": f"test-push-{_uuid.uuid4()}",
     }
 
     outcomes = []
