@@ -13,6 +13,40 @@ import { cn } from "@/lib/utils";
 import FileViewerModal from "@/components/ui/FileViewerModal";
 
 const GI = (n: string) => { const e = (n || "").toLowerCase().split(".").pop() || ""; return { isImage: ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "ico"].includes(e), isVideo: ["mp4", "webm", "mov", "avi", "mkv", "wmv"].includes(e), isAudio: ["mp3", "wav", "ogg", "aac", "flac", "m4a"].includes(e), isPdf: e === "pdf" } };
+
+// Render plain text with URLs turned into clickable <a> tags. Matches
+// http(s)://… and bare www.… domains. Splits the text in place so we
+// don't need dangerouslySetInnerHTML.
+const URL_RE = /(\b(?:https?:\/\/|www\.)[^\s<>"')]+)/gi;
+const Linkify = ({ text, me }: { text: string; me: boolean }) => {
+  if (!text) return null;
+  const parts = text.split(URL_RE);
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (i % 2 === 1) {
+          const href = part.startsWith("http") ? part : `https://${part}`;
+          return (
+            <a
+              key={i}
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className={cn(
+                "underline underline-offset-2 break-all hover:opacity-80",
+                me ? "text-blue-700" : "text-blue-600",
+              )}
+            >
+              {part}
+            </a>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </>
+  );
+};
 const FS = (b?: number) => { if (!b) return ""; if (b < 1024) return `${b}B`; if (b < 1048576) return `${(b / 1024).toFixed(1)}KB`; return `${(b / 1048576).toFixed(1)}MB` };
 const EI: [string, string[]][] = [["Sering", ["👍", "❤️", "😂", "🔥", "😊", "🙏", "✅", "🎉", "🚀", "👏"]], ["Wajah", ["😊", "😂", "🤣", "🥰", "😍", "😘", "😅", "😁", "🤔", "😢", "😭", "😤", "😡", "🤗", "🙂", "😉", "😎", "🥺", "😴"]], ["Tangan", ["👍", "👎", "👏", "🙌", "🤝", "✌️", "🤞", "👊", "✊", "🙏", "💪", "🖐️", "👋", "🤙"]], ["Lambang", ["❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "💔", "🔥", "⭐", "✨", "💥", "🌈", "🎯", "🎉", "🏆", "✅", "❌", "💀"]]];
 const QR = ["👍", "❤️", "😂", "🔥", "😊", "🙏", "🎉", "🚀", "👏", "😢"];
@@ -220,7 +254,7 @@ export default function DMChatPage() {
                       {av && <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold">{(ou?.name || "?").charAt(0).toUpperCase()}</div>}
                     </div>
                     <div className={cn("flex flex-col", me ? "items-end" : "items-start")}>
-                      <div className={cn("relative px-3.5 py-2 text-sm shadow-sm transition-all", me ? "bg-primary text-primary-foreground rounded-[18px] rounded-br-[4px]" : "bg-card border border-border rounded-[18px] rounded-bl-[4px] text-foreground", opt && "opacity-70", up2 && "min-w-[160px]")}>
+                      <div className={cn("relative px-3 py-1.5 text-sm shadow-sm transition-all", me ? "bg-primary/10 text-foreground border border-primary/20 rounded-[16px] rounded-br-[4px]" : "bg-card text-foreground border border-border rounded-[16px] rounded-bl-[4px]", opt && "opacity-70", up2 && "min-w-[160px]")}>
                         {msg.attachment_url ? (
                           <div className="space-y-1.5">
                             {(msg.is_image || GI(msg.attachment_name || "").isImage) && !up2 &&
@@ -231,22 +265,22 @@ export default function DMChatPage() {
                             {(msg.is_video || GI(msg.attachment_name || "").isVideo) &&
                               <div className="relative rounded-lg overflow-hidden max-w-[240px]"><video src={msg.attachment_url} className="w-full rounded-lg max-h-[200px]" controls preload="metadata" /></div>}
                             {!msg.is_image && !GI(msg.attachment_name || "").isImage && !msg.is_video && !GI(msg.attachment_name || "").isVideo &&
-                              <div className={cn("flex items-center gap-2 p-2 rounded-xl", me ? "bg-primary-foreground/10" : "bg-secondary/50")}>
-                                <div className={cn("p-1.5 rounded-lg shrink-0", me ? "bg-primary-foreground/15" : "bg-background")}>{(() => { const i = GI(msg.attachment_name || ""); if (i.isImage) return <Image className="w-4 h-4" />; if (i.isVideo) return <Video className="w-4 h-4" />; if (i.isAudio) return <Music className="w-4 h-4" />; if (i.isPdf) return <FileText className="w-4 h-4" />; return <File className="w-4 h-4" />; })()}</div>
-                                <div className="min-w-0 flex-1"><p className="text-xs font-medium truncate">{msg.attachment_name || "File"}</p><p className={cn("text-[9px]", me ? "text-primary-foreground/60" : "text-muted-foreground")}>{FS(msg.file_size)}</p></div>
-                                <button onClick={() => setVf({ id: msg.id, name: msg.attachment_name || "file", url: msg.attachment_url, ...GI(msg.attachment_name || ""), size: msg.file_size })} className={cn("p-1.5 rounded-lg shrink-0 transition-colors", me ? "hover:bg-primary-foreground/15" : "hover:bg-secondary")} title="Lihat"><Eye className="w-3.5 h-3.5" /></button>
-                                <a href={msg.attachment_url} download={msg.attachment_name || "file"} className={cn("p-1.5 rounded-lg shrink-0 transition-colors", me ? "hover:bg-primary-foreground/15" : "hover:bg-secondary")} title="Unduh"><Download className="w-3.5 h-3.5" /></a>
+                              <div className="flex items-center gap-2 p-2 rounded-xl bg-secondary/50">
+                                <div className="p-1.5 rounded-lg shrink-0 bg-background">{(() => { const i = GI(msg.attachment_name || ""); if (i.isImage) return <Image className="w-4 h-4" />; if (i.isVideo) return <Video className="w-4 h-4" />; if (i.isAudio) return <Music className="w-4 h-4" />; if (i.isPdf) return <FileText className="w-4 h-4" />; return <File className="w-4 h-4" />; })()}</div>
+                                <div className="min-w-0 flex-1"><p className="text-xs font-medium truncate">{msg.attachment_name || "File"}</p><p className="text-[9px] text-muted-foreground">{FS(msg.file_size)}</p></div>
+                                <button onClick={() => setVf({ id: msg.id, name: msg.attachment_name || "file", url: msg.attachment_url, ...GI(msg.attachment_name || ""), size: msg.file_size })} className="p-1.5 rounded-lg shrink-0 transition-colors hover:bg-secondary" title="Lihat"><Eye className="w-3.5 h-3.5" /></button>
+                                <a href={msg.attachment_url} download={msg.attachment_name || "file"} className="p-1.5 rounded-lg shrink-0 transition-colors hover:bg-secondary" title="Unduh"><Download className="w-3.5 h-3.5" /></a>
                               </div>}
-                            {(msg.is_image || GI(msg.attachment_name || "").isImage) && !up2 && <p className={cn("text-[9px] opacity-60 text-center", me ? "text-primary-foreground" : "text-foreground")}>Ketuk untuk melihat</p>}
+                            {(msg.is_image || GI(msg.attachment_name || "").isImage) && !up2 && <p className="text-[9px] opacity-60 text-center text-foreground">Ketuk untuk melihat</p>}
                           </div>
-                        ) : <div className="whitespace-pre-wrap break-words leading-relaxed">{msg.content}</div>}
-                        {up2 && <div className="mt-2 space-y-1"><div className={cn("flex items-center gap-2", me ? "text-primary-foreground/70" : "text-muted-foreground")}><Clock className="w-3 h-3 animate-pulse" /><span className="text-[10px]">Mengirim file...</span></div><div className={cn("h-1.5 rounded-full overflow-hidden", me ? "bg-primary-foreground/20" : "bg-secondary")}><div className={cn("h-full rounded-full transition-all duration-300 ease-out", me ? "bg-primary-foreground/60" : "bg-primary")} style={{ width: `${pct}%` }} /></div><p className={cn("text-[9px] text-right", me ? "text-primary-foreground/50" : "text-muted-foreground")}>{Math.round(pct)}%</p></div>}
-                        <div className={cn("flex items-center gap-0.5 mt-1", me ? "justify-end" : "justify-start")}>
-                          {opt && !up2 ? <span className={cn("text-[9px] flex items-center gap-1", me ? "text-primary-foreground/60" : "text-muted-foreground")}><Loader2 className="w-2.5 h-2.5 animate-spin" /> Kirim...</span>
+                        ) : <div className="whitespace-pre-wrap break-words leading-snug"><Linkify text={msg.content} me={me} /></div>}
+                        {up2 && <div className="mt-2 space-y-1"><div className="flex items-center gap-2 text-muted-foreground"><Clock className="w-3 h-3 animate-pulse" /><span className="text-[10px]">Mengirim file...</span></div><div className="h-1.5 rounded-full overflow-hidden bg-secondary"><div className="h-full rounded-full transition-all duration-300 ease-out bg-primary" style={{ width: `${pct}%` }} /></div><p className="text-[9px] text-right text-muted-foreground">{Math.round(pct)}%</p></div>}
+                        <div className={cn("flex items-center gap-0.5 mt-0.5", me ? "justify-end" : "justify-start")}>
+                          {opt && !up2 ? <span className="text-[9px] flex items-center gap-1 text-muted-foreground"><Loader2 className="w-2.5 h-2.5 animate-spin" /> Kirim...</span>
                             : up2 ? null
-                              : <span className={cn("text-[9px] flex items-center gap-0.5", me ? "text-primary-foreground/60" : "text-muted-foreground")}>
+                              : <span className="text-[9px] flex items-center gap-0.5 text-muted-foreground">
                                 {d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                                {me && (msg.is_read ? <CheckCheck className="w-3 h-3 text-blue-400" /> : msg.is_delivered ? <CheckCheck className="w-3 h-3 text-muted-foreground/60" /> : <Check className="w-3 h-3" />)}
+                                {me && (msg.is_read ? <CheckCheck className="w-3 h-3 text-blue-500" /> : msg.is_delivered ? <CheckCheck className="w-3 h-3 text-muted-foreground/60" /> : <Check className="w-3 h-3" />)}
                               </span>}
                         </div>
                         {me && !opt && !up2 && <div className={cn("absolute top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-1", me ? "-left-10" : "-right-10")}>
