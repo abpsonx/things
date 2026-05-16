@@ -35,13 +35,37 @@ export default function PushAutoPrompt() {
         const registration = await navigator.serviceWorker.register("/sw.js");
         await navigator.serviceWorker.ready;
 
+        // Fetch the canonical VAPID key from the backend up front.
+        const keyRes = await api.get("/users/me/notifications/vapid-public-key");
+        const rawKey = (keyRes.data?.publicKey || "").trim();
+        const serverKey = urlBase64ToUint8Array(rawKey);
+        console.log("[PushAutoPrompt] VAPID key length:", serverKey.length, "(expected 65)");
+        if (serverKey.length !== 65) {
+          console.error(
+            "[PushAutoPrompt] backend returned malformed VAPID key:",
+            JSON.stringify(rawKey.slice(0, 20)) + "...",
+            "len=" + rawKey.length,
+          );
+          return;
+        }
+
+        // If there's an existing subscription, only keep it when its
+        // applicationServerKey matches the current backend key. Otherwise
+        // Chrome will throw InvalidAccessError on a fresh subscribe().
         const existing = await registration.pushManager.getSubscription();
         if (existing) {
-          // Re-sync with backend in case server lost the subscription
-          try {
-            await api.post("/users/me/notifications/push-subscribe", existing.toJSON());
-          } catch {}
-          return;
+          const existingKey = existing.options?.applicationServerKey;
+          const matches =
+            existingKey && new Uint8Array(existingKey).every((b, i) => b === serverKey[i]) &&
+            (existingKey as ArrayBuffer).byteLength === serverKey.length;
+          if (matches) {
+            try {
+              await api.post("/users/me/notifications/push-subscribe", existing.toJSON());
+            } catch {}
+            return;
+          }
+          console.warn("[PushAutoPrompt] existing subscription has stale key — unsubscribing");
+          await existing.unsubscribe();
         }
 
         if (Notification.permission === "default") {
@@ -52,12 +76,12 @@ export default function PushAutoPrompt() {
 
         if (Notification.permission !== "granted") return;
 
-        const keyRes = await api.get("/users/me/notifications/vapid-public-key");
         const sub = await registration.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(keyRes.data.publicKey),
+          applicationServerKey: serverKey,
         });
         await api.post("/users/me/notifications/push-subscribe", sub.toJSON());
+        console.log("[PushAutoPrompt] subscribed OK");
       } catch (err) {
         console.error("[PushAutoPrompt] failed:", err);
       }
