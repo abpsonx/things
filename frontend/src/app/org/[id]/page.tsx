@@ -4,18 +4,20 @@ import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import api from "@/lib/api";
-import { 
-  Plus, 
-  FolderRoot, 
-  ArrowRight, 
-  Users, 
+import {
+  Plus,
+  FolderRoot,
+  ArrowRight,
+  Users,
   MoreVertical,
   Layout as LayoutIcon,
   MessageSquare,
   Calendar,
   Loader2,
   ChevronRight,
-  UserPlus
+  UserPlus,
+  Settings as SettingsIcon,
+  Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import InviteMemberModal from "@/components/org/InviteMemberModal";
@@ -42,6 +44,27 @@ export default function OrgPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [isInviting, setIsInviting] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
+  // ID of the project whose ⋮ menu is currently open (or null)
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+
+  // Close the card ⋮ menu on any outside click
+  useEffect(() => {
+    if (!openMenuId) return;
+    const close = () => setOpenMenuId(null);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [openMenuId]);
+
+  const handleDeleteProject = async (projectId: string, projectName: string) => {
+    setOpenMenuId(null);
+    if (!confirm(`Hapus project "${projectName}"? Tindakan ini tidak bisa dibatalkan.`)) return;
+    try {
+      await api.delete(`/organizations/${orgId}/projects/${projectId}`);
+      setProjects((prev) => prev.filter((p) => p.id !== projectId));
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || "Gagal menghapus project");
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -158,19 +181,56 @@ export default function OrgPage() {
         <div className="grid md:grid-cols-2 lg:grid-cols-2 gap-6">
           {projects.length > 0 ? (
             projects.map((project) => (
-              <div
+              <Link
                 key={project.id}
-                className="group p-6 border border-border rounded-2xl bg-card hover:shadow-lg transition-all space-y-6"
+                href={`/org/${orgId}/project/${project.id}/board`}
+                className="group p-6 border border-border rounded-2xl bg-card hover:shadow-lg hover:border-primary/40 transition-all space-y-6 relative block"
               >
                 <div className="flex items-start justify-between">
                   <div className="w-12 h-12 bg-secondary rounded-xl flex items-center justify-center border border-border group-hover:bg-primary/5 transition-colors">
                     <FolderRoot className="w-6 h-6 text-muted-foreground group-hover:text-primary transition-colors" />
                   </div>
-                  <button className="text-muted-foreground hover:text-foreground">
-                    <MoreVertical className="w-4 h-4" />
-                  </button>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setOpenMenuId(openMenuId === project.id ? null : project.id);
+                      }}
+                      className="p-1 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors"
+                      aria-label="Opsi project"
+                    >
+                      <MoreVertical className="w-4 h-4" />
+                    </button>
+                    {openMenuId === project.id && (
+                      <div
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                        className="absolute right-0 top-full mt-1 w-44 bg-background border border-border rounded-xl shadow-xl z-20 p-1 animate-in fade-in slide-in-from-top-1"
+                      >
+                        <Link
+                          href={`/org/${orgId}/project/${project.id}/settings`}
+                          onClick={() => setOpenMenuId(null)}
+                          className="flex items-center gap-3 px-3 py-2 rounded-lg text-xs hover:bg-secondary transition-colors w-full"
+                        >
+                          <SettingsIcon className="w-3.5 h-3.5 opacity-70" /> Pengaturan
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleDeleteProject(project.id, project.name);
+                          }}
+                          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs hover:bg-destructive/10 text-destructive transition-colors text-left"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 opacity-70" /> Hapus Project
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                
+
                 <div className="space-y-1">
                   <h3 className="font-bold text-xl group-hover:text-primary transition-colors">{project.name}</h3>
                   <p className="text-sm text-muted-foreground line-clamp-2">
@@ -179,29 +239,23 @@ export default function OrgPage() {
                 </div>
 
                 <div className="grid grid-cols-3 gap-2 pt-4 border-t border-border">
-                  <Link 
-                    href={`/org/${orgId}/project/${project.id}/board`}
-                    className="flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-secondary transition-colors group/tool"
-                  >
-                    <LayoutIcon className="w-4 h-4 text-muted-foreground group-hover/tool:text-primary" />
-                    <span className="text-[10px] font-medium">Board</span>
-                  </Link>
-                  <Link 
-                    href={`/org/${orgId}/project/${project.id}/chat`}
-                    className="flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-secondary transition-colors group/tool"
-                  >
-                    <MessageSquare className="w-4 h-4 text-muted-foreground group-hover/tool:text-primary" />
-                    <span className="text-[10px] font-medium">Chat</span>
-                  </Link>
-                  <Link 
-                    href={`/org/${orgId}/project/${project.id}/calendar`}
-                    className="flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-secondary transition-colors group/tool"
-                  >
-                    <Calendar className="w-4 h-4 text-muted-foreground group-hover/tool:text-primary" />
-                    <span className="text-[10px] font-medium">Events</span>
-                  </Link>
+                  {[
+                    { href: `/org/${orgId}/project/${project.id}/board`, Icon: LayoutIcon, label: "Board" },
+                    { href: `/org/${orgId}/project/${project.id}/chat`, Icon: MessageSquare, label: "Chat" },
+                    { href: `/org/${orgId}/project/${project.id}/calendar`, Icon: Calendar, label: "Events" },
+                  ].map(({ href, Icon, label }) => (
+                    <Link
+                      key={label}
+                      href={href}
+                      onClick={(e) => e.stopPropagation()}
+                      className="flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-secondary transition-colors group/tool"
+                    >
+                      <Icon className="w-4 h-4 text-muted-foreground group-hover/tool:text-primary" />
+                      <span className="text-[10px] font-medium">{label}</span>
+                    </Link>
+                  ))}
                 </div>
-              </div>
+              </Link>
             ))
           ) : (
             <div className="col-span-full text-center py-24 border border-dashed border-border rounded-3xl space-y-4">
