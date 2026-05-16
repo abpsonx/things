@@ -243,6 +243,22 @@ async def add_project_member(
         project_id=project_id, metadata={"email": data.email, "role": data.role},
     )
 
+    # Notify the added member
+    from app.services.notification import notify_user
+    proj_res = await db.execute(select(Project).where(Project.id == project_id))
+    proj_row = proj_res.scalar_one_or_none()
+    proj_name = proj_row.name if proj_row else "project"
+    await notify_user(
+        db,
+        user_id=str(user.id),
+        type="project_invite",
+        title="Diundang ke Project",
+        content=f"{current_user.name} menambahkan kamu ke project {proj_name}",
+        ref_id=str(project_id),
+        org_id=str(org_id),
+        url=f"/org/{org_id}/project/{project_id}/chat",
+    )
+
     await db.commit()
     return {"message": f"Berhasil menambahkan {data.email} ke project"}
 

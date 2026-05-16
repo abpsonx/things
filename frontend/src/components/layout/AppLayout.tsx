@@ -8,6 +8,7 @@ import NotificationBell from "./NotificationBell";
 import { ThemeToggle } from "./ThemeToggle";
 import { GlobalSearch } from "./GlobalSearch";
 import ChatWidget from "./ChatWidget";
+import PushAutoPrompt from "@/components/notifications/PushAutoPrompt";
 import { Loader2, Menu } from "lucide-react";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -80,6 +81,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </main>
       </div>
       <ChatWidget />
+      <PushAutoPrompt />
     </div>
   );
 }

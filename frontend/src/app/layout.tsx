@@ -47,6 +47,7 @@ export const metadata: Metadata = {
 
 import RootLayoutWrapper from "@/components/layout/RootLayoutWrapper";
 import { ThemeProvider } from "@/components/layout/ThemeProvider";
+import { Toaster } from "sonner";
 
 export default function RootLayout({
   children,
@@ -69,6 +70,12 @@ export default function RootLayout({
           <RootLayoutWrapper>
             {children}
           </RootLayoutWrapper>
+          <Toaster
+            position="top-right"
+            richColors
+            closeButton
+            theme="system"
+          />
         </ThemeProvider>
       </body>
     </html>

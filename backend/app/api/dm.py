@@ -122,6 +122,26 @@ async def send_dm_message(
     await db.commit()
     await db.refresh(message)
 
+    # Notify the OTHER party (web push + socket.io toast)
+    channel_res = await db.execute(select(DMChannel).where(DMChannel.id == channel_id))
+    channel = channel_res.scalar_one_or_none()
+    if channel:
+        recipient_id = channel.user2_id if channel.user1_id == current_user.id else channel.user1_id
+        from app.services.notification import notify_user
+        snippet = (data.content or "").strip()
+        if len(snippet) > 80:
+            snippet = snippet[:77] + "..."
+        await notify_user(
+            db,
+            user_id=str(recipient_id),
+            type="dm",
+            title=f"{current_user.name}",
+            content=snippet or "Mengirim pesan",
+            ref_id=str(channel.id),
+            org_id=str(channel.org_id),
+            url=f"/org/{channel.org_id}/dm/{current_user.id}",
+        )
+
     # Broadcast via native WebSocket to other clients (not sender)
     payload = {
         "type": "dm_received",
@@ -253,6 +273,23 @@ async def upload_dm_attachment(
     db.add(message)
     await db.commit()
     await db.refresh(message)
+
+    # Notify the recipient of the attachment
+    channel_res = await db.execute(select(DMChannel).where(DMChannel.id == channel_id))
+    channel = channel_res.scalar_one_or_none()
+    if channel:
+        recipient_id = channel.user2_id if channel.user1_id == current_user.id else channel.user1_id
+        from app.services.notification import notify_user
+        await notify_user(
+            db,
+            user_id=str(recipient_id),
+            type="dm",
+            title=f"{current_user.name}",
+            content=f"Mengirim file: {file.filename or 'lampiran'}",
+            ref_id=str(channel.id),
+            org_id=str(channel.org_id),
+            url=f"/org/{channel.org_id}/dm/{current_user.id}",
+        )
     
     # Detect file type for preview
     is_image = bool(file.filename and file.filename.lower().split('.')[-1] in ('jpg','jpeg','png','gif','webp','svg','bmp','ico'))

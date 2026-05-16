@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Bell, Check } from "lucide-react";
+import { toast } from "sonner";
 import api from "@/lib/api";
 import { formatDistanceToNow } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
@@ -12,19 +14,40 @@ import { useAuthStore } from "@/store/useAuthStore";
 
 interface Notification {
   id: string;
-  title: string;
+  title?: string;
   content: string;
+  url?: string;
   is_read: boolean;
   created_at: string;
   link?: string;
 }
 
+function syncAppBadge(count: number) {
+  if (typeof navigator === "undefined") return;
+  const nav = navigator as Navigator & {
+    setAppBadge?: (n?: number) => Promise<void>;
+    clearAppBadge?: () => Promise<void>;
+  };
+  try {
+    if (count > 0) nav.setAppBadge?.(count);
+    else nav.clearAppBadge?.();
+  } catch {
+    /* feature not supported */
+  }
+}
+
 export default function NotificationBell() {
+  const router = useRouter();
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  
+
   const { user } = useAuthStore();
-  
+
   const unreadCount = notifications.filter(n => !n.is_read).length;
+
+  // Keep the PWA app badge in sync with unread count.
+  useEffect(() => {
+    syncAppBadge(unreadCount);
+  }, [unreadCount]);
 
   const fetchNotifications = async () => {
     try {
@@ -45,23 +68,13 @@ export default function NotificationBell() {
     const handleNewNotif = (notif: Notification) => {
       setNotifications(prev => [notif, ...prev]);
 
-      // Show native browser banner notification
-      if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
-        try {
-          const n = new Notification("Things Update", {
-            body: notif.content || "Ada notifikasi baru",
-            icon: "/assets/logo.png",
-            badge: "/assets/logo.png",
-            tag: notif.id, // prevent duplicates
-          });
-          n.onclick = () => {
-            window.focus();
-            n.close();
-          };
-        } catch (e) {
-          console.error("Notification API error", e);
-        }
-      }
+      // In-app toast — clicking it navigates to the notif's target URL.
+      toast(notif.title || "Notifikasi baru", {
+        description: notif.content,
+        action: notif.url
+          ? { label: "Lihat", onClick: () => router.push(notif.url!) }
+          : undefined,
+      });
     };
 
     socket.on("new_notification", handleNewNotif);
@@ -69,7 +82,7 @@ export default function NotificationBell() {
     return () => {
       socket.off("new_notification", handleNewNotif);
     };
-  }, [user]);
+  }, [user, router]);
 
   const markAsRead = async (id: string) => {
     try {

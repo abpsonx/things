@@ -237,6 +237,22 @@ async def add_team_member(
         team_id=team_id, metadata={"email": data.email, "role": data.role},
     )
 
+    # Notify the added team member
+    from app.services.notification import notify_user
+    team_res = await db.execute(select(Team).where(Team.id == team_id))
+    team_row = team_res.scalar_one_or_none()
+    team_name = team_row.name if team_row else "team"
+    await notify_user(
+        db,
+        user_id=str(user.id),
+        type="team_invite",
+        title="Diundang ke Tim",
+        content=f"{current_user.name} menambahkan kamu ke tim {team_name}",
+        ref_id=str(team_id),
+        org_id=str(org_id),
+        url=f"/org/{org_id}/team/{team_id}/board",
+    )
+
     await db.commit()
     return {"message": f"Berhasil menambahkan {data.email} ke team"}
 

@@ -151,6 +151,23 @@ async def invite_member(
 
         member = OrgMember(org_id=org_id, user_id=user.id, role=data.role)
         db.add(member)
+
+        # Notify the invited user
+        from app.services.notification import notify_user
+        from app.models.organization import Organization as Org
+        org_res = await db.execute(select(Org).where(Org.id == org_id))
+        org_row = org_res.scalar_one_or_none()
+        org_name = org_row.name if org_row else "workspace"
+        await notify_user(
+            db,
+            user_id=str(user.id),
+            type="org_invite",
+            title="Undangan Workspace",
+            content=f"{current_user.name} mengundang kamu ke {org_name} sebagai {data.role}",
+            ref_id=str(org_id),
+            org_id=str(org_id),
+            url=f"/org/{org_id}",
+        )
     else:
         # Check if invitation already exists (we'll just update it or create new)
         inv_result = await db.execute(
