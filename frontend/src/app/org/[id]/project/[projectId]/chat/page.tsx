@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Modal from "@/components/ui/Modal";
 import api from "@/lib/api";
 import { socket } from "@/lib/socket";
@@ -34,6 +34,7 @@ import { cn, formatDate } from "@/lib/utils";
 
 export default function ChatPage() {
   const { id: orgId, projectId } = useParams();
+  const router = useRouter();
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [channels, setChannels] = useState<any[]>([]);
   const [activeChannel, setActiveChannel] = useState<any>(null);
@@ -60,6 +61,8 @@ export default function ChatPage() {
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
   const [isStarredModalOpen, setIsStarredModalOpen] = useState(false);
   const [isMediaModalOpen, setIsMediaModalOpen] = useState(false);
+  const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
+  const [profileMember, setProfileMember] = useState<any | null>(null);
   const [mediaTab, setMediaTab] = useState<"media" | "files" | "links">("media");
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -73,6 +76,10 @@ export default function ChatPage() {
   const [members, setMembers] = useState<any[]>([]);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionHighlight, setMentionHighlight] = useState(0);
+  // Mentions the user explicitly picked this composing session. We display
+  // them in the textarea as plain `@Name` (no uuid noise) and only expand
+  // them to the full `@[Name](uuid)` token right before sending.
+  const pickedMentionsRef = useRef<Map<string, string>>(new Map());
 
   // Fetch Current User
   useEffect(() => {
@@ -161,18 +168,40 @@ export default function ChatPage() {
     const atIdx = before.lastIndexOf("@");
     if (atIdx === -1) return;
     const name = member.user?.name || "user";
-    const token = `@[${name}](${member.user_id}) `;
-    const next = before.slice(0, atIdx) + token + after;
+    // Track for later expansion. Same name → assume same user (project
+    // member list rarely has duplicates; first pick wins).
+    pickedMentionsRef.current.set(name, member.user_id);
+    const visible = `@${name} `;
+    const next = before.slice(0, atIdx) + visible + after;
     setNewMessage(next);
     setMentionQuery(null);
     setMentionHighlight(0);
-    // restore caret after the inserted token
     requestAnimationFrame(() => {
       if (!textareaRef.current) return;
-      const pos = atIdx + token.length;
+      const pos = atIdx + visible.length;
       textareaRef.current.focus();
       textareaRef.current.setSelectionRange(pos, pos);
     });
+  };
+
+  // Replace each `@Name` (whole word) that we explicitly inserted via the
+  // picker with the full `@[Name](uuid)` token the backend expects.
+  const expandMentionsForSend = (text: string) => {
+    if (!text || pickedMentionsRef.current.size === 0) return text;
+    let out = text;
+    // Sort by name length desc so longer names match before substrings
+    const names = Array.from(pickedMentionsRef.current.keys()).sort(
+      (a, b) => b.length - a.length,
+    );
+    for (const name of names) {
+      const uid = pickedMentionsRef.current.get(name);
+      if (!uid) continue;
+      const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      // \B@Name(?=\s|$) — preceded by anything, followed by space or end
+      const re = new RegExp(`@${escaped}(?=\\s|$|[^\\w])`, "g");
+      out = out.replace(re, `@[${name}](${uid})`);
+    }
+    return out;
   };
 
   const clearChat = async () => {
@@ -243,7 +272,7 @@ export default function ChatPage() {
     }
   };
 
-  const renderMessageContent = (content: string) => {
+  const renderMessageContent = (content: string, onGreen = false) => {
     if (!content) return null;
     // Split on URL OR mention token, keeping the delimiters
     const TOKEN_RE = /(https?:\/\/[^\s]+|@\[[^\]]+\]\([0-9a-fA-F-]{36}\))/g;
@@ -256,15 +285,17 @@ export default function ChatPage() {
       const mentionMatch = part.match(MENTION_RE);
       if (mentionMatch) {
         const [, name, userId] = mentionMatch;
-        const isMe = currentUser?.id === userId;
+        const isViewer = currentUser?.id === userId;
         return (
           <span
             key={i}
             className={cn(
               "inline-flex items-center px-1.5 rounded-md font-semibold",
-              isMe
-                ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
-                : "bg-primary/10 text-primary",
+              onGreen
+                ? "bg-white/20 text-white"
+                : isViewer
+                  ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                  : "bg-primary/10 text-primary",
             )}
           >
             @{name}
@@ -278,7 +309,10 @@ export default function ChatPage() {
             href={part}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-blue-500 hover:underline break-all"
+            className={cn(
+              "hover:underline break-all",
+              onGreen ? "text-white font-semibold underline underline-offset-2" : "text-blue-500",
+            )}
             onClick={(e) => e.stopPropagation()}
           >
             {part}
@@ -450,15 +484,17 @@ export default function ChatPage() {
         attachmentName = uploadRes.data.filename;
       }
 
+      const expandedContent = expandMentionsForSend(newMessage);
+
       if (editingMessage) {
         const res = await api.patch(`/projects/${projectId}/channels/${activeChannel.id}/messages/${editingMessage.id}`, {
-          content: newMessage
+          content: expandedContent,
         });
         setMessages(prev => prev.map(m => m.id === editingMessage.id ? res.data : m));
         setEditingMessage(null);
       } else {
         const res = await api.post(`/projects/${projectId}/channels/${activeChannel.id}/messages`, {
-          content: newMessage || (attachment ? `Sent a file: ${attachment.name}` : ""),
+          content: expandedContent || (attachment ? `Sent a file: ${attachment.name}` : ""),
           parent_id: replyingTo?.id,
           attachment_url: attachmentUrl,
           attachment_name: attachmentName
@@ -473,6 +509,7 @@ export default function ChatPage() {
       }
 
       setNewMessage("");
+      pickedMentionsRef.current.clear();
       setAttachment(null);
       setUploadingFile(false);
     } catch (err) {
@@ -614,6 +651,9 @@ export default function ChatPage() {
                       <button onClick={() => { setIsMediaModalOpen(true); setShowHeaderMenu(false); }} className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs hover:bg-secondary transition-all">
                         <Image className="w-4 h-4 text-blue-500 opacity-80" /> Media & Lampiran
                       </button>
+                      <button onClick={() => { setIsMembersModalOpen(true); setShowHeaderMenu(false); }} className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs hover:bg-secondary transition-all text-left">
+                        <MessageSquare className="w-4 h-4 text-emerald-500 opacity-80" /> Anggota Project ({members.length})
+                      </button>
                       <div className="h-px bg-border my-1" />
                       <button onClick={handleDeleteChannel} className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs hover:bg-red-500/10 text-red-500 transition-all text-left">
                         <Trash2 className="w-4 h-4 opacity-60" /> Hapus Channel
@@ -696,8 +736,8 @@ export default function ChatPage() {
 
                     <div className={cn("max-w-[85%] relative flex flex-col", isMe ? "items-end" : "items-start")}>
                       <div className={cn(
-                        "px-3 py-2 rounded-2xl shadow-sm text-[13px] relative group/msg transition-all border border-border min-w-[40px]",
-                        isMe ? "bg-primary/20 border-primary/30 rounded-tr-none" : "bg-secondary rounded-tl-none",
+                        "px-3 py-1.5 rounded-2xl shadow-sm text-[13px] relative group/msg transition-all min-w-[40px]",
+                        isMe ? "bg-emerald-500 text-white rounded-tr-none" : "bg-card border border-border text-foreground rounded-tl-none",
                         msg.is_pinned && "ring-1 ring-blue-500/30",
                         msg.is_starred && "ring-1 ring-yellow-500/30"
                       )}>
@@ -751,14 +791,14 @@ export default function ChatPage() {
                         )}
 
                         <div className="flex items-end justify-end gap-x-2">
-                          {msg.content && <p className="flex-1 min-w-[30px] whitespace-pre-wrap leading-tight py-0.5 text-foreground">{renderMessageContent(msg.content)}</p>}
-                          <div className="flex items-center gap-0.5 text-[8px] mb-[1px] shrink-0 font-medium select-none text-muted-foreground/60">
+                          {msg.content && <p className={cn("flex-1 min-w-[30px] whitespace-pre-wrap leading-snug py-0.5", isMe ? "text-white" : "text-foreground")}>{renderMessageContent(msg.content, isMe)}</p>}
+                          <div className={cn("flex items-center gap-0.5 text-[8px] mb-[1px] shrink-0 font-medium select-none", isMe ? "text-white/70" : "text-muted-foreground/60")}>
                             <span>{formatTime(msg.created_at)}</span>
                             {isMe && (
                               <button onClick={() => setReadInfo(msg)} className="ml-0.5 transition-colors">
                                 {(msg.read_by && msg.read_by.length > 0)
-                                  ? <CheckCheck className="w-3 h-3 text-blue-500" />
-                                  : <CheckCheck className="w-3 h-3 opacity-30" />
+                                  ? <CheckCheck className="w-3 h-3 text-white" />
+                                  : <CheckCheck className="w-3 h-3 text-white/40" />
                                 }
                               </button>
                             )}
@@ -1144,6 +1184,87 @@ export default function ChatPage() {
         </div>
       </div>
     </div>
+  </Modal>
+
+  {/* Project Members Modal */}
+  <Modal
+    isOpen={isMembersModalOpen}
+    onClose={() => setIsMembersModalOpen(false)}
+    title={`Anggota Project (${members.length})`}
+  >
+    <div className="max-h-[60vh] overflow-y-auto space-y-1.5 p-1">
+      {members.length === 0 ? (
+        <div className="text-center py-8 text-muted-foreground text-sm">Belum ada anggota</div>
+      ) : (
+        members.map((m) => (
+          <button
+            key={m.user_id}
+            onClick={() => { setProfileMember(m); setIsMembersModalOpen(false); }}
+            className="w-full flex items-center gap-3 p-3 rounded-2xl border border-border hover:border-primary/40 hover:bg-secondary/40 transition-all text-left"
+          >
+            <div className="w-11 h-11 rounded-2xl bg-secondary border border-border flex items-center justify-center overflow-hidden font-bold text-sm shrink-0">
+              {m.user?.avatar_url
+                ? <img src={m.user.avatar_url} alt={m.user.name} className="w-full h-full object-cover" />
+                : (m.user?.name || "?").charAt(0).toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold truncate">{m.user?.name || "User"}</p>
+              <p className="text-[10px] text-muted-foreground truncate">{m.user?.email}</p>
+            </div>
+            <span className={cn(
+              "text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full",
+              m.role === "manager" ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground"
+            )}>{m.role}</span>
+          </button>
+        ))
+      )}
+    </div>
+  </Modal>
+
+  {/* Profile Detail Modal */}
+  <Modal
+    isOpen={!!profileMember}
+    onClose={() => setProfileMember(null)}
+    title="Profil Anggota"
+  >
+    {profileMember && (
+      <div className="p-2 flex flex-col items-center text-center">
+        <div className="w-24 h-24 rounded-3xl bg-secondary border border-border flex items-center justify-center overflow-hidden font-extrabold text-2xl mb-4">
+          {profileMember.user?.avatar_url
+            ? <img src={profileMember.user.avatar_url} alt={profileMember.user.name} className="w-full h-full object-cover" />
+            : (profileMember.user?.name || "?").charAt(0).toUpperCase()}
+        </div>
+        <h3 className="text-lg font-extrabold mb-0.5">{profileMember.user?.name || "User"}</h3>
+        {profileMember.user?.email && (
+          <a href={`mailto:${profileMember.user.email}`} className="text-xs text-primary hover:underline mb-3">
+            {profileMember.user.email}
+          </a>
+        )}
+        <span className={cn(
+          "text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full",
+          profileMember.role === "manager" ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground"
+        )}>{profileMember.role}</span>
+        <div className="w-full mt-5 flex flex-col gap-2">
+          {profileMember.user_id !== currentUser?.id && (
+            <button
+              onClick={() => {
+                router.push(`/org/${orgId}/dm/${profileMember.user_id}`);
+                setProfileMember(null);
+              }}
+              className="w-full py-2.5 bg-primary text-primary-foreground rounded-2xl text-xs font-bold hover:opacity-90 transition-opacity"
+            >
+              Kirim DM
+            </button>
+          )}
+          <button
+            onClick={() => setProfileMember(null)}
+            className="w-full py-2.5 bg-secondary rounded-2xl text-xs font-bold hover:bg-secondary/70 transition-colors"
+          >
+            Tutup
+          </button>
+        </div>
+      </div>
+    )}
   </Modal>
     </div>
   );

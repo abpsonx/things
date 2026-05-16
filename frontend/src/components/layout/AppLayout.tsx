@@ -9,7 +9,7 @@ import { ThemeToggle } from "./ThemeToggle";
 import { GlobalSearch } from "./GlobalSearch";
 import ChatWidget from "./ChatWidget";
 import PushAutoPrompt from "@/components/notifications/PushAutoPrompt";
-import { Loader2, Menu } from "lucide-react";
+import { Menu } from "lucide-react";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, setAuth } = useAuthStore();
@@ -96,8 +96,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (checking || !isAuthenticated) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-background">
-        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      <div className="fixed inset-0 z-[999] flex flex-col items-center justify-center bg-background gap-6">
+        <div className="relative">
+          <img
+            src="/assets/logo.png"
+            alt="Things"
+            className="w-16 h-16 rounded-2xl object-contain animate-pulse"
+          />
+          <div className="absolute -inset-3 rounded-3xl border-2 border-primary/20 border-t-primary animate-spin" />
+        </div>
+        <p className="text-xs font-medium text-muted-foreground tracking-wide">
+          Memuat Things…
+        </p>
       </div>
     );
   }

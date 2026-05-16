@@ -10,6 +10,14 @@ export default function RootLayoutWrapper({ children }: { children: React.ReactN
 
   useEffect(() => {
     setMounted(true);
+    // Fade out + remove the pre-hydration splash injected by layout.tsx
+    if (typeof window !== "undefined") {
+      const el = document.getElementById("boot-splash");
+      if (el) {
+        el.style.opacity = "0";
+        setTimeout(() => el.remove(), 320);
+      }
+    }
   }, []);
 
   // Avoid hydration mismatch

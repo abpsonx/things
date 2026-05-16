@@ -61,6 +61,69 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
+        {/* Pre-hydration splash. Stays visible during the awkward gap
+            between the OS PWA splash and React mounting. Removed by
+            RootLayoutWrapper's first effect. */}
+        <div
+          id="boot-splash"
+          aria-hidden
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 20,
+            background: "#ffffff",
+            transition: "opacity 280ms ease",
+          }}
+        >
+          <div style={{ position: "relative", width: 64, height: 64 }}>
+            <img
+              src="/assets/logo.png"
+              alt=""
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: 16,
+                objectFit: "contain",
+                animation: "thingsBootPulse 1.4s ease-in-out infinite",
+              }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                inset: -10,
+                borderRadius: 22,
+                border: "2px solid rgba(0,0,0,0.08)",
+                borderTopColor: "rgba(0,0,0,0.55)",
+                animation: "thingsBootSpin 0.9s linear infinite",
+              }}
+            />
+          </div>
+          <p
+            style={{
+              fontSize: 11,
+              letterSpacing: "0.04em",
+              color: "rgba(0,0,0,0.45)",
+              fontFamily: "system-ui, -apple-system, sans-serif",
+              margin: 0,
+            }}
+          >
+            Memuat Things…
+          </p>
+          <style
+            dangerouslySetInnerHTML={{
+              __html: `
+                @keyframes thingsBootPulse { 0%,100% { transform: scale(1); opacity:.95 } 50% { transform: scale(1.06); opacity:.7 } }
+                @keyframes thingsBootSpin { to { transform: rotate(360deg) } }
+                @media (prefers-color-scheme: dark) { #boot-splash { background: #0a0a0a !important } #boot-splash p { color: rgba(255,255,255,0.45) !important } #boot-splash > div > div { border-color: rgba(255,255,255,0.08); border-top-color: rgba(255,255,255,0.55) } }
+              `,
+            }}
+          />
+        </div>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
