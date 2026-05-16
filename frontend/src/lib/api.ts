@@ -34,27 +34,37 @@ api.interceptors.response.use(
       originalRequest._retry = true;
       const refreshToken = localStorage.getItem("refresh_token");
 
-      if (refreshToken) {
-        try {
-          const response = await axios.post(`${API_URL}/auth/refresh`, {}, {
-            headers: { Authorization: `Bearer ${refreshToken}` }
-          });
-          
-          const { access_token, refresh_token } = response.data;
-          localStorage.setItem("access_token", access_token);
-          localStorage.setItem("refresh_token", refresh_token);
-          
-          originalRequest.headers.Authorization = `Bearer ${access_token}`;
-          return api(originalRequest);
-        } catch (refreshError) {
-          // Refresh token expired or invalid, logout
+      if (!refreshToken) {
+        // No refresh token at all → really logged out.
+        if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+          window.location.href = "/login";
+        }
+        return Promise.reject(error);
+      }
+
+      try {
+        const response = await axios.post(`${API_URL}/auth/refresh`, {}, {
+          headers: { Authorization: `Bearer ${refreshToken}` },
+        });
+        const { access_token, refresh_token } = response.data;
+        localStorage.setItem("access_token", access_token);
+        localStorage.setItem("refresh_token", refresh_token);
+        originalRequest.headers.Authorization = `Bearer ${access_token}`;
+        return api(originalRequest);
+      } catch (refreshError: any) {
+        // Only wipe + redirect when the refresh endpoint *itself* returns
+        // 401 (token genuinely invalid/expired). Network errors, 5xx, or
+        // anything else: keep the tokens — user can retry next request
+        // instead of being silently kicked to /login on a transient blip.
+        const refreshStatus = refreshError?.response?.status;
+        if (refreshStatus === 401 || refreshStatus === 403) {
           localStorage.removeItem("access_token");
           localStorage.removeItem("refresh_token");
           localStorage.removeItem("user");
-          window.location.href = "/login";
+          if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+            window.location.href = "/login";
+          }
         }
-      } else {
-        window.location.href = "/login";
       }
     }
     return Promise.reject(error);

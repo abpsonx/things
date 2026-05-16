@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
@@ -8,13 +8,40 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { cn } from "@/lib/utils";
 import { Loader2, ArrowRight } from "lucide-react";
 
+type StorageDebug = {
+  has_access: boolean;
+  has_refresh: boolean;
+  has_auth_storage: boolean;
+  is_pwa: boolean;
+  user_agent: string;
+};
+
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [debug, setDebug] = useState<StorageDebug | null>(null);
   const router = useRouter();
   const setAuth = useAuthStore((state) => state.setAuth);
+
+  // Diagnostic: when the user lands on /login (usually after being bounced
+  // from elsewhere) capture what storage actually contained at that moment.
+  // Useful for debugging the Android-PWA "logs me out every cold start"
+  // issue without needing chrome://inspect.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setDebug({
+      has_access: !!localStorage.getItem("access_token"),
+      has_refresh: !!localStorage.getItem("refresh_token"),
+      has_auth_storage: !!localStorage.getItem("auth-storage"),
+      is_pwa:
+        window.matchMedia?.("(display-mode: standalone)").matches ||
+        // iOS Safari quirk
+        (window.navigator as { standalone?: boolean }).standalone === true,
+      user_agent: navigator.userAgent.slice(0, 80),
+    });
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,6 +138,21 @@ export default function LoginPage() {
             Daftar gratis
           </Link>
         </p>
+
+        {debug && (
+          <details className="text-[10px] font-mono text-muted-foreground border border-border rounded-xl p-3 bg-secondary/20">
+            <summary className="cursor-pointer font-sans font-bold text-[11px]">
+              Storage debug (kalau bingung kenapa logout)
+            </summary>
+            <div className="mt-2 space-y-0.5 break-all">
+              <p>access_token: {debug.has_access ? "✅ ada" : "❌ kosong"}</p>
+              <p>refresh_token: {debug.has_refresh ? "✅ ada" : "❌ kosong"}</p>
+              <p>auth-storage: {debug.has_auth_storage ? "✅ ada" : "❌ kosong"}</p>
+              <p>mode: {debug.is_pwa ? "PWA (standalone)" : "browser tab"}</p>
+              <p className="opacity-60">{debug.user_agent}</p>
+            </div>
+          </details>
+        )}
       </div>
     </div>
   );
