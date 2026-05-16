@@ -15,6 +15,12 @@ export default function ChatWidget() {
   const [activeTab, setActiveTab] = useState<"dm" | "channels">("dm");
   const [members, setMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  // Resolved org id used for navigation. Equals the URL :id when we're on
+  // an /org/:id/* route, otherwise the user's first organization (looked
+  // up in fetchData). Without this, opening a DM from non-org pages
+  // (/dashboard, /settings, ...) produced /org/undefined/dm/... which the
+  // backend rejects with a 422.
+  const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
   const { id: orgId } = useParams();
   const { user: currentUser } = useAuthStore();
   const router = useRouter();
@@ -47,18 +53,19 @@ export default function ChatWidget() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // If we are on a page with orgId, use it. 
+      // If we are on a page with orgId, use it.
       // Otherwise, fetch user's first organization as default.
-      let targetOrgId = orgId;
-      
+      let targetOrgId = (orgId as string) || null;
+
       if (!targetOrgId) {
         const orgsRes = await api.get("/organizations");
-        if (orgsRes.data.length > 0) {
+        if (Array.isArray(orgsRes.data) && orgsRes.data.length > 0) {
           targetOrgId = orgsRes.data[0].id;
         }
       }
 
       if (targetOrgId) {
+        setActiveOrgId(targetOrgId);
         const res = await api.get(`/organizations/${targetOrgId}`);
         setMembers(res.data.members.filter((m: any) => m.user_id !== currentUser?.id));
       }
@@ -70,9 +77,12 @@ export default function ChatWidget() {
   };
 
   const handleStartChat = (userId: string) => {
-    // If no orgId in URL, we need to find which org this user belongs to
-    // For simplicity, we use the first one if not in URL
-    const targetId = orgId || members[0]?.org_id;
+    // Prefer the URL org id, fall back to whatever fetchData resolved.
+    // OrgMemberResponse doesn't include org_id, so the previous fallback
+    // `members[0]?.org_id` was always undefined and produced a broken
+    // /org/undefined/dm/... URL.
+    const targetId = (orgId as string) || activeOrgId;
+    if (!targetId) return;
     markDMsFromSenderRead(userId);
     router.push(`/org/${targetId}/dm/${userId}`);
     setIsOpen(false);
