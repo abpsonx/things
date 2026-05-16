@@ -1,38 +1,49 @@
 """Web Push notification service."""
 import json
+import logging
 from pywebpush import webpush, WebPushException
 from app.core.config import get_settings
 
+logger = logging.getLogger(__name__)
 settings = get_settings()
+
+# Push services return 404/410 when the subscription is permanently dead.
+DEAD_SUBSCRIPTION_STATUSES = {404, 410}
+
 
 def send_push_notification(subscription_info, data):
     """
     Send a web push notification to a specific subscription.
-    subscription_info: dict containing endpoint, keys (p256dh, auth)
-    data: dict with title, body, icon, url
+
+    Returns one of:
+      "sent"       — push delivered to the push service
+      "dead"       — subscription expired or unknown; caller should delete it
+      "failed"     — transient error; keep subscription for next attempt
     """
-    print(f"[PUSH] Sending to endpoint: {subscription_info.get('endpoint', 'unknown')[:80]}...")
-    print(f"[PUSH] VAPID Public Key present: {bool(settings.VAPID_PUBLIC_KEY)}")
-    print(f"[PUSH] VAPID Private Key present: {bool(settings.VAPID_PRIVATE_KEY)}")
-    print(f"[PUSH] VAPID Email: {settings.VAPID_CLAIMS_EMAIL}")
-    
+    endpoint = subscription_info.get("endpoint", "unknown")
+    vapid_email = settings.VAPID_CLAIMS_EMAIL or "noreply@dothings.id"
+
     try:
         result = webpush(
             subscription_info=subscription_info,
             data=json.dumps(data),
             vapid_private_key=settings.VAPID_PRIVATE_KEY,
-            vapid_claims={
-                "sub": f"mailto:{settings.VAPID_CLAIMS_EMAIL}"
-            }
+            vapid_claims={"sub": f"mailto:{vapid_email}"},
         )
-        print(f"[PUSH] SUCCESS! Status: {result.status_code}")
-        return True
+        logger.info(f"[PUSH] OK {result.status_code} → {endpoint[:80]}")
+        return "sent"
     except WebPushException as ex:
-        print(f"[PUSH] WebPushException: {ex}")
-        if hasattr(ex, 'response') and ex.response is not None:
-            print(f"[PUSH] Response status: {ex.response.status_code}")
-            print(f"[PUSH] Response body: {ex.response.text[:500]}")
-        return False
+        status = getattr(getattr(ex, "response", None), "status_code", None)
+        body = ""
+        if getattr(ex, "response", None) is not None:
+            try:
+                body = ex.response.text[:300]
+            except Exception:
+                pass
+        logger.warning(f"[PUSH] FAIL status={status} endpoint={endpoint[:80]} body={body}")
+        if status in DEAD_SUBSCRIPTION_STATUSES:
+            return "dead"
+        return "failed"
     except Exception as e:
-        print(f"[PUSH] General Error: {type(e).__name__}: {e}")
-        return False
+        logger.warning(f"[PUSH] ERROR {type(e).__name__}: {e}")
+        return "failed"

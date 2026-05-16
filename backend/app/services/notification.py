@@ -64,15 +64,25 @@ async def notify_user(
         "tag": str(notif.id),
     }
 
+    dead_sub_ids = []
     for sub in subscriptions:
         sub_info = {
             "endpoint": sub.endpoint,
             "keys": {"p256dh": sub.p256dh, "auth": sub.auth},
         }
         try:
-            send_push_notification(sub_info, push_data)
+            outcome = send_push_notification(sub_info, push_data)
+            if outcome == "dead":
+                dead_sub_ids.append(sub.id)
         except Exception as e:
             logging.warning(f"[NOTIFY] Push failed for endpoint {sub.endpoint[:60]}: {e}")
+
+    # Purge subscriptions the push service told us are gone
+    if dead_sub_ids:
+        from sqlalchemy import delete
+        await db.execute(delete(PushSubscription).where(PushSubscription.id.in_(dead_sub_ids)))
+        await db.commit()
+        logging.info(f"[NOTIFY] Removed {len(dead_sub_ids)} dead push subscription(s)")
 
     # 4. Broadcast via Socket.IO so the open client can toast + update bell
     from app.sockets.manager import sio
