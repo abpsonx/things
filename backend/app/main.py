@@ -36,6 +36,16 @@ async def lifespan(app: FastAPI):
                 await conn.execute(text(f"ALTER TABLE dm_messages ADD COLUMN IF NOT EXISTS {col} {col_type}"))
             except Exception:
                 pass  # Table may not exist yet
+
+        # Auto-fix missing columns in notifications (title + url)
+        for col, col_type in [
+            ("title", "VARCHAR(200)"),
+            ("url", "TEXT"),
+        ]:
+            try:
+                await conn.execute(text(f"ALTER TABLE notifications ADD COLUMN IF NOT EXISTS {col} {col_type}"))
+            except Exception:
+                pass
         
     # Start background scheduler
     from app.services.scheduler import check_reminders

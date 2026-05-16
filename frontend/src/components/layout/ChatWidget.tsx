@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import api from "@/lib/api";
 import { useParams, useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/useAuthStore";
+import { useNotificationsStore } from "@/store/useNotificationsStore";
 
 export default function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
@@ -15,6 +16,7 @@ export default function ChatWidget() {
   const { id: orgId } = useParams();
   const { user: currentUser } = useAuthStore();
   const router = useRouter();
+  const unreadDMCount = useNotificationsStore((s) => s.unreadDMCount);
 
   useEffect(() => {
     if (isOpen) {
@@ -168,17 +170,22 @@ export default function ChatWidget() {
       )}
 
       {/* Floating Button */}
-      <button 
+      <button
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          "w-16 h-16 rounded-full flex items-center justify-center shadow-2xl transition-all duration-300 hover:scale-110 active:scale-95 group",
-          isOpen ? "bg-card text-foreground rotate-90 border border-border" : "bg-primary text-primary-foreground"
+          "relative w-16 h-16 rounded-full flex items-center justify-center shadow-2xl transition-all duration-300 hover:scale-110 active:scale-95 group",
+          isOpen ? "bg-card text-foreground rotate-90 border border-border" : "bg-primary text-primary-foreground",
         )}
       >
         {isOpen ? (
           <X className="w-7 h-7" />
         ) : (
           <MessageSquare className="w-7 h-7" />
+        )}
+        {!isOpen && unreadDMCount > 0 && (
+          <span className="absolute -top-1 -right-1 min-w-[22px] h-[22px] px-1.5 bg-destructive text-destructive-foreground text-[11px] font-extrabold rounded-full border-[3px] border-background flex items-center justify-center shadow-lg animate-in zoom-in duration-200">
+            {unreadDMCount > 9 ? "9+" : unreadDMCount}
+          </span>
         )}
       </button>
     </div>

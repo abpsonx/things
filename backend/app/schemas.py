@@ -304,7 +304,9 @@ class EventAttendeeResponse(BaseModel):
 class NotificationResponse(BaseModel):
     id: UUID
     type: Optional[str] = None
+    title: Optional[str] = None
     content: Optional[str] = None
+    url: Optional[str] = None
     is_read: bool
     ref_id: Optional[UUID] = None
     created_at: datetime

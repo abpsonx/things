@@ -41,8 +41,10 @@ async def notify_user(
     notif = Notification(
         user_id=user_id,
         type=notif_type,
+        title=title,
         content=content,
-        ref_id=ref_id
+        url=url,
+        ref_id=ref_id,
     )
     db.add(notif)
     await db.commit()  # Commit to get ID and ensure it's saved
