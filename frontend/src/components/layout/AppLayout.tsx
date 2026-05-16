@@ -12,37 +12,58 @@ import PushAutoPrompt from "@/components/notifications/PushAutoPrompt";
 import { Loader2, Menu } from "lucide-react";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, user, setAuth } = useAuthStore();
   const router = useRouter();
   const pathname = usePathname();
-  const [hydrated, setHydrated] = useState(false);
+  const [checking, setChecking] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Wait until zustand persist actually finished loading from localStorage
-  // before deciding whether the user is logged in. Without this, the first
-  // render sees isAuthenticated=false (initial store) and bounces us to
-  // /login even though the token is still in localStorage.
+  // Authoritative auth check that doesn't depend on zustand persist timing.
+  // localStorage is the source of truth for tokens; if a token exists we
+  // trust it and (re)hydrate user info via /auth/me when the zustand store
+  // is empty (e.g. Android PWA with fresh in-memory state but persisted
+  // localStorage). Only kick to /login when there is truly no token.
   useEffect(() => {
-    if (useAuthStore.persist.hasHydrated()) {
-      setHydrated(true);
-      return;
-    }
-    const unsub = useAuthStore.persist.onFinishHydration(() => setHydrated(true));
-    return unsub;
+    let cancelled = false;
+    (async () => {
+      const accessToken = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+      const refreshToken = typeof window !== "undefined" ? localStorage.getItem("refresh_token") : null;
+      if (!accessToken && !refreshToken) {
+        router.replace("/login");
+        return;
+      }
+      // If we already have user info in the persisted store, we're done.
+      if (user && isAuthenticated) {
+        if (!cancelled) setChecking(false);
+        return;
+      }
+      // Token in storage but no user object — rehydrate from /auth/me.
+      // axios interceptor will auto-refresh via refresh_token on 401.
+      try {
+        const { default: api } = await import("@/lib/api");
+        const me = await api.get("/auth/me");
+        const freshAccess = localStorage.getItem("access_token") || accessToken || "";
+        const freshRefresh = localStorage.getItem("refresh_token") || refreshToken || "";
+        setAuth(me.data, freshAccess, freshRefresh);
+      } catch {
+        // /auth/me failed AND refresh failed — token truly invalid.
+        // The interceptor already redirected; nothing else to do.
+      } finally {
+        if (!cancelled) setChecking(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    if (hydrated && !isAuthenticated) {
-      router.push("/login");
-    }
-  }, [hydrated, isAuthenticated, router]);
 
   // Auto-close mobile sidebar when route changes
   useEffect(() => {
     setSidebarOpen(false);
   }, [pathname]);
 
-  if (!hydrated || !isAuthenticated) {
+  if (checking || !isAuthenticated) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-background">
         <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
