@@ -2,7 +2,7 @@
   "name": "Things - Project Management",
   "short_name": "Things",
   "description": "Kelola proyek tim kamu dengan elegan",
-  "start_url": "/",
+  "start_url": "/dashboard",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#000000",
