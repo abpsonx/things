@@ -15,20 +15,35 @@ export interface Notif {
 
 type NewNotifListener = (n: Notif) => void;
 
+export interface DMSummary {
+  senderId: string;
+  count: number;
+  lastSnippet: string;
+  lastAt: string;
+}
+
 interface NotificationsState {
   items: Notif[];
   loaded: boolean;
   unreadCount: number;
   unreadDMCount: number;
   unreadByType: (type: string) => number;
+  dmSummaryBySender: () => Record<string, DMSummary>;
   fetch: () => Promise<void>;
   markAsRead: (id: string) => Promise<void>;
   markAllRead: () => Promise<void>;
+  markDMsFromSenderRead: (senderId: string) => Promise<void>;
   pushIncoming: (n: Notif) => void;
   bindSocket: (userId: string) => void;
   onNew: (cb: NewNotifListener) => () => void;
   _newListeners: Set<NewNotifListener>;
   _socketBound: boolean;
+}
+
+function extractSenderIdFromUrl(url?: string): string | null {
+  if (!url) return null;
+  const m = url.match(/\/dm\/([^/?#]+)/);
+  return m ? m[1] : null;
 }
 
 function deriveCounts(items: Notif[]) {
@@ -50,6 +65,31 @@ export const useNotificationsStore = create<NotificationsState>((set, get) => ({
 
   unreadByType: (type: string) =>
     get().items.reduce((acc, n) => (!n.is_read && n.type === type ? acc + 1 : acc), 0),
+
+  dmSummaryBySender: () => {
+    const out: Record<string, DMSummary> = {};
+    for (const n of get().items) {
+      if (n.is_read || n.type !== "dm") continue;
+      const senderId = extractSenderIdFromUrl(n.url);
+      if (!senderId) continue;
+      const existing = out[senderId];
+      if (!existing) {
+        out[senderId] = {
+          senderId,
+          count: 1,
+          lastSnippet: n.content || "",
+          lastAt: n.created_at,
+        };
+      } else {
+        existing.count += 1;
+        if (new Date(n.created_at) > new Date(existing.lastAt)) {
+          existing.lastSnippet = n.content || existing.lastSnippet;
+          existing.lastAt = n.created_at;
+        }
+      }
+    }
+    return out;
+  },
 
   fetch: async () => {
     try {
@@ -80,6 +120,25 @@ export const useNotificationsStore = create<NotificationsState>((set, get) => ({
     } catch (err) {
       console.error("[notifications] markAllRead failed:", err);
     }
+  },
+
+  markDMsFromSenderRead: async (senderId: string) => {
+    const toRead = get().items.filter(
+      (n) => !n.is_read && n.type === "dm" && extractSenderIdFromUrl(n.url) === senderId,
+    );
+    if (toRead.length === 0) return;
+    const targetIds = new Set(toRead.map((n) => n.id));
+    const items = get().items.map((n) =>
+      targetIds.has(n.id) ? { ...n, is_read: true } : n,
+    );
+    set({ items, ...deriveCounts(items) });
+    await Promise.allSettled(
+      toRead.map((n) =>
+        api.patch(`/users/me/notifications/${n.id}/read`).catch((e) => {
+          console.error("[notifications] markDMsFromSenderRead failed:", e);
+        }),
+      ),
+    );
   },
 
   pushIncoming: (n: Notif) => {

@@ -1,7 +1,9 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { MessageSquare, X, Send, Search, Users, Hash, Loader2 } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
+import { id as idLocale } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import api from "@/lib/api";
 import { useParams, useRouter } from "next/navigation";
@@ -17,6 +19,24 @@ export default function ChatWidget() {
   const { user: currentUser } = useAuthStore();
   const router = useRouter();
   const unreadDMCount = useNotificationsStore((s) => s.unreadDMCount);
+  const items = useNotificationsStore((s) => s.items);
+  const dmSummaryBySender = useNotificationsStore((s) => s.dmSummaryBySender);
+  const markDMsFromSenderRead = useNotificationsStore((s) => s.markDMsFromSenderRead);
+
+  // Recompute DM summary whenever the notifications list changes.
+  const dmBySender = useMemo(() => dmSummaryBySender(), [items, dmSummaryBySender]);
+
+  // Sort: unread DMs first (by latest), then alphabetical for the rest.
+  const sortedMembers = useMemo(() => {
+    return [...members].sort((a, b) => {
+      const aSum = dmBySender[a.user_id];
+      const bSum = dmBySender[b.user_id];
+      if (aSum && !bSum) return -1;
+      if (!aSum && bSum) return 1;
+      if (aSum && bSum) return new Date(bSum.lastAt).getTime() - new Date(aSum.lastAt).getTime();
+      return (a.user?.name || "").localeCompare(b.user?.name || "");
+    });
+  }, [members, dmBySender]);
 
   useEffect(() => {
     if (isOpen) {
@@ -52,7 +72,8 @@ export default function ChatWidget() {
   const handleStartChat = (userId: string) => {
     // If no orgId in URL, we need to find which org this user belongs to
     // For simplicity, we use the first one if not in URL
-    const targetId = orgId || members[0]?.org_id; 
+    const targetId = orgId || members[0]?.org_id;
+    markDMsFromSenderRead(userId);
     router.push(`/org/${targetId}/dm/${userId}`);
     setIsOpen(false);
   };
@@ -127,32 +148,65 @@ export default function ChatWidget() {
                 <p className="text-xs font-medium">Memuat tim...</p>
               </div>
             ) : activeTab === "dm" ? (
-              members.length > 0 ? (
-                members.map((member) => (
-                  <button
-                    key={member.id}
-                    onClick={() => handleStartChat(member.user_id)}
-                    className="w-full flex items-center gap-4 p-3 hover:bg-secondary/50 rounded-2xl transition-all group"
-                  >
-                    <div className="relative">
-                      <div className="w-12 h-12 rounded-2xl bg-secondary border border-border flex items-center justify-center overflow-hidden font-bold text-sm">
-                        {member.user.avatar_url ? (
-                          <img src={member.user.avatar_url} alt={member.user.name} className="w-full h-full object-cover" />
+              sortedMembers.length > 0 ? (
+                sortedMembers.map((member) => {
+                  const summary = dmBySender[member.user_id];
+                  const hasUnread = !!summary;
+                  return (
+                    <button
+                      key={member.id}
+                      onClick={() => handleStartChat(member.user_id)}
+                      className={cn(
+                        "w-full flex items-center gap-4 p-3 rounded-2xl transition-all group",
+                        hasUnread
+                          ? "bg-primary/5 hover:bg-primary/10 border border-primary/10"
+                          : "hover:bg-secondary/50",
+                      )}
+                    >
+                      <div className="relative">
+                        <div className="w-12 h-12 rounded-2xl bg-secondary border border-border flex items-center justify-center overflow-hidden font-bold text-sm">
+                          {member.user.avatar_url ? (
+                            <img src={member.user.avatar_url} alt={member.user.name} className="w-full h-full object-cover" />
+                          ) : (
+                            member.user.name.charAt(0)
+                          )}
+                        </div>
+                        <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-card shadow-sm" />
+                      </div>
+                      <div className="flex-1 text-left min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className={cn(
+                            "text-sm truncate transition-colors",
+                            hasUnread ? "font-extrabold text-foreground" : "font-bold group-hover:text-primary",
+                          )}>
+                            {member.user.name}
+                          </p>
+                          {summary && (
+                            <span className="text-[9px] text-muted-foreground shrink-0">
+                              {formatDistanceToNow(new Date(summary.lastAt), { addSuffix: false, locale: idLocale })}
+                            </span>
+                          )}
+                        </div>
+                        {summary ? (
+                          <p className="text-[11px] text-foreground/70 truncate mt-0.5">
+                            {summary.lastSnippet}
+                          </p>
                         ) : (
-                          member.user.name.charAt(0)
+                          <p className="text-[10px] text-muted-foreground capitalize">{member.role}</p>
                         )}
                       </div>
-                      <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-card shadow-sm" />
-                    </div>
-                    <div className="flex-1 text-left">
-                      <p className="text-sm font-bold group-hover:text-primary transition-colors">{member.user.name}</p>
-                      <p className="text-[10px] text-muted-foreground capitalize">{member.role}</p>
-                    </div>
-                    <div className="p-2 bg-primary/5 text-primary rounded-xl opacity-0 group-hover:opacity-100 transition-all">
-                      <Send className="w-4 h-4" />
-                    </div>
-                  </button>
-                ))
+                      {hasUnread ? (
+                        <span className="shrink-0 min-w-[22px] h-[22px] px-1.5 bg-destructive text-destructive-foreground text-[11px] font-extrabold rounded-full flex items-center justify-center shadow-sm">
+                          {summary!.count > 9 ? "9+" : summary!.count}
+                        </span>
+                      ) : (
+                        <div className="p-2 bg-primary/5 text-primary rounded-xl opacity-0 group-hover:opacity-100 transition-all">
+                          <Send className="w-4 h-4" />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })
               ) : (
                 <div className="text-center py-12 opacity-50 space-y-2">
                   <Users className="w-8 h-8 mx-auto text-muted-foreground" />
