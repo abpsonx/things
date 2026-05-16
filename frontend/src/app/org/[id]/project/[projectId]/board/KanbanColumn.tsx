@@ -74,7 +74,7 @@ export default function KanbanColumn({
   };
 
   return (
-    <div className="flex flex-col w-[300px] min-w-[300px] bg-secondary/30 rounded-2xl p-4 border border-border/50">
+    <div className="flex flex-col w-[300px] min-w-[300px] bg-card rounded-2xl p-4 border border-border">
       <div className="flex items-center justify-between mb-4 px-1">
         <div className="flex items-center gap-2 flex-1 min-w-0">
           {isRenaming ? (
@@ -92,7 +92,7 @@ export default function KanbanColumn({
           ) : (
             <h3 className="font-bold text-sm tracking-tight truncate">{title}</h3>
           )}
-          <span className="text-[10px] font-bold bg-secondary text-muted-foreground px-1.5 py-0.5 rounded-full border border-border shrink-0">
+          <span className="text-[10px] font-medium bg-secondary/60 text-muted-foreground px-1.5 py-0.5 rounded-full shrink-0">
             {tasks.length}
           </span>
         </div>
