@@ -71,7 +71,7 @@ async def notify_user(
             "keys": {"p256dh": sub.p256dh, "auth": sub.auth},
         }
         try:
-            outcome = send_push_notification(sub_info, push_data)
+            outcome, _ = send_push_notification(sub_info, push_data)
             if outcome == "dead":
                 dead_sub_ids.append(sub.id)
         except Exception as e:

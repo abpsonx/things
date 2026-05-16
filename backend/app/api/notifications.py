@@ -171,8 +171,12 @@ async def send_test_push(
             "endpoint": sub.endpoint,
             "keys": {"p256dh": sub.p256dh, "auth": sub.auth},
         }
-        outcome = send_push_notification(sub_info, payload)
-        outcomes.append({"endpoint": sub.endpoint[:60] + "...", "outcome": outcome})
+        outcome, detail = send_push_notification(sub_info, payload)
+        outcomes.append({
+            "endpoint": sub.endpoint[:60] + "...",
+            "outcome": outcome,
+            "detail": detail,
+        })
         if outcome == "dead":
             dead_ids.append(sub.id)
 

@@ -9,7 +9,7 @@ type TestResult = {
   status: string;
   message: string;
   diag?: Record<string, unknown>;
-  outcomes?: { endpoint: string; outcome: string }[];
+  outcomes?: { endpoint: string; outcome: string; detail?: string }[];
 };
 
 export default function PushNotificationManager() {
@@ -193,11 +193,12 @@ export default function PushNotificationManager() {
             </div>
           )}
           {testResult.outcomes && testResult.outcomes.length > 0 && (
-            <div className="space-y-0.5 opacity-80 pt-1 border-t border-current/10">
+            <div className="space-y-1 opacity-80 pt-1 border-t border-current/10">
               {testResult.outcomes.map((o, i) => (
-                <p key={i}>
-                  [{o.outcome}] {o.endpoint}
-                </p>
+                <div key={i}>
+                  <p>[{o.outcome}] {o.endpoint}</p>
+                  {o.detail && <p className="pl-4 opacity-70">→ {o.detail}</p>}
+                </div>
               ))}
             </div>
           )}
