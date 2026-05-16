@@ -25,6 +25,8 @@ services:
     build: ./backend
     container_name: things-backend
     restart: always
+    env_file:
+      - .env
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-thingsapp}:${POSTGRES_PASSWORD:-password_db_mas}@things-db:5432/${POSTGRES_DB:-thingsapp}
       REDIS_URL: redis://things-redis:6379/0
