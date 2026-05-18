@@ -479,17 +479,36 @@ async def send_team_message(
     """Send a message to the team chat."""
     await _check_org_membership(db, org_id, current_user.id)
 
+    parent_id_raw = data.get("parent_id")
     msg = TeamMessage(
         team_id=team_id,
         user_id=current_user.id,
         content=data.get("content"),
         file_url=data.get("file_url"),
         file_name=data.get("file_name"),
-        file_type=data.get("file_type")
+        file_type=data.get("file_type"),
+        parent_id=parent_id_raw,
     )
     db.add(msg)
     await db.commit()
     await db.refresh(msg)
+
+    # Build parent preview for reply context
+    parent_preview = None
+    if msg.parent_id:
+        pr_res = await db.execute(
+            select(TeamMessage).options(selectinload(TeamMessage.user)).where(TeamMessage.id == msg.parent_id)
+        )
+        pr = pr_res.scalar_one_or_none()
+        if pr:
+            snippet = (pr.content or "").strip()
+            if len(snippet) > 120:
+                snippet = snippet[:117] + "..."
+            parent_preview = {
+                "id": str(pr.id),
+                "content": snippet,
+                "user": {"id": str(pr.user.id), "name": pr.user.name} if pr.user else None,
+            }
 
     # Broadcast via socket
     from app.sockets.manager import sio
@@ -501,6 +520,8 @@ async def send_team_message(
         "file_name": msg.file_name,
         "file_type": msg.file_type,
         "created_at": msg.created_at.isoformat(),
+        "parent_id": str(msg.parent_id) if msg.parent_id else None,
+        "parent": parent_preview,
         "user": {
             "name": current_user.name,
             "avatar_url": current_user.avatar_url
@@ -516,6 +537,8 @@ async def send_team_message(
         "file_type": msg.file_type,
         "created_at": msg.created_at.isoformat(),
         "edited_at": None,
+        "parent_id": str(msg.parent_id) if msg.parent_id else None,
+        "parent": parent_preview,
         "status": "sent",
         "user": {
             "name": current_user.name,
@@ -649,7 +672,26 @@ async def list_team_messages(
         .limit(100)
     )
     messages = result.scalars().all()
-    
+
+    # Resolve parents in one batched query so reply previews render
+    parent_ids = {m.parent_id for m in messages if m.parent_id}
+    parents_map: dict = {}
+    if parent_ids:
+        pr_res = await db.execute(
+            select(TeamMessage)
+            .options(selectinload(TeamMessage.user))
+            .where(TeamMessage.id.in_(parent_ids))
+        )
+        for pr in pr_res.scalars().all():
+            snippet = (pr.content or "").strip()
+            if len(snippet) > 120:
+                snippet = snippet[:117] + "..."
+            parents_map[str(pr.id)] = {
+                "id": str(pr.id),
+                "content": snippet,
+                "user": {"id": str(pr.user.id), "name": pr.user.name} if pr.user else None,
+            }
+
     return [
         {
             "id": str(m.id),
@@ -660,6 +702,8 @@ async def list_team_messages(
             "file_type": m.file_type,
             "created_at": m.created_at.isoformat(),
             "edited_at": m.edited_at.isoformat() if m.edited_at else None,
+            "parent_id": str(m.parent_id) if m.parent_id else None,
+            "parent": parents_map.get(str(m.parent_id)) if m.parent_id else None,
             "user": {
                 "name": m.user.name,
                 "avatar_url": m.user.avatar_url

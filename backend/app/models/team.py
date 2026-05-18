@@ -57,6 +57,7 @@ class TeamMessage(Base):
     file_url = Column(String, nullable=True)
     file_name = Column(String, nullable=True)
     file_type = Column(String, nullable=True)
+    parent_id = Column(UUID(as_uuid=True), ForeignKey("team_messages.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     edited_at = Column(DateTime(timezone=True), nullable=True)
 

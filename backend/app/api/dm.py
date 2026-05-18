@@ -25,6 +25,7 @@ class DMChannelCreate(BaseModel):
 class DMMessageCreate(BaseModel):
     content: str
     temp_id: Optional[str] = None
+    parent_id: Optional[UUID] = None
 
 class ReactionCreate(BaseModel):
     emoji: str
@@ -91,14 +92,62 @@ async def get_dm_messages(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Get message history for a DM channel."""
+    """Get message history for a DM channel. Each row carries a small
+    `parent` preview when it's a reply, so the UI can render the quote
+    block without resolving parent_ids itself."""
     result = await db.execute(
         select(DMMessage)
         .options(selectinload(DMMessage.user))
         .where(DMMessage.dm_channel_id == channel_id)
         .order_by(DMMessage.created_at.asc())
     )
-    return result.scalars().all()
+    rows = result.scalars().all()
+
+    # Collect parents in one shot to avoid an N+1 query.
+    parent_ids = {m.parent_id for m in rows if m.parent_id}
+    parents_map: dict = {}
+    if parent_ids:
+        pr_res = await db.execute(
+            select(DMMessage)
+            .options(selectinload(DMMessage.user))
+            .where(DMMessage.id.in_(parent_ids))
+        )
+        for pr in pr_res.scalars().all():
+            snippet = (pr.content or "").strip()
+            if len(snippet) > 120:
+                snippet = snippet[:117] + "..."
+            parents_map[str(pr.id)] = {
+                "id": str(pr.id),
+                "content": snippet,
+                "user": {"id": str(pr.user.id), "name": pr.user.name} if pr.user else None,
+            }
+
+    out = []
+    for m in rows:
+        row = {
+            "id": str(m.id),
+            "dm_channel_id": str(m.dm_channel_id),
+            "user_id": str(m.user_id),
+            "content": m.content,
+            "is_read": m.is_read,
+            "is_delivered": m.is_delivered,
+            "read_at": m.read_at.isoformat() if m.read_at else None,
+            "delivered_at": m.delivered_at.isoformat() if m.delivered_at else None,
+            "reactions": m.reactions or {},
+            "attachment_url": m.attachment_url,
+            "attachment_name": m.attachment_name,
+            "edited_at": m.edited_at.isoformat() if m.edited_at else None,
+            "created_at": m.created_at.isoformat() if m.created_at else None,
+            "parent_id": str(m.parent_id) if m.parent_id else None,
+            "parent": parents_map.get(str(m.parent_id)) if m.parent_id else None,
+            "user": {
+                "id": str(m.user.id),
+                "name": m.user.name,
+                "avatar_url": m.user.avatar_url,
+            } if m.user else None,
+        }
+        out.append(row)
+    return out
 
 @router.post("/channels/{channel_id}/messages")
 async def send_dm_message(
@@ -117,10 +166,29 @@ async def send_dm_message(
         is_read=False,
         delivered_at=None,
         read_at=None,
+        parent_id=data.parent_id,
     )
     db.add(message)
     await db.commit()
     await db.refresh(message)
+
+    # Build a tiny parent preview so the frontend can render the
+    # "replying to" header without an extra round trip.
+    parent_preview = None
+    if message.parent_id:
+        pr_res = await db.execute(
+            select(DMMessage).options(selectinload(DMMessage.user)).where(DMMessage.id == message.parent_id)
+        )
+        pr = pr_res.scalar_one_or_none()
+        if pr:
+            snippet = (pr.content or "").strip()
+            if len(snippet) > 120:
+                snippet = snippet[:117] + "..."
+            parent_preview = {
+                "id": str(pr.id),
+                "content": snippet,
+                "user": {"id": str(pr.user.id), "name": pr.user.name} if pr.user else None,
+            }
 
     # Notify the OTHER party (web push + socket.io toast)
     channel_res = await db.execute(select(DMChannel).where(DMChannel.id == channel_id))
@@ -165,11 +233,13 @@ async def send_dm_message(
                 "name": current_user.name,
                 "avatar_url": current_user.avatar_url
             },
-            "temp_id": data.temp_id
+            "parent_id": str(message.parent_id) if message.parent_id else None,
+            "parent": parent_preview,
+            "temp_id": data.temp_id,
         }
     }
     await dm_ws_manager.broadcast(channel_id, payload)
-    
+
     return {
         "id": str(message.id),
         "content": message.content,
@@ -182,7 +252,9 @@ async def send_dm_message(
         "delivered_at": None,
         "reactions": {},
         "user": {"id": str(current_user.id), "name": current_user.name, "avatar_url": current_user.avatar_url},
-        "temp_id": data.temp_id
+        "parent_id": str(message.parent_id) if message.parent_id else None,
+        "parent": parent_preview,
+        "temp_id": data.temp_id,
     }
 
 @router.put("/messages/{message_id}")

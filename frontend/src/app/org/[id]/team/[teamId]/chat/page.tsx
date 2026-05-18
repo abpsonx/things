@@ -18,7 +18,8 @@ import {
   X,
   ExternalLink,
   Download,
-  Search
+  Search,
+  Reply,
 } from "lucide-react";
 import api from "@/lib/api";
 import { socket } from "@/lib/socket";
@@ -37,6 +38,8 @@ interface Message {
   file_type?: string;
   created_at: string;
   edited_at?: string;
+  parent_id?: string | null;
+  parent?: { id: string; content?: string; user?: { id?: string; name?: string } | null } | null;
   status?: 'pending' | 'sent' | 'read';
 }
 
@@ -55,6 +58,7 @@ export default function TeamChatPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [replyTo, setReplyTo] = useState<{ id: string; content?: string; user?: { id?: string; name?: string } | null } | null>(null);
   const [uploadingFiles, setUploadingFiles] = useState<{id: string, file: File, previewUrl?: string}[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   
@@ -120,22 +124,30 @@ export default function TeamChatPage() {
     if (!newMessage.trim()) return;
 
     const tempId = `temp-${Date.now()}`;
+    const replyParent = replyTo
+      ? { id: replyTo.id, content: (replyTo.content || "").slice(0, 120), user: replyTo.user || null }
+      : null;
     const pendingMsg: Message = {
       id: tempId,
       user_id: currentUser?.id || "",
       user: { name: currentUser?.name || "Me", avatar_url: currentUser?.avatar_url },
       content: newMessage,
       created_at: new Date().toISOString(),
-      status: 'pending'
+      parent_id: replyTo?.id || null,
+      parent: replyParent,
+      status: 'pending',
     };
 
     setMessages((prev) => [...prev, pendingMsg]);
     const contentToSend = newMessage;
+    const parentIdToSend = replyTo?.id || null;
     setNewMessage("");
+    setReplyTo(null);
 
     try {
       const res = await api.post(`/organizations/${orgId}/teams/${teamId}/chat/messages`, {
-        content: contentToSend
+        content: contentToSend,
+        parent_id: parentIdToSend,
       });
       
       // Register the real ID so the socket broadcast is ignored (if it arrives after)
@@ -377,11 +389,18 @@ export default function TeamChatPage() {
                 <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} max-w-[75%] relative`}>
                   {!isMe && <span className="text-[11px] font-bold text-muted-foreground mb-1 ml-1">{msg.user?.name}</span>}
                   
-                  <div className="flex items-center gap-2 group/bubble">
-                    {/* Menu Button (Left for Me) */}
+                  <div className="flex items-center gap-2 group/bubble" id={`team-msg-${msg.id}`}>
+                    {/* Action buttons (Left for Me) */}
                     {isMe && (
-                      <div className="opacity-0 group-hover/bubble:opacity-100 transition-opacity flex items-center">
-                        <button 
+                      <div className="opacity-0 group-hover/bubble:opacity-100 transition-opacity flex items-center gap-1">
+                        <button
+                          onClick={() => setReplyTo({ id: msg.id, content: msg.content, user: msg.user ? { name: msg.user.name } : null })}
+                          title="Balas"
+                          className="p-1 hover:bg-secondary rounded-lg text-muted-foreground"
+                        >
+                          <Reply className="w-4 h-4" />
+                        </button>
+                        <button
                           onClick={() => setActiveMenuId(activeMenuId === msg.id ? null : msg.id)}
                           className="p-1 hover:bg-secondary rounded-lg text-muted-foreground"
                         >
@@ -413,6 +432,28 @@ export default function TeamChatPage() {
                         </div>
                       ) : (
                         <>
+                          {msg.parent && (
+                            <div
+                              onClick={() => {
+                                const el = document.getElementById(`team-msg-${msg.parent?.id}`);
+                                if (el) {
+                                  el.scrollIntoView({ behavior: "smooth", block: "center" });
+                                  el.classList.add("ring-2", "ring-indigo-300/60");
+                                  setTimeout(() => el.classList.remove("ring-2", "ring-indigo-300/60"), 1500);
+                                }
+                              }}
+                              className={`mb-2 px-2 py-1 rounded-md border-l-2 cursor-pointer text-[11px] leading-tight ${
+                                isMe ? 'bg-white/15 border-white/60 text-white' : 'bg-white border-indigo-400/50 text-gray-700'
+                              }`}
+                            >
+                              <p className={`font-bold flex items-center gap-1 text-[10px] ${isMe ? 'text-white/90' : 'text-gray-900'}`}>
+                                ↪ {msg.parent.user?.name || "Pesan"}
+                              </p>
+                              <p className={`truncate ${isMe ? 'text-white/80' : 'text-gray-600'}`}>
+                                {msg.parent.content || "(lampiran)"}
+                              </p>
+                            </div>
+                          )}
                           {renderContent(msg, isMe)}
                           {msg.edited_at && (() => {
                             const dd = new Date(msg.edited_at);
@@ -425,10 +466,16 @@ export default function TeamChatPage() {
                       )}
                     </div>
 
-                    {/* Menu Button (Right for others) */}
+                    {/* Action Button (Right for others) */}
                     {!isMe && (
-                      <div className="opacity-0 group-hover/bubble:opacity-100 transition-opacity">
-                         {/* others' message actions could go here */}
+                      <div className="opacity-0 group-hover/bubble:opacity-100 transition-opacity flex items-center">
+                        <button
+                          onClick={() => setReplyTo({ id: msg.id, content: msg.content, user: msg.user ? { name: msg.user.name } : null })}
+                          title="Balas"
+                          className="p-1 hover:bg-secondary rounded-lg text-muted-foreground"
+                        >
+                          <Reply className="w-4 h-4" />
+                        </button>
                       </div>
                     )}
                   </div>
@@ -565,6 +612,20 @@ export default function TeamChatPage() {
 
       {/* Input Area */}
       <div className="p-6 bg-white border-t border-border shrink-0 shadow-[0_-4px_20px_rgba(0,0,0,0.02)]">
+        {replyTo && (
+          <div className="max-w-5xl mx-auto mb-3 p-2.5 bg-indigo-50 border-l-2 border-indigo-500 rounded-xl flex items-center justify-between text-xs">
+            <div className="min-w-0 flex-1">
+              <p className="flex items-center gap-1.5 text-[10px] font-bold text-indigo-600 mb-0.5">
+                <Reply className="w-3 h-3 shrink-0" />
+                Membalas {replyTo.user?.name || "pesan"}
+              </p>
+              <p className="truncate text-muted-foreground">{(replyTo.content || "(lampiran)").slice(0, 140)}</p>
+            </div>
+            <button onClick={() => setReplyTo(null)} className="p-1 hover:bg-indigo-100 rounded-lg shrink-0 ml-2">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
         <form onSubmit={sendMessage} className="max-w-5xl mx-auto flex items-end gap-4">
           <div className="flex-1 relative group">
             <textarea

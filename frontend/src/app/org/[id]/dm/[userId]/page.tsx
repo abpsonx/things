@@ -6,7 +6,7 @@ import api from "@/lib/api";
 import { useAuthStore } from "@/store/useAuthStore";
 import {
   Send, Loader2, User as UserIcon, ShieldCheck, Paperclip,
-  Trash2, Edit2, X, Check, CheckCheck, Smile, Wifi, WifiOff,
+  Trash2, Edit2, X, Check, CheckCheck, Smile, Wifi, WifiOff, Reply, CornerDownRight,
   FileText, File, Image, Video, Music, Download, Eye, Clock
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -82,6 +82,7 @@ export default function DMChatPage() {
   const [up, setUp] = useState<number | null>(null);
   const [un, setUn] = useState("");
   const [rm, setRm] = useState<string | null>(null);
+  const [replyTo, setReplyTo] = useState<any | null>(null);
 
   const sc = useRef<HTMLDivElement>(null);
   const ws = useRef<WebSocket | null>(null);
@@ -162,10 +163,15 @@ export default function DMChatPage() {
     if (em) { updateMsg(); return; }
     setSe(true);
     const id = `o${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    const o = { id, content: tx, user_id: uid, dm_channel_id: ch.id, created_at: new Date().toISOString(), attachment_url: null, attachment_name: null, is_read: false, is_delivered: false, reactions: {}, user: { id: uid, name: cu?.name, avatar_url: cu?.avatar_url }, _opt: true };
-    setMs(p => [...p, o]); setTx(""); scrollDown();
+    const replyParent = replyTo ? {
+      id: replyTo.id,
+      content: (replyTo.content || "").slice(0, 120),
+      user: replyTo.user ? { id: replyTo.user.id, name: replyTo.user.name } : null,
+    } : null;
+    const o = { id, content: tx, user_id: uid, dm_channel_id: ch.id, created_at: new Date().toISOString(), attachment_url: null, attachment_name: null, is_read: false, is_delivered: false, reactions: {}, user: { id: uid, name: cu?.name, avatar_url: cu?.avatar_url }, parent_id: replyTo?.id || null, parent: replyParent, _opt: true };
+    setMs(p => [...p, o]); setTx(""); setReplyTo(null); scrollDown();
     try {
-      const r = await api.post(`/dm/channels/${ch.id}/messages`, { content: o.content, temp_id: id });
+      const r = await api.post(`/dm/channels/${ch.id}/messages`, { content: o.content, temp_id: id, parent_id: replyTo?.id || null });
       setMs(prev => prev.map(m => m.id === id ? { ...r.data, reactions: r.data.reactions || {} } : m));
     } catch (err) { setMs(p => p.filter(m => m.id !== id)); setTx(o.content); }
     finally { setSe(false); }
@@ -258,7 +264,7 @@ export default function DMChatPage() {
             const showDate = dateStr !== lastDate;
             if (showDate) lastDate = dateStr;
             return (
-              <div key={msg.id}>
+              <div key={msg.id} id={`dm-msg-${msg.id}`} className="transition-all rounded-[16px]">
                 {showDate && <div className="flex justify-center my-3"><span className="text-[10px] text-muted-foreground bg-secondary/50 px-3 py-1 rounded-full border border-border/50">{dateStr}</span></div>}
                 <div className={cn("flex group relative", me ? "justify-end" : "justify-start")}>
                   <div className={cn("flex gap-1.5 max-w-[80%] md:max-w-[65%]", me ? "flex-row-reverse" : "flex-row")}>
@@ -267,6 +273,30 @@ export default function DMChatPage() {
                     </div>
                     <div className={cn("flex flex-col", me ? "items-end" : "items-start")}>
                       <div className={cn("relative px-3 py-1.5 text-sm shadow-sm transition-all", me ? "bg-emerald-500 text-white rounded-[16px] rounded-br-[4px]" : "bg-card text-foreground border border-border rounded-[16px] rounded-bl-[4px]", opt && "opacity-70", up2 && "min-w-[160px]")}>
+                        {msg.parent && (
+                          <div
+                            onClick={() => {
+                              const el = document.getElementById(`dm-msg-${msg.parent.id}`);
+                              if (el) {
+                                el.scrollIntoView({ behavior: "smooth", block: "center" });
+                                el.classList.add("ring-2", "ring-emerald-500/40");
+                                setTimeout(() => el.classList.remove("ring-2", "ring-emerald-500/40"), 1500);
+                              }
+                            }}
+                            className={cn(
+                              "mb-1.5 px-2 py-1 rounded-md border-l-2 cursor-pointer text-[10px] leading-tight",
+                              me ? "bg-white/15 border-white/60" : "bg-secondary/40 border-primary/40",
+                            )}
+                          >
+                            <div className={cn("flex items-center gap-1 font-bold mb-0.5", me ? "text-white/85" : "text-foreground/80")}>
+                              <CornerDownRight className="w-2.5 h-2.5" />
+                              {msg.parent.user?.name || "Pesan"}
+                            </div>
+                            <p className={cn("truncate", me ? "text-white/70" : "text-muted-foreground")}>
+                              {msg.parent.content || "(lampiran)"}
+                            </p>
+                          </div>
+                        )}
                         {msg.attachment_url ? (
                           <div className="space-y-1.5">
                             {(msg.is_image || GI(msg.attachment_name || "").isImage) && !up2 &&
@@ -300,10 +330,26 @@ export default function DMChatPage() {
                                 {me && (msg.is_read ? <CheckCheck className="w-3 h-3 text-white" /> : msg.is_delivered ? <CheckCheck className="w-3 h-3 text-white/60" /> : <Check className="w-3 h-3" />)}
                               </span>}
                         </div>
-                        {me && !opt && !up2 && <div className={cn("absolute top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-1", me ? "-left-10" : "-right-10")}>
-                          <button onClick={() => { setEm(msg); setTx(msg.content); }} className="p-1 hover:bg-secondary rounded-lg text-muted-foreground bg-background/80 backdrop-blur-sm shadow-sm"><Edit2 className="w-3 h-3" /></button>
-                          <button onClick={() => delMsg(msg.id)} className="p-1 hover:bg-destructive/10 rounded-lg text-destructive bg-background/80 backdrop-blur-sm shadow-sm"><Trash2 className="w-3 h-3" /></button>
-                        </div>}
+                        {!opt && !up2 && (
+                          <div className={cn(
+                            "absolute top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-1",
+                            me ? "-left-10" : "-right-10",
+                          )}>
+                            <button
+                              onClick={() => { setReplyTo({ id: msg.id, content: msg.content, user: msg.user || (me ? cu : ou) }); setEm(null); }}
+                              title="Balas"
+                              className="p-1 hover:bg-secondary rounded-lg text-muted-foreground bg-background/80 backdrop-blur-sm shadow-sm"
+                            >
+                              <Reply className="w-3 h-3" />
+                            </button>
+                            {me && (
+                              <>
+                                <button onClick={() => { setEm(msg); setTx(msg.content); setReplyTo(null); }} className="p-1 hover:bg-secondary rounded-lg text-muted-foreground bg-background/80 backdrop-blur-sm shadow-sm"><Edit2 className="w-3 h-3" /></button>
+                                <button onClick={() => delMsg(msg.id)} className="p-1 hover:bg-destructive/10 rounded-lg text-destructive bg-background/80 backdrop-blur-sm shadow-sm"><Trash2 className="w-3 h-3" /></button>
+                              </>
+                            )}
+                          </div>
+                        )}
                       </div>
                       {hrx && !up2 && <div className={cn("flex gap-1 mt-0.5", me ? "justify-end" : "justify-start")}>{Object.entries(rc).map(([e, i]) => (
                         <button key={e} onClick={() => doReact(msg.id, e)} className={cn("inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs border transition-all hover:scale-110", i.u.includes("me") ? "bg-primary/10 border-primary/30" : "bg-secondary/30 border-border/50")}>
@@ -330,6 +376,20 @@ export default function DMChatPage() {
           <span className="truncate flex items-center gap-1.5 text-muted-foreground"><Edit2 className="w-3 h-3 shrink-0" /><span className="truncate">Mengedit pesan...</span></span>
           <button onClick={() => { setEm(null); setTx(""); }} className="p-1 hover:bg-secondary rounded-lg shrink-0"><X className="w-4 h-4" /></button>
         </div>}
+        {replyTo && !em && (
+          <div className="mb-2.5 p-2.5 bg-primary/5 rounded-xl flex items-center justify-between text-xs border-l-2 border-primary">
+            <div className="min-w-0 flex-1">
+              <p className="flex items-center gap-1.5 text-[10px] font-bold text-primary mb-0.5">
+                <Reply className="w-3 h-3 shrink-0" />
+                Membalas {replyTo.user?.name || "pesan"}
+              </p>
+              <p className="truncate text-muted-foreground">{(replyTo.content || "(lampiran)").slice(0, 140)}</p>
+            </div>
+            <button onClick={() => setReplyTo(null)} className="p-1 hover:bg-secondary rounded-lg shrink-0 ml-2">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
         {se2 && <div className="mb-2.5 bg-background border border-border rounded-2xl shadow-xl overflow-hidden">
           <div className="flex gap-1 p-1.5 border-b border-border bg-secondary/20 overflow-x-auto">{EI.map((g, i) => (
             <button key={g[0]} onClick={() => setEt(i)} className={cn("px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors shrink-0", et === i ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary")}>{g[0]}</button>

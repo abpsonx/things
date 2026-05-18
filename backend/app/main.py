@@ -54,6 +54,22 @@ async def lifespan(app: FastAPI):
             except Exception:
                 pass
 
+        # parent_id on dm_messages + team_messages so replies work in DM and team chat
+        try:
+            await conn.execute(text(
+                "ALTER TABLE dm_messages ADD COLUMN IF NOT EXISTS parent_id UUID "
+                "REFERENCES dm_messages(id) ON DELETE SET NULL"
+            ))
+        except Exception:
+            pass
+        try:
+            await conn.execute(text(
+                "ALTER TABLE team_messages ADD COLUMN IF NOT EXISTS parent_id UUID "
+                "REFERENCES team_messages(id) ON DELETE SET NULL"
+            ))
+        except Exception:
+            pass
+
         # Dynamic kanban columns: drop the legacy status enum constraint so
         # tasks can sit in user-defined columns, then seed the four defaults
         # ("To Do", "In Progress", "Pending", "Done") for any project that
