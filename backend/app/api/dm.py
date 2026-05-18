@@ -201,13 +201,19 @@ async def edit_dm_message(
         raise HTTPException(status_code=404, detail="Pesan tidak ditemukan atau bukan milik Anda")
     
     message.content = data.content
+    message.edited_at = datetime.now(timezone.utc)
     await db.commit()
+    await db.refresh(message)
 
     # Broadcast edit event
     await dm_ws_manager.broadcast(str(message.dm_channel_id), {
         "type": "dm_edited",
         "channel_id": str(message.dm_channel_id),
-        "message": {"id": str(message.id), "content": message.content}
+        "message": {
+            "id": str(message.id),
+            "content": message.content,
+            "edited_at": message.edited_at.isoformat() if message.edited_at else None,
+        },
     })
 
     return message

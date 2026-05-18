@@ -14,6 +14,18 @@ import FileViewerModal from "@/components/ui/FileViewerModal";
 
 const GI = (n: string) => { const e = (n || "").toLowerCase().split(".").pop() || ""; return { isImage: ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "ico"].includes(e), isVideo: ["mp4", "webm", "mov", "avi", "mkv", "wmv"].includes(e), isAudio: ["mp3", "wav", "ogg", "aac", "flac", "m4a"].includes(e), isPdf: e === "pdf" } };
 
+// Format an edited_at timestamp into "DD/MM HH.MM" Indonesian style.
+const fmtEdited = (iso?: string | null) => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  return `${dd}/${mm} ${hh}.${mi}`;
+};
+
 // Render plain text with URLs turned into clickable <a> tags. Matches
 // http(s)://… and bare www.… domains. Splits the text in place so we
 // don't need dangerouslySetInnerHTML.
@@ -114,7 +126,7 @@ export default function DMChatPage() {
         } else if (d.type === "dm_reacted") {
           setMs(prev => prev.map(m => m.id === d.message_id ? { ...m, reactions: d.reactions || {} } : m));
         } else if (d.type === "dm_edited") {
-          setMs(prev => prev.map(m => m.id === d.message.id ? { ...m, content: d.message.content } : m));
+          setMs(prev => prev.map(m => m.id === d.message.id ? { ...m, content: d.message.content, edited_at: d.message.edited_at || m.edited_at } : m));
         } else if (d.type === "dm_deleted") {
           setMs(prev => prev.filter(m => m.id !== d.message_id));
         }
@@ -160,7 +172,7 @@ export default function DMChatPage() {
   };
 
   const updateMsg = async () => {
-    try { const r = await api.put(`/dm/messages/${em.id}`, { content: tx }); setMs(p => p.map(m => m.id === em.id ? { ...m, content: r.data.content } : m)); setEm(null); setTx(""); } catch { }
+    try { const r = await api.put(`/dm/messages/${em.id}`, { content: tx }); setMs(p => p.map(m => m.id === em.id ? { ...m, content: r.data.content, edited_at: r.data.edited_at || new Date().toISOString() } : m)); setEm(null); setTx(""); } catch { }
   };
   const delMsg = async (id: string) => { if (!confirm("Hapus?")) return; setMs(p => p.filter(m => m.id !== id)); try { await api.delete(`/dm/messages/${id}`); } catch { } };
 
@@ -279,6 +291,11 @@ export default function DMChatPage() {
                           {opt && !up2 ? <span className={cn("text-[9px] flex items-center gap-1", me ? "text-white/70" : "text-muted-foreground")}><Loader2 className="w-2.5 h-2.5 animate-spin" /> Kirim...</span>
                             : up2 ? null
                               : <span className={cn("text-[9px] flex items-center gap-0.5", me ? "text-white/70" : "text-muted-foreground")}>
+                                {msg.edited_at && (
+                                  <span className="italic mr-0.5" title={`Diedit ${fmtEdited(msg.edited_at)}`}>
+                                    Diedit {fmtEdited(msg.edited_at)} ·
+                                  </span>
+                                )}
                                 {d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                                 {me && (msg.is_read ? <CheckCheck className="w-3 h-3 text-white" /> : msg.is_delivered ? <CheckCheck className="w-3 h-3 text-white/60" /> : <Check className="w-3 h-3" />)}
                               </span>}

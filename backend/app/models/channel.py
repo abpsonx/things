@@ -29,6 +29,7 @@ class Message(Base):
     content = Column(Text, nullable=False)
     parent_id = Column(UUID(as_uuid=True), ForeignKey("messages.id"), nullable=True) # For Reply
     is_edited = Column(Boolean, default=False)
+    edited_at = Column(DateTime(timezone=True), nullable=True)
     is_read = Column(Boolean, default=False)
     read_by = Column(JSONB, default=list) # List of dicts: [{"id", "name", "read_at"}]
     attachment_url = Column(String, nullable=True)

@@ -47,6 +47,13 @@ async def lifespan(app: FastAPI):
             except Exception:
                 pass
 
+        # edited_at on message tables (so the UI can show "Diedit DD/MM HH:MM")
+        for tbl in ("messages", "dm_messages"):
+            try:
+                await conn.execute(text(f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS edited_at TIMESTAMP WITH TIME ZONE"))
+            except Exception:
+                pass
+
         # Dynamic kanban columns: drop the legacy status enum constraint so
         # tasks can sit in user-defined columns, then seed the four defaults
         # ("To Do", "In Progress", "Pending", "Done") for any project that

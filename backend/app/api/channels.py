@@ -216,19 +216,22 @@ async def update_message(
     if not message or str(message.user_id) != str(current_user.id):
         raise HTTPException(status_code=403, detail="Not authorized to edit this message")
     
+    from datetime import datetime, timezone
     message.content = data.content
     message.is_edited = True
+    message.edited_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(message)
-    
+
     # Broadcast edit
     await sio.emit("message_updated", {
         "id": str(message.id),
         "channel_id": str(message.channel_id),
         "content": message.content,
-        "is_edited": True
+        "is_edited": True,
+        "edited_at": message.edited_at.isoformat() if message.edited_at else None,
     }, room=f"channel_{channel_id}")
-    
+
     return message
 
 

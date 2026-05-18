@@ -414,7 +414,13 @@ export default function TeamChatPage() {
                       ) : (
                         <>
                           {renderContent(msg, isMe)}
-                          {msg.edited_at && <span className={`text-[9px] block mt-1 opacity-50 ${isMe ? 'text-white' : 'text-muted-foreground'}`}>(diedit)</span>}
+                          {msg.edited_at && (() => {
+                            const dd = new Date(msg.edited_at);
+                            const stamp = isNaN(dd.getTime())
+                              ? "diedit"
+                              : `Diedit ${String(dd.getDate()).padStart(2, "0")}/${String(dd.getMonth() + 1).padStart(2, "0")} ${String(dd.getHours()).padStart(2, "0")}.${String(dd.getMinutes()).padStart(2, "0")}`;
+                            return <span className={`text-[9px] block mt-1 italic opacity-60 ${isMe ? 'text-white' : 'text-muted-foreground'}`}>{stamp}</span>;
+                          })()}
                         </>
                       )}
                     </div>

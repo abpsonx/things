@@ -372,6 +372,7 @@ class MessageResponse(BaseModel):
     content: str
     parent_id: Optional[UUID] = None
     is_edited: bool = False
+    edited_at: Optional[datetime] = None
     is_read: bool = False
     read_by: List[dict] = []
     attachment_url: Optional[str] = None

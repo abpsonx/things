@@ -31,6 +31,18 @@ import {
 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
 
+// Format an edited_at timestamp into "DD/MM HH.MM" Indonesian style.
+const fmtEdited = (iso?: string | null) => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  return `${dd}/${mm} ${hh}.${mi}`;
+};
+
 export default function ChatPage() {
   const { id: orgId, projectId } = useParams();
   const router = useRouter();
@@ -386,7 +398,7 @@ export default function ChatPage() {
       };
 
       const handleUpdateMessage = (data: any) => {
-        setMessages((prev) => prev.map(m => m.id === data.id ? { ...m, content: data.content, is_edited: true } : m));
+        setMessages((prev) => prev.map(m => m.id === data.id ? { ...m, content: data.content, is_edited: true, edited_at: data.edited_at || m.edited_at || new Date().toISOString() } : m));
       };
 
       const handleDeleteMessage = (data: any) => {
@@ -792,6 +804,11 @@ export default function ChatPage() {
                         <div className="flex items-end justify-end gap-x-2">
                           {msg.content && <p className={cn("flex-1 min-w-[30px] whitespace-pre-wrap leading-snug py-0.5", isMe ? "text-white" : "text-foreground")}>{renderMessageContent(msg.content, isMe)}</p>}
                           <div className={cn("flex items-center gap-0.5 text-[8px] mb-[1px] shrink-0 font-medium select-none", isMe ? "text-white/70" : "text-muted-foreground/60")}>
+                            {(msg.edited_at || msg.is_edited) && (
+                              <span className="italic mr-0.5" title={msg.edited_at ? `Diedit ${fmtEdited(msg.edited_at)}` : "Diedit"}>
+                                {msg.edited_at ? `Diedit ${fmtEdited(msg.edited_at)} ·` : "Diedit ·"}
+                              </span>
+                            )}
                             <span>{formatTime(msg.created_at)}</span>
                             {isMe && (
                               <button onClick={() => setReadInfo(msg)} className="ml-0.5 transition-colors">
