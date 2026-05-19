@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import api from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -36,6 +36,8 @@ import TeamTaskCard from "./TeamTaskCard";
 import TeamNav from "@/components/team/TeamNav";
 import TeamTaskDetailModal from "./TeamTaskDetailModal";
 import InviteTeamMemberModal from "@/components/team/InviteTeamMemberModal";
+import BoardFilterBar from "@/components/board/BoardFilterBar";
+import { applyBoardFilter, useBoardFilter } from "@/components/board/useBoardFilter";
 
 interface Task {
   id: string;
@@ -77,6 +79,33 @@ export default function TeamBoardPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [members, setMembers] = useState<any[]>([]);
+
+  const {
+    filter,
+    setFilter,
+    resetFilter,
+    savedViews,
+    saveView,
+    applyView,
+    deleteView,
+  } = useBoardFilter(`team:${teamId}`);
+
+  const memberOptions = useMemo(
+    () =>
+      members
+        .filter((m: any) => m.user)
+        .map((m: any) => ({
+          id: m.user_id || m.user.id,
+          name: m.user.name,
+          avatar_url: m.user.avatar_url,
+        })),
+    [members],
+  );
+
+  const filteredTasks = useMemo(
+    () => applyBoardFilter(tasks, filter, user?.id),
+    [tasks, filter, user?.id],
+  );
   
   // DND State
   const [activeTask, setActiveTask] = useState<Task | null>(null);
@@ -296,6 +325,19 @@ export default function TeamBoardPage() {
 
       <TeamNav orgId={orgId} teamId={teamId} />
 
+      <div className="px-8">
+        <BoardFilterBar
+          filter={filter}
+          onChange={setFilter}
+          onReset={resetFilter}
+          members={memberOptions}
+          savedViews={savedViews}
+          onSaveView={saveView}
+          onApplyView={applyView}
+          onDeleteView={deleteView}
+        />
+      </div>
+
       {/* Kanban Board */}
       <DndContext
         sensors={sensors}
@@ -304,7 +346,7 @@ export default function TeamBoardPage() {
         onDragOver={onDragOver}
         onDragEnd={onDragEnd}
       >
-        <div className="flex-1 overflow-x-auto p-8">
+        <div className="flex-1 overflow-x-auto p-8 pt-2">
           <div className="flex gap-6 h-full min-w-max pb-4">
             {COLUMNS.map((col) => (
               <TeamKanbanColumn
@@ -313,7 +355,7 @@ export default function TeamBoardPage() {
                 title={col.title}
                 color={col.color}
                 badge={col.badge}
-                tasks={tasks.filter((t) => t.status === col.id)}
+                tasks={filteredTasks.filter((t) => t.status === col.id)}
                 onAddTask={() => handleAddTask(col.id)}
                 onTaskClick={handleTaskClick}
               />

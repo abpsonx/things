@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import ProjectLayout from "@/components/layout/ProjectLayout";
 import api from "@/lib/api";
@@ -41,6 +41,9 @@ import {
 import TaskCard from "./TaskCard";
 import KanbanColumn from "./KanbanColumn";
 import TaskDetailModal from "./TaskDetailModal";
+import BoardFilterBar from "@/components/board/BoardFilterBar";
+import { applyBoardFilter, useBoardFilter } from "@/components/board/useBoardFilter";
+import { useAuthStore } from "@/store/useAuthStore";
 
 interface Task {
   id: string;
@@ -65,12 +68,42 @@ interface BoardColumnRow {
 export default function KanbanBoard() {
   const { id: orgId, projectId } = useParams();
   const searchParams = useSearchParams();
+  const { user: currentUser } = useAuthStore();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [columns, setColumns] = useState<BoardColumnRow[]>([]);
+  const [members, setMembers] = useState<any[]>([]);
+  const [labels, setLabels] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const {
+    filter,
+    setFilter,
+    resetFilter,
+    savedViews,
+    saveView,
+    applyView,
+    deleteView,
+  } = useBoardFilter(`project:${projectId}`);
+
+  const memberOptions = useMemo(
+    () =>
+      members
+        .filter((m: any) => m.user)
+        .map((m: any) => ({
+          id: m.user_id || m.user.id,
+          name: m.user.name,
+          avatar_url: m.user.avatar_url,
+        })),
+    [members],
+  );
+
+  const filteredTasks = useMemo(
+    () => applyBoardFilter(tasks, filter, currentUser?.id),
+    [tasks, filter, currentUser?.id],
+  );
 
   // Open task detail directly when the URL has ?task=<id>
   // (used by the dashboard "Tugasmu" widget to deep-link a task).
@@ -98,11 +131,15 @@ export default function KanbanBoard() {
 
   const fetchTasks = useCallback(async () => {
     try {
-      const [taskRes, projRes] = await Promise.all([
+      const [taskRes, projRes, memRes, labelRes] = await Promise.all([
         api.get(`/projects/${projectId}/tasks`),
         api.get(`/organizations/${orgId}/projects/${projectId}`),
+        api.get(`/projects/${projectId}/members`).catch(() => ({ data: [] })),
+        api.get(`/projects/${projectId}/labels`).catch(() => ({ data: [] })),
       ]);
       setTasks(taskRes.data);
+      setMembers(memRes.data || []);
+      setLabels(labelRes.data || []);
       if (projRes.data.description) {
         setProjectNote(projRes.data.description);
       }
@@ -269,7 +306,18 @@ export default function KanbanBoard() {
   );
 
   return (
-    <div className="h-[calc(100vh-250px)]">
+    <div className="h-[calc(100vh-250px)] flex flex-col">
+      <BoardFilterBar
+        filter={filter}
+        onChange={setFilter}
+        onReset={resetFilter}
+        members={memberOptions}
+        labels={labels}
+        savedViews={savedViews}
+        onSaveView={saveView}
+        onApplyView={applyView}
+        onDeleteView={deleteView}
+      />
       <DndContext
         sensors={sensors}
         collisionDetection={closestCorners}
@@ -286,7 +334,7 @@ export default function KanbanBoard() {
                 id={col.slug}
                 columnId={col.id}
                 title={col.title}
-                tasks={tasks.filter((t) => t.status === col.slug)}
+                tasks={filteredTasks.filter((t) => t.status === col.slug)}
                 projectId={projectId as string}
                 onTaskAdded={fetchTasks}
                 onTaskClick={(id) => {
