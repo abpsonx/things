@@ -272,7 +272,7 @@ export default function DMChatPage() {
                       {av && <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold">{(ou?.name || "?").charAt(0).toUpperCase()}</div>}
                     </div>
                     <div className={cn("flex flex-col", me ? "items-end" : "items-start")}>
-                      <div className={cn("relative px-3 py-1.5 text-sm shadow-sm transition-all", me ? "bg-emerald-500 text-white rounded-[16px] rounded-br-[4px]" : "bg-card text-foreground border border-border rounded-[16px] rounded-bl-[4px]", opt && "opacity-70", up2 && "min-w-[160px]")}>
+                      <div className={cn("relative px-3 py-1.5 text-sm shadow-sm transition-all", me ? "bg-[#3D4F6B] text-white rounded-[16px] rounded-br-[4px]" : "bg-card text-foreground border border-border rounded-[16px] rounded-bl-[4px]", opt && "opacity-70", up2 && "min-w-[160px]")}>
                         {msg.parent && (
                           <div
                             onClick={() => {

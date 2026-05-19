@@ -760,7 +760,7 @@ export default function ChatPage() {
                     <div className={cn("max-w-[85%] relative flex flex-col", isMe ? "items-end" : "items-start")}>
                       <div className={cn(
                         "px-3 py-1.5 rounded-2xl shadow-sm text-[13px] relative group/msg transition-all min-w-[40px]",
-                        isMe ? "bg-emerald-500 text-white rounded-tr-none" : "bg-card border border-border text-foreground rounded-tl-none",
+                        isMe ? "bg-[#3D4F6B] text-white rounded-tr-none" : "bg-card border border-border text-foreground rounded-tl-none",
                         msg.is_pinned && "ring-1 ring-blue-500/30",
                         msg.is_starred && "ring-1 ring-yellow-500/30"
                       )}>

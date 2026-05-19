@@ -433,11 +433,11 @@ export default function TeamChatPage() {
                     )}
 
                     {/* Bubble */}
-                    <div 
+                    <div
                       className={`relative p-4 rounded-2xl shadow-sm text-[14px] leading-relaxed ${
-                        isMe 
-                        ? 'bg-indigo-600 text-white rounded-tr-none shadow-indigo-200/50' 
-                        : 'bg-gray-100 text-gray-800 border border-gray-200 rounded-tl-none'
+                        isMe
+                        ? 'bg-[#3D4F6B] text-white rounded-tr-none shadow-slate-300/50'
+                        : 'bg-card text-foreground border border-border rounded-tl-none'
                       }`}
                     >
                       {editingId === msg.id ? (
