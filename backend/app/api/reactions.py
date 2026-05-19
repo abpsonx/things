@@ -78,6 +78,66 @@ async def _emit_update(db: AsyncSession, target_type: str, target_id: str, curre
     return payload
 
 
+async def _lookup_target_author_and_url(db: AsyncSession, target_type: str, target_id: str) -> tuple[str | None, str | None, str | None, str | None]:
+    """Return (author_user_id, snippet, url, org_id) for the reaction target."""
+    if target_type == "message":
+        from app.models.channel import Message, Channel
+        from app.models.project import Project
+        res = await db.execute(
+            select(Message, Channel, Project)
+            .join(Channel, Channel.id == Message.channel_id)
+            .join(Project, Project.id == Channel.project_id)
+            .where(Message.id == target_id)
+        )
+        row = res.first()
+        if not row:
+            return None, None, None, None
+        msg, _ch, proj = row
+        snippet = (msg.content or "").strip()
+        if len(snippet) > 60:
+            snippet = snippet[:57] + "..."
+        url = f"/org/{proj.org_id}/project/{proj.id}/chat"
+        return str(msg.user_id), snippet, url, str(proj.org_id)
+    if target_type == "team_message":
+        from app.models.team import TeamMessage, Team
+        res = await db.execute(
+            select(TeamMessage, Team)
+            .join(Team, Team.id == TeamMessage.team_id)
+            .where(TeamMessage.id == target_id)
+        )
+        row = res.first()
+        if not row:
+            return None, None, None, None
+        msg, team = row
+        snippet = (msg.content or "").strip()
+        if len(snippet) > 60:
+            snippet = snippet[:57] + "..."
+        url = f"/org/{team.org_id}/team/{team.id}/chat"
+        return str(msg.user_id), snippet, url, str(team.org_id)
+    if target_type == "comment":
+        from app.models.comment import Comment
+        from app.models.task import Task
+        from app.models.project import Project
+        res = await db.execute(
+            select(Comment, Task, Project)
+            .join(Task, Task.id == Comment.task_id)
+            .outerjoin(Project, Project.id == Task.project_id)
+            .where(Comment.id == target_id)
+        )
+        row = res.first()
+        if not row:
+            return None, None, None, None
+        comment, task, proj = row
+        snippet = (comment.content or "").strip()
+        if len(snippet) > 60:
+            snippet = snippet[:57] + "..."
+        if proj:
+            url = f"/org/{proj.org_id}/project/{proj.id}/board?task={task.id}"
+            return str(comment.user_id), snippet, url, str(proj.org_id)
+        return str(comment.user_id), snippet, None, None
+    return None, None, None, None
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def add_reaction(
     data: dict,
@@ -103,6 +163,7 @@ async def add_reaction(
             Reaction.emoji == emoji,
         )
     )
+    was_new = False
     if not existing.scalar_one_or_none():
         db.add(Reaction(
             target_type=target_type,
@@ -111,8 +172,32 @@ async def add_reaction(
             emoji=emoji,
         ))
         await db.commit()
+        was_new = True
 
-    return await _emit_update(db, target_type, target_id, current_user.id)
+    payload = await _emit_update(db, target_type, target_id, current_user.id)
+
+    # Notify the original author — only on a fresh reaction and not when
+    # reacting to your own message.
+    if was_new:
+        try:
+            author_id, snippet, url, org_id = await _lookup_target_author_and_url(db, target_type, target_id)
+            if author_id and author_id != str(current_user.id):
+                from app.services.notification import notify_user
+                label = "komentar" if target_type == "comment" else "pesan"
+                await notify_user(
+                    db,
+                    user_id=author_id,
+                    type="reaction",
+                    title="Reaksi baru",
+                    content=f"{current_user.name} bereaksi {emoji} ke {label}mu: {snippet}",
+                    ref_id=str(target_id),
+                    org_id=org_id,
+                    url=url or "/dashboard",
+                )
+        except Exception as e:
+            print(f"[reactions] notify failed: {e}")
+
+    return payload
 
 
 @router.delete("", status_code=status.HTTP_200_OK)

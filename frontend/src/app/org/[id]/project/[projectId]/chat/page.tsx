@@ -70,6 +70,12 @@ export default function ChatPage() {
   // Attachments & Emojis
   const [attachment, setAttachment] = useState<File | null>(null);
   const [isPollModalOpen, setIsPollModalOpen] = useState(false);
+
+  // /file slash command — picker dropdown state
+  const [fileQuery, setFileQuery] = useState<string | null>(null); // null = not active, "" = picker open without typed search
+  const [fileTriggerPos, setFileTriggerPos] = useState<number | null>(null); // start index of "/file"
+  const [allFiles, setAllFiles] = useState<any[]>([]);
+  const [fileHighlight, setFileHighlight] = useState(0);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [showEmoji, setShowEmoji] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -161,6 +167,65 @@ export default function ChatPage() {
       .catch((err) => console.error("Failed to fetch project members", err));
     return () => { cancelled = true; };
   }, [orgId, projectId]);
+
+  // Fetch the project's file index so /file picker has options
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    api.get(`/projects/${projectId}/files-index`)
+      .then((res) => {
+        if (cancelled) return;
+        setAllFiles(Array.isArray(res.data) ? res.data : []);
+      })
+      .catch((err) => console.error("Failed to fetch project files", err));
+    return () => { cancelled = true; };
+  }, [projectId]);
+
+  // Match files against the current /file query
+  const fileMatches = fileQuery === null
+    ? []
+    : allFiles
+        .filter((f) => f.name.toLowerCase().includes(fileQuery.toLowerCase()))
+        .slice(0, 8);
+
+  // Detect `/file` slash trigger from the textarea content + caret position.
+  // Inspired by the @mention detection; only fires when the trigger sits at
+  // the start of a word so it doesn't interfere with paths or URLs.
+  const detectFileSlash = (value: string, caret: number) => {
+    const before = value.slice(0, caret);
+    const m = before.match(/(?:^|\s)\/file(?:\s+([^\n]*))?$/);
+    if (!m) {
+      setFileQuery(null);
+      setFileTriggerPos(null);
+      return;
+    }
+    // Compute exact start of "/file"
+    const idx = before.lastIndexOf("/file");
+    setFileTriggerPos(idx);
+    setFileQuery(m[1] || "");
+    setFileHighlight(0);
+  };
+
+  const insertFileToken = (file: any) => {
+    if (fileTriggerPos === null) return;
+    // Build token. Format: #[Name](file:kind:id)
+    const token = `#[${file.name}](file:${file.kind}:${file.id})`;
+    const before = newMessage.slice(0, fileTriggerPos);
+    // remove the typed "/file..." up to caret
+    const ta = textareaRef.current;
+    const caret = ta ? ta.selectionStart : newMessage.length;
+    const after = newMessage.slice(caret);
+    const next = `${before}${token} ${after}`;
+    setNewMessage(next);
+    setFileQuery(null);
+    setFileTriggerPos(null);
+    setTimeout(() => {
+      if (!textareaRef.current) return;
+      textareaRef.current.focus();
+      const pos = before.length + token.length + 1;
+      textareaRef.current.setSelectionRange(pos, pos);
+    }, 0);
+  };
 
   // Members filtered by what the user typed after @
   const mentionMatches =
@@ -290,14 +355,43 @@ export default function ChatPage() {
 
   const renderMessageContent = (content: string, onGreen = false) => {
     if (!content) return null;
-    // Split on URL OR mention token, keeping the delimiters
-    const TOKEN_RE = /(https?:\/\/[^\s]+|@\[[^\]]+\]\([0-9a-fA-F-]{36}\))/g;
+    // Split on URL, mention token, or file token, keeping the delimiters.
+    const TOKEN_RE = /(https?:\/\/[^\s]+|@\[[^\]]+\]\([0-9a-fA-F-]{36}\)|#\[[^\]]+\]\(file:(?:doc|attachment):[0-9a-fA-F-]{36}\))/g;
     const parts = content.split(TOKEN_RE);
     const MENTION_RE = /^@\[([^\]]+)\]\(([0-9a-fA-F-]{36})\)$/;
+    const FILE_RE = /^#\[([^\]]+)\]\(file:(doc|attachment):([0-9a-fA-F-]{36})\)$/;
     const URL_RE = /^https?:\/\//;
 
     return parts.map((part, i) => {
       if (!part) return null;
+      const fileMatch = part.match(FILE_RE);
+      if (fileMatch) {
+        const [, name, kind, id] = fileMatch;
+        const f = allFiles.find((x) => x.id === id && x.kind === kind);
+        const href = kind === "doc"
+          ? `/org/${orgId}/project/${projectId}/docs?doc=${id}`
+          : (f?.url || "#");
+        const target = kind === "doc" ? "_self" : "_blank";
+        return (
+          <a
+            key={i}
+            href={href}
+            target={target}
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className={cn(
+              "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md font-semibold hover:underline",
+              onGreen
+                ? "bg-white/15 text-white"
+                : "bg-primary/10 text-primary",
+            )}
+            title={name}
+          >
+            <span>{kind === "doc" ? "📄" : "📎"}</span>
+            <span className="max-w-[180px] truncate">{name}</span>
+          </a>
+        );
+      }
       const mentionMatch = part.match(MENTION_RE);
       if (mentionMatch) {
         const [, name, userId] = mentionMatch;
@@ -1009,6 +1103,33 @@ export default function ChatPage() {
                     </div>
 
                     <div className="relative flex-1">
+                      {fileQuery !== null && fileMatches.length > 0 && (
+                        <div className="absolute bottom-full left-0 right-0 mb-2 bg-card border border-border rounded-2xl shadow-xl overflow-hidden z-30 max-h-[240px] overflow-y-auto">
+                          <div className="px-3 py-1.5 border-b border-border text-[10px] font-bold text-muted-foreground uppercase tracking-wide bg-secondary/30">
+                            Tag file
+                          </div>
+                          {fileMatches.map((f, i) => (
+                            <button
+                              key={`${f.kind}-${f.id}`}
+                              type="button"
+                              onMouseDown={(e) => { e.preventDefault(); insertFileToken(f); }}
+                              onMouseEnter={() => setFileHighlight(i)}
+                              className={cn(
+                                "w-full flex items-center gap-3 px-3 py-2 text-left transition-colors",
+                                i === fileHighlight ? "bg-primary/10" : "hover:bg-secondary/50",
+                              )}
+                            >
+                              <div className="w-7 h-7 rounded-lg bg-secondary border border-border flex items-center justify-center text-xs shrink-0">
+                                {f.kind === "doc" ? "📄" : "📎"}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-bold truncate">{f.name}</p>
+                                <p className="text-[10px] text-muted-foreground capitalize">{f.kind === "doc" ? "Wiki" : "Lampiran task"}</p>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       {mentionQuery !== null && mentionMatches.length > 0 && (
                         <div className="absolute bottom-full left-0 right-0 mb-2 bg-card border border-border rounded-2xl shadow-xl overflow-hidden z-30 max-h-[240px] overflow-y-auto">
                           <div className="px-3 py-1.5 border-b border-border text-[10px] font-bold text-muted-foreground uppercase tracking-wide bg-secondary/30">
@@ -1049,8 +1170,10 @@ export default function ChatPage() {
                           setNewMessage(val);
                           e.target.style.height = 'auto';
                           e.target.style.height = Math.min(e.target.scrollHeight, 150) + 'px';
-                          // Detect @ token at caret to open/update the picker
                           const caret = e.target.selectionStart ?? val.length;
+                          // /file slash detector
+                          detectFileSlash(val, caret);
+                          // Detect @ token at caret to open/update the picker
                           const upToCaret = val.slice(0, caret);
                           const atIdx = upToCaret.lastIndexOf("@");
                           if (atIdx === -1) { setMentionQuery(null); return; }
@@ -1062,6 +1185,12 @@ export default function ChatPage() {
                           setMentionHighlight(0);
                         }}
                         onKeyDown={(e) => {
+                          if (fileQuery !== null && fileMatches.length > 0) {
+                            if (e.key === 'ArrowDown') { e.preventDefault(); setFileHighlight((h) => (h + 1) % fileMatches.length); return; }
+                            if (e.key === 'ArrowUp') { e.preventDefault(); setFileHighlight((h) => (h - 1 + fileMatches.length) % fileMatches.length); return; }
+                            if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); insertFileToken(fileMatches[fileHighlight]); return; }
+                            if (e.key === 'Escape') { e.preventDefault(); setFileQuery(null); return; }
+                          }
                           if (mentionQuery !== null && mentionMatches.length > 0) {
                             if (e.key === 'ArrowDown') { e.preventDefault(); setMentionHighlight((h) => (h + 1) % mentionMatches.length); return; }
                             if (e.key === 'ArrowUp') { e.preventDefault(); setMentionHighlight((h) => (h - 1 + mentionMatches.length) % mentionMatches.length); return; }

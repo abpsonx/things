@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SmilePlus } from "lucide-react";
 import api from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -15,6 +15,66 @@ export interface ReactionBucket {
 }
 
 const QUICK_EMOJIS = ["👍", "❤️", "😂", "🎉", "🔥", "💯", "✅", "👀"];
+
+function ChipWithPopover({
+  bucket,
+  onClick,
+  onDark,
+}: {
+  bucket: ReactionBucket;
+  onClick: () => void;
+  onDark?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div
+      className="relative"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(
+          "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-semibold border transition-all",
+          bucket.me
+            ? "bg-primary/10 border-primary/40 text-primary"
+            : onDark
+              ? "bg-white/10 border-white/20 text-white/85 hover:bg-white/15"
+              : "bg-secondary/60 border-border text-foreground/80 hover:bg-secondary",
+        )}
+      >
+        <span className="text-[12px] leading-none">{bucket.emoji}</span>
+        <span className="leading-none">{bucket.count}</span>
+      </button>
+      {open && bucket.users.length > 0 && (
+        <div className="absolute z-40 bottom-full mb-1 left-1/2 -translate-x-1/2 bg-slate-900 text-white rounded-xl shadow-xl px-3 py-2 text-[11px] font-medium whitespace-nowrap pointer-events-none">
+          <div className="flex items-center gap-1.5 mb-1 text-[10px] uppercase tracking-wider opacity-70">
+            <span>{bucket.emoji}</span>
+            <span>·</span>
+            <span>{bucket.count} {bucket.count === 1 ? "reaksi" : "reaksi"}</span>
+          </div>
+          <div className="space-y-0.5 max-w-[200px]">
+            {bucket.users.slice(0, 12).map((u) => (
+              <div key={u.id} className="truncate">
+                {u.name}
+                {bucket.me && u.id === bucket.users.find((x) => x.name)?.id && ""}
+              </div>
+            ))}
+            {bucket.users.length > 12 && (
+              <div className="opacity-60">+{bucket.users.length - 12} lainnya</div>
+            )}
+          </div>
+          {bucket.me && (
+            <div className="text-[10px] opacity-60 mt-1 pt-1 border-t border-white/15">
+              Klik untuk hapus reaksimu
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface Props {
   targetType: TargetType;
@@ -66,23 +126,12 @@ export default function Reactions({ targetType, targetId, reactions, onChange, o
   return (
     <div className="flex items-center gap-1 flex-wrap">
       {reactions.map((r) => (
-        <button
+        <ChipWithPopover
           key={r.emoji}
-          type="button"
+          bucket={r}
+          onDark={onDark}
           onClick={() => toggle(r.emoji)}
-          title={r.users.map((u) => u.name).join(", ")}
-          className={cn(
-            "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-semibold border transition-all",
-            r.me
-              ? "bg-primary/10 border-primary/40 text-primary"
-              : onDark
-                ? "bg-white/10 border-white/20 text-white/85 hover:bg-white/15"
-                : "bg-secondary/60 border-border text-foreground/80 hover:bg-secondary",
-          )}
-        >
-          <span className="text-[12px] leading-none">{r.emoji}</span>
-          <span className="leading-none">{r.count}</span>
-        </button>
+        />
       ))}
 
       <div className="relative" ref={pickerRef}>

@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 
 from app.core.config import get_settings
 from app.core.database import engine, Base
-from app.api import auth, projects, teams, organizations, channels, tasks, attachments, events, comments, subtasks, labels, notifications, search, stats, settings as settings_api, dm, google, documents, reports, announcements, board_columns, polls, reactions
+from app.api import auth, projects, teams, organizations, channels, tasks, attachments, events, comments, subtasks, labels, notifications, search, stats, settings as settings_api, dm, google, documents, reports, announcements, board_columns, polls, reactions, file_index
 
 
 settings = get_settings()
@@ -257,6 +257,7 @@ app.include_router(announcements.router, prefix="/api")
 app.include_router(board_columns.router, prefix="/api")
 app.include_router(polls.router, prefix="/api")
 app.include_router(reactions.router, prefix="/api")
+app.include_router(file_index.router, prefix="/api")
 
 
 # Static Files
