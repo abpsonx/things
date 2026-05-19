@@ -1,12 +1,13 @@
 "use client";
 
-import React from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
 import { MessageSquare, Paperclip, CheckSquare, Calendar, Flag, MoreHorizontal, Check } from "lucide-react";
 import { format, isValid } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
+import api from "@/lib/api";
 
 interface Label {
   id: string;
@@ -75,6 +76,38 @@ export default function TaskCard({
     );
   }
 
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editTitle, setEditTitle] = useState(task.title);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isEditingTitle) titleInputRef.current?.select();
+  }, [isEditingTitle]);
+
+  const saveTitle = async () => {
+    const next = editTitle.trim();
+    if (!next || next === task.title) {
+      setIsEditingTitle(false);
+      setEditTitle(task.title);
+      return;
+    }
+    try {
+      // The board page passes projectId via the route; we use the API path
+      // that exists for project tasks. Team-only cards still get the modal
+      // via double-click since title save would need a team route.
+      const projectId = (task as any).project_id;
+      if (projectId) {
+        await api.put(`/projects/${projectId}/tasks/${task.id}`, { title: next });
+        (task as any).title = next;
+      }
+    } catch (err) {
+      console.error("Failed to rename task", err);
+      setEditTitle(task.title);
+    } finally {
+      setIsEditingTitle(false);
+    }
+  };
+
   const priority = task.priority ? PRIORITY_META[task.priority] : undefined;
   const subtasks = task.subtasks || [];
   const doneCount = subtasks.filter((s) => s.is_done).length;
@@ -140,8 +173,34 @@ export default function TaskCard({
         </button>
       </div>
 
-      {/* Title */}
-      <h4 className="text-[14px] font-extrabold leading-snug text-foreground mb-2">{task.title}</h4>
+      {/* Title (double-click to edit) */}
+      {isEditingTitle ? (
+        <input
+          ref={titleInputRef}
+          value={editTitle}
+          onChange={(e) => setEditTitle(e.target.value)}
+          onBlur={saveTitle}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); saveTitle(); }
+            if (e.key === "Escape") { setIsEditingTitle(false); setEditTitle(task.title); }
+          }}
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="w-full text-[14px] font-extrabold leading-snug text-foreground mb-2 bg-background border border-primary/40 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary/20"
+        />
+      ) : (
+        <h4
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            setEditTitle(task.title);
+            setIsEditingTitle(true);
+          }}
+          className="text-[14px] font-extrabold leading-snug text-foreground mb-2 cursor-text"
+          title="Klik dua kali untuk rename"
+        >
+          {task.title}
+        </h4>
+      )}
 
       {/* Assignee + due date row */}
       {(task.assignee || dueDateValid) && (

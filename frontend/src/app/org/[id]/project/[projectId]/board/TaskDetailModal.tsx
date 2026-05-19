@@ -202,24 +202,37 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const uploadFile = async (file: File) => {
     const formData = new FormData();
     formData.append("file", file);
-
     setIsUploading(true);
     try {
       const res = await api.post(`/tasks/${taskId}/attachments`, formData, {
-        headers: { "Content-Type": "multipart/form-data" }
+        headers: { "Content-Type": "multipart/form-data" },
       });
-      setAttachments([res.data, ...attachments]);
+      setAttachments((prev) => [res.data, ...prev]);
       onUpdate();
     } catch (err) {
       console.error("Failed to upload file", err);
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) await uploadFile(file);
+  };
+
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const files = Array.from(e.dataTransfer.files);
+    for (const f of files) {
+      await uploadFile(f);
     }
   };
 
@@ -390,6 +403,28 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={task?.title || "Detail Tugas"}>
+      <div
+        className="relative"
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (!isDragging) setIsDragging(true);
+        }}
+        onDragLeave={(e) => {
+          // only clear when leaving the wrapper, not children
+          if (e.currentTarget === e.target) setIsDragging(false);
+        }}
+        onDrop={handleDrop}
+      >
+        {isDragging && (
+          <div className="absolute inset-0 z-30 bg-primary/10 border-2 border-dashed border-primary rounded-2xl flex items-center justify-center pointer-events-none">
+            <div className="bg-white px-6 py-4 rounded-2xl shadow-lg border border-primary/30">
+              <p className="text-sm font-bold text-primary flex items-center gap-2">
+                <UploadCloud className="w-5 h-5" />
+                Lepaskan file di sini untuk lampirkan
+              </p>
+            </div>
+          </div>
+        )}
       <div className="grid grid-cols-1 md:grid-cols-10 gap-8">
         {/* Main Content */}
         <div className="md:col-span-7 space-y-8">
@@ -901,6 +936,7 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
             </button>
           </div>
         </div>
+      </div>
       </div>
     </Modal>
   );
