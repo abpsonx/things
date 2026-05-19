@@ -247,7 +247,7 @@ export default function TeamBoardPage() {
             <ArrowLeft className="w-4 h-4" />
           </button>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/20">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center shadow-lg shadow-slate-500/20">
               <Users className="w-5 h-5 text-white" />
             </div>
             <div>
