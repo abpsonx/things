@@ -40,11 +40,12 @@ export default function TeamTaskCard({ task, isOverlay, onClick }: { task: Task,
     transition,
   };
 
-  const priorityColors = {
-    high: "bg-rose-500",
-    medium: "bg-amber-500",
-    low: "bg-emerald-500",
+  const priorityMeta: Record<string, { label: string; className: string }> = {
+    high: { label: "Urgent", className: "bg-red-500/10 text-red-600 border border-red-500/20" },
+    medium: { label: "Sedang", className: "bg-amber-500/10 text-amber-700 border border-amber-500/20" },
+    low: { label: "Santai", className: "bg-slate-500/10 text-slate-600 border border-slate-500/20" },
   };
+  const priority = priorityMeta[task.priority];
 
   if (isDragging && !isOverlay) {
     return (
@@ -69,12 +70,16 @@ export default function TeamTaskCard({ task, isOverlay, onClick }: { task: Task,
       )}
     >
       <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <div className={cn("w-2 h-2 rounded-full", priorityColors[task.priority])} />
-          <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-            {task.priority}
+        {priority && (
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded-md",
+              priority.className,
+            )}
+          >
+            {priority.label}
           </span>
-        </div>
+        )}
 
         <h4 className="text-sm font-bold leading-snug group-hover:text-primary transition-colors">
           {task.title}

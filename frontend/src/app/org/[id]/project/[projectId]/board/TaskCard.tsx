@@ -4,7 +4,7 @@ import React from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
-import { MessageSquare, Paperclip, CheckSquare, Calendar } from "lucide-react";
+import { MessageSquare, Paperclip, CheckSquare, Calendar, AlertTriangle, Flag } from "lucide-react";
 import { format, isValid } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 
@@ -83,6 +83,13 @@ export default function TaskCard({
   const dueDate = task.due_date ? new Date(task.due_date) : null;
   const dueDateValid = !!dueDate && isValid(dueDate);
 
+  const priorityMeta: Record<string, { label: string; className: string; Icon: typeof AlertTriangle } | undefined> = {
+    high: { label: "Urgent", className: "bg-red-500/10 text-red-600 border border-red-500/20", Icon: AlertTriangle },
+    medium: { label: "Sedang", className: "bg-amber-500/10 text-amber-700 border border-amber-500/20", Icon: Flag },
+    low: { label: "Santai", className: "bg-slate-500/10 text-slate-600 border border-slate-500/20", Icon: Flag },
+  };
+  const priority = task.priority ? priorityMeta[task.priority] : undefined;
+
   return (
     <div
       ref={setNodeRef}
@@ -95,6 +102,19 @@ export default function TaskCard({
         isOverlay && "shadow-xl border-primary scale-[1.02] rotate-1",
       )}
     >
+      {/* Priority chip */}
+      {priority && (
+        <span
+          className={cn(
+            "inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded-md mb-1.5",
+            priority.className,
+          )}
+        >
+          <priority.Icon className="w-2.5 h-2.5" />
+          {priority.label}
+        </span>
+      )}
+
       {/* Title */}
       <h4 className="text-[13px] font-bold leading-snug text-foreground">{task.title}</h4>
 
