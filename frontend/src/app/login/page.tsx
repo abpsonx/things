@@ -98,12 +98,13 @@ export default function LoginPage() {
               <label className="text-sm font-medium" htmlFor="password">
                 Password
               </label>
-              <Link
-                href="/forgot-password"
+              <button
+                type="button"
+                onClick={() => alert("Hubungi admin workspace untuk reset password.")}
                 className="text-xs text-muted-foreground hover:text-primary underline underline-offset-4"
               >
                 Lupa password?
-              </Link>
+              </button>
             </div>
             <input
               id="password"
