@@ -102,34 +102,42 @@ async def create_channel_poll(
     )
     db.add(poll)
     await db.flush()
+    poll_id = poll.id
 
     # Companion chat message so the poll appears in the channel timeline.
     msg = Message(
         channel_id=channel_id,
         user_id=current_user.id,
         content=f"📊 {question}",
-        poll_id=poll.id,
+        poll_id=poll_id,
     )
     db.add(msg)
+    await db.flush()
+    # Capture before commit — session expires attributes after commit and
+    # accessing them would trigger lazy IO in an async-incompatible way.
+    msg_snapshot = {
+        "id": str(msg.id),
+        "channel_id": str(msg.channel_id),
+        "user_id": str(msg.user_id),
+        "content": msg.content,
+        "created_at": msg.created_at.isoformat() if msg.created_at else datetime.now(timezone.utc).isoformat(),
+    }
     await db.commit()
-    await db.refresh(poll)
-    await db.refresh(msg)
 
+    # Reload poll with votes eager-loaded so _serialize doesn't trigger
+    # lazy IO on the expired session (would raise greenlet_spawn error).
+    poll = await _load_poll(db, str(poll_id))
     poll_payload = _serialize(poll, current_user.id)
 
     # Broadcast as a regular new message via the channel's socket room.
     from app.sockets.manager import sio
     await sio.emit("new_message", {
-        "id": str(msg.id),
-        "channel_id": str(msg.channel_id),
-        "user_id": str(msg.user_id),
-        "content": msg.content,
+        **msg_snapshot,
         "poll": poll_payload,
-        "created_at": msg.created_at.isoformat(),
         "user": {"id": str(current_user.id), "name": current_user.name, "avatar_url": current_user.avatar_url},
     }, room=f"channel_{channel_id}")
 
-    return {"message_id": str(msg.id), "poll": poll_payload}
+    return {"message_id": msg_snapshot["id"], "poll": poll_payload}
 
 
 @router.post("/team/{team_id}", response_model=dict)
@@ -163,31 +171,36 @@ async def create_team_poll(
     )
     db.add(poll)
     await db.flush()
+    poll_id = poll.id
 
     msg = TeamMessage(
         team_id=team_id,
         user_id=current_user.id,
         content=f"📊 {question}",
-        poll_id=poll.id,
+        poll_id=poll_id,
     )
     db.add(msg)
+    await db.flush()
+    msg_snapshot = {
+        "id": str(msg.id),
+        "user_id": str(msg.user_id),
+        "content": msg.content,
+        "created_at": msg.created_at.isoformat() if msg.created_at else datetime.now(timezone.utc).isoformat(),
+    }
     await db.commit()
-    await db.refresh(poll)
-    await db.refresh(msg)
 
+    # Reload poll with votes eager-loaded to avoid lazy-IO after commit.
+    poll = await _load_poll(db, str(poll_id))
     poll_payload = _serialize(poll, current_user.id)
 
     from app.sockets.manager import sio
     await sio.emit("team_message", {
-        "id": str(msg.id),
-        "user_id": str(msg.user_id),
-        "content": msg.content,
+        **msg_snapshot,
         "poll": poll_payload,
-        "created_at": msg.created_at.isoformat(),
         "user": {"name": current_user.name, "avatar_url": current_user.avatar_url},
     }, room=f"team_{team_id}")
 
-    return {"message_id": str(msg.id), "poll": poll_payload}
+    return {"message_id": msg_snapshot["id"], "poll": poll_payload}
 
 
 @router.post("/{poll_id}/vote", response_model=dict)
