@@ -17,6 +17,7 @@ from app.models.team import Team, TeamMember, TeamMessage
 from app.models.document import Document
 from app.models.announcement import Announcement
 from app.models.board_column import BoardColumn
+from app.models.poll import Poll, PollVote
 
 __all__ = [
     "User",
@@ -36,4 +37,5 @@ __all__ = [
     "Document",
     "Announcement",
     "BoardColumn",
+    "Poll", "PollVote",
 ]

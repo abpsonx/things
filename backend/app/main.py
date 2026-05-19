@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 
 from app.core.config import get_settings
 from app.core.database import engine, Base
-from app.api import auth, projects, teams, organizations, channels, tasks, attachments, events, comments, subtasks, labels, notifications, search, stats, settings as settings_api, dm, google, documents, reports, announcements, board_columns
+from app.api import auth, projects, teams, organizations, channels, tasks, attachments, events, comments, subtasks, labels, notifications, search, stats, settings as settings_api, dm, google, documents, reports, announcements, board_columns, polls
 
 
 settings = get_settings()
@@ -114,6 +114,37 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"[boot] tasks.archived_at add skipped: {e}")
 
+        # Polls — chat-room polling for project & team chats
+        try:
+            await conn.execute(text(
+                "CREATE TABLE IF NOT EXISTS polls ("
+                " id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+                " channel_id UUID REFERENCES channels(id) ON DELETE CASCADE,"
+                " team_id UUID REFERENCES teams(id) ON DELETE CASCADE,"
+                " created_by UUID NOT NULL REFERENCES users(id),"
+                " question TEXT NOT NULL,"
+                " options JSONB NOT NULL DEFAULT '[]'::jsonb,"
+                " allow_multi BOOLEAN NOT NULL DEFAULT FALSE,"
+                " closed_at TIMESTAMP WITH TIME ZONE,"
+                " created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()"
+                ")"
+            ))
+            await conn.execute(text(
+                "CREATE TABLE IF NOT EXISTS poll_votes ("
+                " id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+                " poll_id UUID NOT NULL REFERENCES polls(id) ON DELETE CASCADE,"
+                " user_id UUID NOT NULL REFERENCES users(id),"
+                " option_index INT NOT NULL,"
+                " created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),"
+                " UNIQUE (poll_id, user_id, option_index)"
+                ")"
+            ))
+            # Reference polls from chat messages so they render inline
+            await conn.execute(text("ALTER TABLE messages ADD COLUMN IF NOT EXISTS poll_id UUID REFERENCES polls(id) ON DELETE SET NULL"))
+            await conn.execute(text("ALTER TABLE team_messages ADD COLUMN IF NOT EXISTS poll_id UUID REFERENCES polls(id) ON DELETE SET NULL"))
+        except Exception as e:
+            print(f"[boot] polls migration skipped: {e}")
+
         # task_dependencies — edges in the blocker→blocked task graph
         try:
             await conn.execute(text(
@@ -205,6 +236,7 @@ app.include_router(documents.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
 app.include_router(announcements.router, prefix="/api")
 app.include_router(board_columns.router, prefix="/api")
+app.include_router(polls.router, prefix="/api")
 
 
 # Static Files

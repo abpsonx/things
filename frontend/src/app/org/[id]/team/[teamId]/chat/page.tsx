@@ -2,9 +2,9 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { 
-  ArrowLeft, 
-  Users, 
+import {
+  ArrowLeft,
+  Users,
   Send,
   Loader2,
   User as UserIcon,
@@ -20,7 +20,10 @@ import {
   Download,
   Search,
   Reply,
+  BarChart3,
 } from "lucide-react";
+import CreatePollModal from "@/components/poll/CreatePollModal";
+import PollBubble, { PollData } from "@/components/poll/PollBubble";
 import api from "@/lib/api";
 import { socket } from "@/lib/socket";
 import { useAuthStore } from "@/store/useAuthStore";
@@ -40,6 +43,7 @@ interface Message {
   edited_at?: string;
   parent_id?: string | null;
   parent?: { id: string; content?: string; user?: { id?: string; name?: string } | null } | null;
+  poll?: PollData | null;
   status?: 'pending' | 'sent' | 'read';
 }
 
@@ -61,6 +65,7 @@ export default function TeamChatPage() {
   const [replyTo, setReplyTo] = useState<{ id: string; content?: string; user?: { id?: string; name?: string } | null } | null>(null);
   const [uploadingFiles, setUploadingFiles] = useState<{id: string, file: File, previewUrl?: string}[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [isPollModalOpen, setIsPollModalOpen] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -93,10 +98,17 @@ export default function TeamChatPage() {
       setMessages((prev) => prev.map(m => m.id === updatedMsg.id ? updatedMsg : m));
     });
 
+    socket.on("poll_updated", (poll: any) => {
+      setMessages((prev) => prev.map((m) =>
+        m.poll && m.poll.id === poll.id ? { ...m, poll } : m
+      ));
+    });
+
     return () => {
       socket.off("team_message");
       socket.off("message_deleted");
       socket.off("message_edited");
+      socket.off("poll_updated");
       socket.emit("leave_team", teamId);
     };
   }, [teamId]);
@@ -252,6 +264,17 @@ export default function TeamChatPage() {
   };
 
   const renderContent = (msg: Message, isMe: boolean) => {
+    if (msg.poll) {
+      return (
+        <PollBubble
+          poll={msg.poll}
+          currentUserId={currentUser?.id}
+          onUpdate={(next) => {
+            setMessages((prev) => prev.map((m) => m.id === msg.id ? { ...m, poll: next } : m));
+          }}
+        />
+      );
+    }
     if (msg.file_url) {
       const isImage = msg.file_type?.startsWith('image/');
       return (
@@ -653,12 +676,20 @@ export default function TeamChatPage() {
                 ref={fileInputRef} 
                 onChange={handleFileUpload}
               />
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => fileInputRef.current?.click()}
                 className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-xl transition-all"
               >
                 <Paperclip className="w-5 h-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsPollModalOpen(true)}
+                className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-xl transition-all"
+                title="Buat polling"
+              >
+                <BarChart3 className="w-5 h-5" />
               </button>
               <button 
                 type="button" 
@@ -678,6 +709,12 @@ export default function TeamChatPage() {
           </button>
         </form>
       </div>
+
+      <CreatePollModal
+        isOpen={isPollModalOpen}
+        onClose={() => setIsPollModalOpen(false)}
+        teamId={teamId}
+      />
     </div>
   );
 }

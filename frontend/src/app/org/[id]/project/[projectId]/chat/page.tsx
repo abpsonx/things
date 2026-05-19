@@ -27,9 +27,12 @@ import {
   Image,
   FileText,
   Link2,
-  ExternalLink
+  ExternalLink,
+  BarChart3,
 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
+import CreatePollModal from "@/components/poll/CreatePollModal";
+import PollBubble, { PollData } from "@/components/poll/PollBubble";
 
 // Format an edited_at timestamp into "DD/MM HH.MM" Indonesian style.
 const fmtEdited = (iso?: string | null) => {
@@ -65,6 +68,7 @@ export default function ChatPage() {
 
   // Attachments & Emojis
   const [attachment, setAttachment] = useState<File | null>(null);
+  const [isPollModalOpen, setIsPollModalOpen] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [showEmoji, setShowEmoji] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -431,6 +435,12 @@ export default function ChatPage() {
         setMessages((prev) => prev.map(m => m.id === data.id ? { ...m, is_starred: data.is_starred } : m));
       };
 
+      const handlePollUpdated = (poll: any) => {
+        setMessages((prev) => prev.map((m) =>
+          m.poll && m.poll.id === poll.id ? { ...m, poll } : m
+        ));
+      };
+
       socket.on("new_message", handleNewMessage);
       socket.on("message_updated", handleUpdateMessage);
       socket.on("message_deleted", handleDeleteMessage);
@@ -438,6 +448,7 @@ export default function ChatPage() {
       socket.on("channel_cleared", handleChannelCleared);
       socket.on("message_pinned", handleMessagePinned);
       socket.on("message_starred", handleMessageStarred);
+      socket.on("poll_updated", handlePollUpdated);
 
       return () => {
         socket.emit("leave_channel", { channel_id: activeChannel.id });
@@ -448,6 +459,7 @@ export default function ChatPage() {
         socket.off("channel_cleared", handleChannelCleared);
         socket.off("message_pinned", handleMessagePinned);
         socket.off("message_starred", handleMessageStarred);
+        socket.off("poll_updated", handlePollUpdated);
       };
     }
   }, [activeChannel, projectId]);
@@ -801,8 +813,20 @@ export default function ChatPage() {
                           </div>
                         )}
 
+                        {msg.poll && (
+                          <div className="mb-2">
+                            <PollBubble
+                              poll={msg.poll as PollData}
+                              currentUserId={currentUser?.id}
+                              onUpdate={(next) => {
+                                setMessages((prev) => prev.map((m) => m.id === msg.id ? { ...m, poll: next } : m));
+                              }}
+                            />
+                          </div>
+                        )}
+
                         <div className="flex items-end justify-end gap-x-2">
-                          {msg.content && <p className={cn("flex-1 min-w-[30px] whitespace-pre-wrap leading-snug py-0.5", isMe ? "text-white" : "text-foreground")}>{renderMessageContent(msg.content, isMe)}</p>}
+                          {msg.content && !msg.poll && <p className={cn("flex-1 min-w-[30px] whitespace-pre-wrap leading-snug py-0.5", isMe ? "text-white" : "text-foreground")}>{renderMessageContent(msg.content, isMe)}</p>}
                           <div className={cn("flex items-center gap-0.5 text-[8px] mb-[1px] shrink-0 font-medium select-none", isMe ? "text-white/70" : "text-muted-foreground/60")}>
                             {(msg.edited_at || msg.is_edited) && (
                               <span className="italic mr-0.5" title={msg.edited_at ? `Diedit ${fmtEdited(msg.edited_at)}` : "Diedit"}>
@@ -921,6 +945,14 @@ export default function ChatPage() {
                         }}
                       />
                       <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2.5 text-muted-foreground hover:text-foreground transition-all"><Paperclip className="w-5 h-5" /></button>
+                      <button
+                        type="button"
+                        onClick={() => setIsPollModalOpen(true)}
+                        className="p-2.5 text-muted-foreground hover:text-foreground transition-all"
+                        title="Buat polling"
+                      >
+                        <BarChart3 className="w-5 h-5" />
+                      </button>
                     </div>
 
                     <div className="relative flex-1">
@@ -1282,6 +1314,12 @@ export default function ChatPage() {
       </div>
     )}
   </Modal>
+
+      <CreatePollModal
+        isOpen={isPollModalOpen}
+        onClose={() => setIsPollModalOpen(false)}
+        channelId={activeChannel?.id}
+      />
     </div>
   );
 }

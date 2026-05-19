@@ -384,6 +384,8 @@ class MessageResponse(BaseModel):
     attachment_name: Optional[str] = None
     is_pinned: bool = False
     is_starred: bool = False
+    poll_id: Optional[UUID] = None
+    poll: Optional[dict] = None
     created_at: datetime
     user: Optional[UserResponse] = None
 

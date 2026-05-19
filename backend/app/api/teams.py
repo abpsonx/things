@@ -693,9 +693,15 @@ async def list_team_messages(
     """List last 50 messages from team chat."""
     await _check_org_membership(db, org_id, current_user.id)
 
+    from app.models.poll import Poll
+    from app.api.polls import _serialize as _serialize_poll
+
     result = await db.execute(
         select(TeamMessage)
-        .options(selectinload(TeamMessage.user))
+        .options(
+            selectinload(TeamMessage.user),
+            selectinload(TeamMessage.poll).selectinload(Poll.votes),
+        )
         .where(TeamMessage.team_id == team_id)
         .order_by(TeamMessage.created_at.asc())
         .limit(100)
@@ -733,6 +739,7 @@ async def list_team_messages(
             "edited_at": m.edited_at.isoformat() if m.edited_at else None,
             "parent_id": str(m.parent_id) if m.parent_id else None,
             "parent": parents_map.get(str(m.parent_id)) if m.parent_id else None,
+            "poll": _serialize_poll(m.poll, current_user.id) if m.poll else None,
             "user": {
                 "name": m.user.name,
                 "avatar_url": m.user.avatar_url

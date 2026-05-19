@@ -36,9 +36,11 @@ class Message(Base):
     attachment_name = Column(String, nullable=True)
     is_pinned = Column(Boolean, default=False)
     is_starred = Column(Boolean, default=False)
+    poll_id = Column(UUID(as_uuid=True), ForeignKey("polls.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     channel = relationship("Channel", back_populates="messages")
     user = relationship("User")
+    poll = relationship("Poll", foreign_keys=[poll_id])
     replies = relationship("Message", backref="parent", remote_side=[id])

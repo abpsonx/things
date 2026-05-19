@@ -191,13 +191,26 @@ async def get_messages(
     current_user: User = Depends(get_current_user),
 ):
     """Get message history for a channel."""
+    from app.models.poll import Poll
+    from app.api.polls import _serialize as _serialize_poll
+
     result = await db.execute(
         select(Message)
-        .options(selectinload(Message.user))
+        .options(
+            selectinload(Message.user),
+            selectinload(Message.poll).selectinload(Poll.votes),
+        )
         .where(Message.channel_id == channel_id)
         .order_by(Message.created_at.asc())
     )
-    return result.scalars().all()
+    msgs = result.scalars().all()
+    out: list = []
+    for m in msgs:
+        resp = MessageResponse.model_validate(m)
+        if m.poll:
+            resp.poll = _serialize_poll(m.poll, current_user.id)
+        out.append(resp)
+    return out
 
 
 @router.patch("/{channel_id}/messages/{message_id}", response_model=MessageResponse)
