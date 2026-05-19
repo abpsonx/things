@@ -75,27 +75,30 @@ export default function SettingsPage() {
   const regCodeStaff = settings.find(s => s.key === "registration_code_staff")?.value || "";
 
   return (
-    <div className="max-w-4xl space-y-12">
-      <div className="space-y-4">
-        <h1 className="text-4xl font-bold tracking-tight flex items-center gap-3">
-          <SettingsIcon className="w-10 h-10 text-primary" />
-          Settings & Profile
+    <div className="max-w-4xl space-y-8">
+      <div>
+        <p className="text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground inline-flex items-center gap-2">
+          <SettingsIcon className="w-3.5 h-3.5" />
+          Settings
+        </p>
+        <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight mt-1">
+          Settings &amp; Profile
         </h1>
-        <p className="text-muted-foreground text-lg">
+        <p className="text-sm text-muted-foreground mt-1">
           Kelola profil pribadi dan konfigurasi sistem di sini.
         </p>
       </div>
 
-      <div className="grid gap-8">
+      <div className="grid gap-6">
         {/* Personal Profile Section */}
-        <section className="p-8 border border-border rounded-3xl bg-card space-y-8 shadow-sm">
-          <div className="flex items-center gap-3 border-b border-border pb-6">
-            <div className="w-10 h-10 bg-primary/10 rounded-2xl flex items-center justify-center text-primary">
-              <UserIcon className="w-6 h-6" />
+        <section className="p-6 border border-border rounded-2xl bg-card space-y-6 shadow-sm">
+          <div className="flex items-center gap-3 border-b border-border pb-4">
+            <div className="w-9 h-9 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
+              <UserIcon className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-xl font-bold">Profil Pribadi</h2>
-              <p className="text-xs text-muted-foreground">Atur bagaimana orang lain melihat kamu di Things.</p>
+              <h2 className="text-base font-bold">Profil Pribadi</h2>
+              <p className="text-[11px] text-muted-foreground">Atur bagaimana orang lain melihat kamu di Things.</p>
             </div>
           </div>
 
@@ -178,13 +181,13 @@ export default function SettingsPage() {
         </section>
 
         {/* Security Section */}
-        <section className="p-8 border border-border rounded-3xl bg-card space-y-8 shadow-sm">
-          <div className="flex items-center gap-3 border-b border-border pb-6">
-            <div className="w-10 h-10 bg-primary/10 rounded-2xl flex items-center justify-center text-primary">
-              <ShieldCheck className="w-6 h-6" />
+        <section className="p-6 border border-border rounded-2xl bg-card space-y-6 shadow-sm">
+          <div className="flex items-center gap-3 border-b border-border pb-4">
+            <div className="w-9 h-9 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
+              <ShieldCheck className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-xl font-bold">Keamanan & Akses</h2>
+              <h2 className="text-base font-bold">Keamanan &amp; Akses</h2>
               <p className="text-xs text-muted-foreground">Kontrol siapa yang bisa mendaftar ke aplikasi.</p>
             </div>
           </div>
@@ -253,22 +256,22 @@ export default function SettingsPage() {
         </section>
 
         {/* Notifications Section */}
-        <section className="space-y-6">
+        <section className="space-y-4">
           <div className="flex items-center gap-3 px-2">
-            <h2 className="text-xl font-bold">Notifikasi & Alerts</h2>
+            <h2 className="text-base font-bold">Notifikasi &amp; Alerts</h2>
           </div>
           <PushNotificationManager />
         </section>
 
         {/* Integrations Section */}
-        <section className="p-8 border border-border rounded-3xl bg-card space-y-8 shadow-sm">
-          <div className="flex items-center gap-3 border-b border-border pb-6">
-            <div className="w-10 h-10 bg-primary/10 rounded-2xl flex items-center justify-center text-primary">
-              <CalendarIcon className="w-6 h-6" />
+        <section className="p-6 border border-border rounded-2xl bg-card space-y-6 shadow-sm">
+          <div className="flex items-center gap-3 border-b border-border pb-4">
+            <div className="w-9 h-9 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
+              <CalendarIcon className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-xl font-bold">Integrasi Aplikasi</h2>
-              <p className="text-xs text-muted-foreground">Hubungkan Things dengan layanan lain.</p>
+              <h2 className="text-base font-bold">Integrasi Aplikasi</h2>
+              <p className="text-[11px] text-muted-foreground">Hubungkan Things dengan layanan lain.</p>
             </div>
           </div>
 
@@ -320,14 +323,14 @@ export default function SettingsPage() {
         </section>
 
         {/* Future sections can go here (Email Settings, Theme, etc.) */}
-        <section className="p-8 border border-border border-dashed rounded-3xl opacity-50">
+        <section className="p-6 border border-border border-dashed rounded-2xl opacity-50">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-secondary rounded-2xl flex items-center justify-center">
-              <Loader2 className="w-6 h-6 text-muted-foreground" />
+            <div className="w-9 h-9 bg-secondary rounded-xl flex items-center justify-center">
+              <Loader2 className="w-4 h-4 text-muted-foreground" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-muted-foreground italic">Coming Soon</h2>
-              <p className="text-xs text-muted-foreground">Email SMTP, Branding, & Audit Logs.</p>
+              <h2 className="text-base font-bold text-muted-foreground italic">Coming Soon</h2>
+              <p className="text-[11px] text-muted-foreground">Email SMTP, Branding, &amp; Audit Logs.</p>
             </div>
           </div>
         </section>
