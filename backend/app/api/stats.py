@@ -1,12 +1,15 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
+from sqlalchemy.orm import selectinload
+from datetime import datetime, timezone
 from app.core.database import get_db
 from app.api.auth import get_current_user
 from app.models.user import User
 from app.models.organization import Organization, OrgMember
 from app.models.project import Project
 from app.models.task import Task
+from app.models.event import Event, EventAttendee
 from typing import Dict
 
 router = APIRouter(prefix="/stats", tags=["Stats"])
@@ -67,10 +70,73 @@ async def get_dashboard_stats(
     )
     activities = (await db.execute(activity_query)).scalars().all()
 
+    # 4. My upcoming tasks (assigned to me, not done, sorted by deadline asc)
+    now = datetime.now(timezone.utc)
+    my_tasks_query = (
+        select(Task)
+        .options(selectinload(Task.project))
+        .where(Task.assignee_id == current_user.id)
+        .where(Task.status != "done")
+        .order_by(Task.due_date.asc().nulls_last(), Task.created_at.desc())
+        .limit(8)
+    )
+    my_tasks = (await db.execute(my_tasks_query)).scalars().all()
+    my_tasks_payload = [
+        {
+            "id": str(t.id),
+            "title": t.title,
+            "status": t.status,
+            "priority": t.priority,
+            "due_date": t.due_date.isoformat() if t.due_date else None,
+            "is_overdue": bool(t.due_date and t.due_date < now and t.status != "done"),
+            "project": {
+                "id": str(t.project.id),
+                "name": t.project.name,
+                "org_id": str(t.project.org_id),
+            } if t.project else None,
+        }
+        for t in my_tasks
+    ]
+
+    # 5. Upcoming meetings — events from now where user is creator or attendee
+    upcoming_events_query = (
+        select(Event)
+        .options(selectinload(Event.project), selectinload(Event.attendees))
+        .where(Event.start_at >= now)
+        .where(
+            or_(
+                Event.created_by == current_user.id,
+                Event.id.in_(
+                    select(EventAttendee.event_id).where(EventAttendee.user_id == current_user.id)
+                ),
+            )
+        )
+        .order_by(Event.start_at.asc())
+        .limit(5)
+    )
+    upcoming_events = (await db.execute(upcoming_events_query)).scalars().all()
+    meetings_payload = [
+        {
+            "id": str(e.id),
+            "title": e.title,
+            "start_at": e.start_at.isoformat() if e.start_at else None,
+            "end_at": e.end_at.isoformat() if e.end_at else None,
+            "attendee_count": len(e.attendees or []),
+            "project": {
+                "id": str(e.project.id),
+                "name": e.project.name,
+                "org_id": str(e.project.org_id),
+            } if e.project else None,
+        }
+        for e in upcoming_events
+    ]
+
     return {
         "org_count": org_count,
         "project_count": project_count,
         "task_stats": task_stats,
+        "my_tasks": my_tasks_payload,
+        "upcoming_meetings": meetings_payload,
         "recent_activities": [
             {
                 "id": str(a.id),

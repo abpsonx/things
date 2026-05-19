@@ -1,29 +1,68 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-
+import Link from "next/link";
 import api from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { 
-  Plus, 
-  Building2, 
-  ArrowRight, 
-  Users, 
-  Clock,
+import { format, isValid, isToday, isTomorrow, isThisWeek } from "date-fns";
+import { id as idLocale } from "date-fns/locale";
+import {
+  Plus,
+  Building2,
+  ArrowRight,
+  Users,
   Loader2,
-  MoreVertical,
-  FolderRoot,
-  Activity,
-  CheckCircle
+  Calendar,
+  CheckSquare,
+  AlertCircle,
+  Briefcase,
 } from "lucide-react";
-import Link from "next/link";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
+import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 
 interface Organization {
   id: string;
   name: string;
   owner_id: string;
   created_at: string;
+}
+
+interface MyTask {
+  id: string;
+  title: string;
+  status: string;
+  priority?: string;
+  due_date?: string | null;
+  is_overdue: boolean;
+  project: { id: string; name: string; org_id: string } | null;
+}
+
+interface Meeting {
+  id: string;
+  title: string;
+  start_at: string;
+  end_at?: string | null;
+  attendee_count: number;
+  project: { id: string; name: string; org_id: string } | null;
+}
+
+function formatDueLabel(iso?: string | null): { label: string; tone: "overdue" | "today" | "soon" | "normal" } {
+  if (!iso) return { label: "Tanpa deadline", tone: "normal" };
+  const d = new Date(iso);
+  if (!isValid(d)) return { label: "Tanpa deadline", tone: "normal" };
+  const now = new Date();
+  if (d < now) return { label: `Telat · ${format(d, "d MMM", { locale: idLocale })}`, tone: "overdue" };
+  if (isToday(d)) return { label: `Hari ini · ${format(d, "HH:mm")}`, tone: "today" };
+  if (isTomorrow(d)) return { label: `Besok · ${format(d, "HH:mm")}`, tone: "soon" };
+  if (isThisWeek(d, { weekStartsOn: 1 })) return { label: format(d, "EEEE 'pukul' HH:mm", { locale: idLocale }), tone: "soon" };
+  return { label: format(d, "d MMM yyyy", { locale: idLocale }), tone: "normal" };
+}
+
+function formatMeetingTime(iso: string) {
+  const d = new Date(iso);
+  if (!isValid(d)) return "—";
+  if (isToday(d)) return `Hari ini · ${format(d, "HH:mm")}`;
+  if (isTomorrow(d)) return `Besok · ${format(d, "HH:mm")}`;
+  return format(d, "EEE, d MMM · HH:mm", { locale: idLocale });
 }
 
 export default function DashboardPage() {
@@ -33,11 +72,11 @@ export default function DashboardPage() {
   const [newOrgName, setNewOrgName] = useState("");
   const [stats, setStats] = useState<any>(null);
 
-  const fetchOrgs = async () => {
+  const fetchAll = async () => {
     try {
       const [orgsRes, statsRes] = await Promise.all([
         api.get("/organizations"),
-        api.get("/stats/dashboard")
+        api.get("/stats/dashboard"),
       ]);
       setOrganizations(orgsRes.data);
       setStats(statsRes.data);
@@ -48,265 +87,278 @@ export default function DashboardPage() {
     }
   };
 
-  useEffect(() => {
-    fetchOrgs();
-  }, []);
+  useEffect(() => { fetchAll(); }, []);
 
   const handleCreateOrg = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newOrgName.trim()) return;
-
     try {
       setLoading(true);
       await api.post("/organizations", { name: newOrgName });
       setNewOrgName("");
       setIsCreating(false);
-      await fetchOrgs();
+      await fetchAll();
     } catch (err) {
       console.error("Failed to create org", err);
     }
   };
 
+  const taskStats = stats?.task_stats || { todo: 0, in_progress: 0, completed: 0, total: 0 };
+  const myTasks: MyTask[] = stats?.my_tasks || [];
+  const meetings: Meeting[] = stats?.upcoming_meetings || [];
+  const chartData = stats?.chart_data || [];
+  const hasAnyTask = (taskStats.total || 0) > 0;
+
   return (
-    <>
-      <div className="space-y-10">
-        {/* Welcome & Stats Row */}
-        <div className="grid lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-3xl font-bold tracking-tight">Selamat Datang!</h1>
-                <p className="text-muted-foreground">Ini adalah ringkasan pekerjaan kamu hari ini.</p>
+    <div className="space-y-8">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground">Dashboard</p>
+          <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight mt-1">Selamat Datang!</h1>
+          <p className="text-sm text-muted-foreground mt-1">Ringkasan tugas, jadwal, dan workspace kamu hari ini.</p>
+        </div>
+        <button
+          onClick={() => setIsCreating(true)}
+          className="shrink-0 flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-xl text-sm font-bold hover:bg-primary/90 transition-all shadow-lg shadow-primary/10"
+        >
+          <Plus className="w-4 h-4" />
+          Workspace Baru
+        </button>
+      </div>
+
+      {/* Create workspace inline */}
+      {isCreating && (
+        <div className="p-4 border border-border rounded-2xl bg-secondary/30 animate-in fade-in slide-in-from-top-2">
+          <form onSubmit={handleCreateOrg} className="flex gap-3">
+            <input
+              autoFocus
+              type="text"
+              value={newOrgName}
+              onChange={(e) => setNewOrgName(e.target.value)}
+              placeholder="Nama Perusahaan atau Tim"
+              className="flex-1 px-3 py-2 bg-background border border-border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+            <button type="submit" className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-bold hover:bg-primary/90">Simpan</button>
+            <button type="button" onClick={() => setIsCreating(false)} className="px-4 py-2 bg-background border border-border rounded-md text-sm font-medium hover:bg-secondary">Batal</button>
+          </form>
+        </div>
+      )}
+
+      {/* Main grid: My Tasks + Project Overview donut + Meetings */}
+      <div className="grid lg:grid-cols-3 gap-4">
+        {/* My Tasks (sorted by deadline) */}
+        <div className="lg:col-span-1 p-5 bg-card border border-border rounded-2xl flex flex-col">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Tugasmu</p>
+              <h2 className="text-base font-bold mt-1">Diurutkan dari deadline</h2>
+            </div>
+            <CheckSquare className="w-4 h-4 text-muted-foreground" />
+          </div>
+          {loading && !stats ? (
+            <div className="flex-1 flex items-center justify-center py-8">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : myTasks.length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center py-10 text-center">
+              <div className="w-12 h-12 rounded-2xl bg-secondary flex items-center justify-center mb-3">
+                <CheckSquare className="w-5 h-5 text-muted-foreground/60" />
               </div>
-              <button 
-                onClick={() => setIsCreating(true)}
-                className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-xl font-medium hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
-              >
-                <Plus className="w-4 h-4" />
-                Workspace Baru
-              </button>
+              <p className="text-xs font-medium text-muted-foreground">Belum ada tugas untukmu</p>
             </div>
-
-            {/* Stats Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {[
-                { label: "Total Proyek", value: stats?.project_count || 0, icon: FolderRoot, color: "text-blue-500", bg: "bg-blue-500/10" },
-                { label: "To Do", value: stats?.task_stats.todo || 0, icon: Clock, color: "text-slate-500", bg: "bg-slate-500/10" },
-                { label: "In Progress", value: stats?.task_stats.in_progress || 0, icon: Activity, color: "text-amber-500", bg: "bg-amber-500/10" },
-                { label: "Completed", value: stats?.task_stats.completed || 0, icon: CheckCircle, color: "text-emerald-500", bg: "bg-emerald-500/10" },
-              ].map((s, i) => (
-                <div key={i} className="p-4 bg-card border border-border rounded-2xl space-y-3">
-                  <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", s.bg)}>
-                    <s.icon className={cn("w-5 h-5", s.color)} />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">{s.value}</p>
-                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{s.label}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="p-6 bg-card border border-border rounded-3xl flex flex-col justify-between relative group">
-            <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground mb-4">Task Distribution</h3>
-            <div className="h-[220px] w-full relative">
-              {stats?.chart_data ? (
-                <>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                    <span className="text-4xl font-black leading-none">{stats.task_stats.total}</span>
-                    <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mt-1">Total Tasks</span>
-                  </div>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={stats.chart_data}
-                        innerRadius={70}
-                        outerRadius={95}
-                        paddingAngle={5}
-                        dataKey="value"
-                        stroke="none"
-                        cx="50%"
-                        cy="50%"
-                        isAnimationActive={false} // Disable animation to prevent stuck states
-                        labelLine={false}
-                        label={({ cx, cy, midAngle, innerRadius, outerRadius, value }) => {
-                          if (!value || value === 0) return null;
-                          const RADIAN = Math.PI / 180;
-                          const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
-                          const x = cx + radius * Math.cos(-midAngle * RADIAN);
-                          const y = cy + radius * Math.sin(-midAngle * RADIAN);
-                          return (
-                            <text 
-                              x={x} y={y} 
-                              fill="white" 
-                              textAnchor="middle" 
-                              dominantBaseline="central"
-                              style={{ fontSize: '12px', fontWeight: 'bold', pointerEvents: 'none' }}
-                            >
-                              {value}
-                            </text>
-                          );
-                        }}
-                      >
-                        {stats.chart_data.map((entry: any, index: number) => (
-                          <Cell 
-                            key={`cell-${index}`} 
-                            fill={index === 0 ? "url(#colorTodo)" : index === 1 ? "url(#colorProgress)" : "url(#colorDone)"} 
-                            style={{ outline: 'none' }}
-                          />
-                        ))}
-                      </Pie>
-                      <defs>
-                        <linearGradient id="colorTodo" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#94a3b8" />
-                          <stop offset="95%" stopColor="#64748b" />
-                        </linearGradient>
-                        <linearGradient id="colorProgress" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#3b82f6" />
-                          <stop offset="95%" stopColor="#2563eb" />
-                        </linearGradient>
-                        <linearGradient id="colorDone" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#22c55e" />
-                          <stop offset="95%" stopColor="#16a34a" />
-                        </linearGradient>
-                      </defs>
-                    </PieChart>
-                  </ResponsiveContainer>
-                </>
-              ) : (
-                <div className="h-full flex items-center justify-center text-xs text-muted-foreground">Loading chart...</div>
-              )}
-            </div>
-            <div className="flex justify-center gap-6 mt-4">
-              {[
-                { label: "To Do", color: "bg-slate-400" },
-                { label: "In Progress", color: "bg-blue-500" },
-                { label: "Done", color: "bg-emerald-500" },
-              ].map((dot, i) => (
-                <div key={i} className="flex items-center gap-2 group/dot">
-                  <div className={cn("w-2.5 h-2.5 rounded-full transition-transform group-hover/dot:scale-125", dot.color)}></div>
-                  <span className="text-[10px] font-bold text-muted-foreground group-hover/dot:text-foreground transition-colors">{dot.label}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+          ) : (
+            <ul className="flex-1 space-y-1.5 -mx-1.5">
+              {myTasks.map((t) => {
+                const due = formatDueLabel(t.due_date);
+                const href = t.project ? `/org/${t.project.org_id}/project/${t.project.id}/board` : "#";
+                return (
+                  <li key={t.id}>
+                    <Link
+                      href={href}
+                      className="block px-3 py-2 rounded-xl hover:bg-secondary/60 transition-colors"
+                    >
+                      <p className="text-sm font-semibold leading-snug line-clamp-2">{t.title}</p>
+                      <div className="flex items-center gap-2 mt-1 text-[10px]">
+                        {t.project && (
+                          <span className="inline-flex items-center gap-1 text-muted-foreground">
+                            <Briefcase className="w-2.5 h-2.5" />
+                            {t.project.name}
+                          </span>
+                        )}
+                        <span
+                          className={cn(
+                            "inline-flex items-center gap-1 font-bold",
+                            due.tone === "overdue" && "text-destructive",
+                            due.tone === "today" && "text-amber-600 dark:text-amber-400",
+                            due.tone === "soon" && "text-primary",
+                            due.tone === "normal" && "text-muted-foreground",
+                          )}
+                        >
+                          {due.tone === "overdue" ? <AlertCircle className="w-2.5 h-2.5" /> : <Calendar className="w-2.5 h-2.5" />}
+                          {due.label}
+                        </span>
+                      </div>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
 
-        {/* Create Workspace Inline */}
-        {isCreating && (
-          <div className="p-6 border border-border rounded-xl bg-secondary/30 space-y-4 animate-in fade-in slide-in-from-top-2">
-            <h3 className="font-bold">Buat Workspace Baru</h3>
-            <form onSubmit={handleCreateOrg} className="flex gap-3">
-              <input
-                autoFocus
-                type="text"
-                value={newOrgName}
-                onChange={(e) => setNewOrgName(e.target.value)}
-                placeholder="Nama Perusahaan atau Tim"
-                className="flex-1 px-3 py-2 bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-              <button 
-                type="submit"
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-md font-medium hover:bg-primary/90"
-              >
-                Simpan
-              </button>
-              <button 
-                type="button"
-                onClick={() => setIsCreating(false)}
-                className="px-4 py-2 bg-background border border-border rounded-md font-medium hover:bg-secondary"
-              >
-                Batal
-              </button>
-            </form>
-          </div>
-        )}
-
-        {/* Dashboard Bottom Section: Workspaces & Recent Activity */}
-        <div className="grid lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-6">
-            <div className="flex items-center gap-4">
-              <h2 className="text-xl font-bold">Workspace Kamu</h2>
-              <div className="flex-1 h-px bg-border"></div>
+        {/* Project Overview donut */}
+        <div className="lg:col-span-1 p-5 bg-card border border-border rounded-2xl flex flex-col">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Project Overview</p>
+              <h2 className="text-base font-bold mt-1">Status semua tugas</h2>
             </div>
+          </div>
 
-            {loading ? (
-              <div className="flex justify-center py-12">
-                <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-              </div>
-            ) : organizations.length > 0 ? (
-              <div className="grid md:grid-cols-2 gap-6">
-                {organizations.map((org) => (
-                  <Link
-                    key={org.id}
-                    href={`/org/${org.id}`}
-                    className="group p-6 border border-border rounded-3xl bg-card hover:border-primary transition-all hover:shadow-xl hover:shadow-primary/5 space-y-4"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="w-12 h-12 bg-secondary rounded-2xl flex items-center justify-center border border-border group-hover:bg-primary/5 transition-colors">
-                        <Building2 className="w-6 h-6 text-muted-foreground group-hover:text-primary transition-colors" />
-                      </div>
-                      <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:translate-x-1 group-hover:text-primary transition-all" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-xl group-hover:text-primary transition-colors">{org.name}</h3>
-                      <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1.5 font-medium"><Users className="w-3 h-3" /> Tim Aktif</span>
-                      </div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
+          <div className="flex-1 relative min-h-[200px]">
+            {hasAnyTask ? (
+              <>
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <span className="text-3xl font-black leading-none">{taskStats.total}</span>
+                  <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mt-1">Total</span>
+                </div>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={chartData}
+                      dataKey="value"
+                      innerRadius="65%"
+                      outerRadius="92%"
+                      paddingAngle={4}
+                      stroke="none"
+                      isAnimationActive={false}
+                      cx="50%"
+                      cy="50%"
+                    >
+                      {chartData.map((entry: any, index: number) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={entry.fill}
+                          style={{ outline: "none" }}
+                        />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+              </>
             ) : (
-              <div className="text-center py-24 border border-dashed border-border rounded-3xl space-y-4">
-                <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mx-auto">
-                  <Building2 className="w-8 h-8 text-muted-foreground" />
-                </div>
-                <div className="space-y-1">
-                  <h3 className="font-bold text-xl">Belum ada workspace</h3>
-                  <p className="text-muted-foreground max-w-xs mx-auto">
-                    Buat workspace pertama kamu untuk mulai mengelola proyek tim.
-                  </p>
-                </div>
+              <div className="h-full flex flex-col items-center justify-center text-center">
+                <div className="w-12 h-12 rounded-full border-4 border-secondary mb-3" />
+                <p className="text-xs text-muted-foreground">Belum ada tugas untuk divisualisasikan</p>
               </div>
             )}
           </div>
 
-          {/* Recent Activity Sidebar */}
-          <div className="space-y-6">
-            <div className="flex items-center gap-4">
-              <h2 className="text-xl font-bold">Aktivitas Terakhir</h2>
-              <div className="flex-1 h-px bg-border"></div>
-            </div>
-            
-            <div className="space-y-4">
-              {stats?.recent_activities?.length > 0 ? (
-                stats.recent_activities.map((log: any) => (
-                  <div key={log.id} className="flex gap-4 p-4 rounded-2xl bg-secondary/20 border border-border/50 hover:border-primary/20 transition-all">
-                    <div className="w-8 h-8 rounded-full bg-background border border-border flex items-center justify-center flex-shrink-0">
-                      <Activity className="w-3.5 h-3.5 text-muted-foreground" />
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-[11px] leading-relaxed">
-                        <span className="font-bold">Seseorang</span> {log.action.replace('_', ' ')} pada <span className="font-medium italic">{log.entity_type}</span>
-                      </p>
-                      <p className="text-[9px] text-muted-foreground font-medium uppercase tracking-tighter">
-                        {new Date(log.created_at).toLocaleDateString()} • {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </p>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="py-12 text-center border border-dashed border-border rounded-3xl">
-                  <Activity className="w-8 h-8 text-muted-foreground mx-auto opacity-20 mb-2" />
-                  <p className="text-[10px] text-muted-foreground">Belum ada aktivitas</p>
-                </div>
-              )}
-            </div>
+          <div className="flex items-center justify-center gap-4 mt-4 text-[10px]">
+            <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-slate-400" /><span className="font-semibold text-muted-foreground">To Do</span><span className="font-bold">{taskStats.todo}</span></span>
+            <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-blue-500" /><span className="font-semibold text-muted-foreground">In Progress</span><span className="font-bold">{taskStats.in_progress}</span></span>
+            <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500" /><span className="font-semibold text-muted-foreground">Done</span><span className="font-bold">{taskStats.completed}</span></span>
           </div>
         </div>
+
+        {/* Upcoming meetings */}
+        <div className="lg:col-span-1 p-5 bg-card border border-border rounded-2xl flex flex-col">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Jadwal</p>
+              <h2 className="text-base font-bold mt-1">Meeting mendatang</h2>
+            </div>
+            <Calendar className="w-4 h-4 text-muted-foreground" />
+          </div>
+          {loading && !stats ? (
+            <div className="flex-1 flex items-center justify-center py-8">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : meetings.length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center py-10 text-center">
+              <div className="w-12 h-12 rounded-2xl bg-secondary flex items-center justify-center mb-3">
+                <Calendar className="w-5 h-5 text-muted-foreground/60" />
+              </div>
+              <p className="text-xs font-medium text-muted-foreground">Tidak ada meeting mendatang</p>
+            </div>
+          ) : (
+            <ul className="flex-1 space-y-1.5 -mx-1.5">
+              {meetings.map((m) => {
+                const href = m.project ? `/org/${m.project.org_id}/project/${m.project.id}/calendar` : "#";
+                return (
+                  <li key={m.id}>
+                    <Link href={href} className="block px-3 py-2 rounded-xl hover:bg-secondary/60 transition-colors">
+                      <p className="text-sm font-semibold leading-snug line-clamp-1">{m.title}</p>
+                      <div className="flex items-center gap-2 mt-1 text-[10px] text-muted-foreground">
+                        <span className="inline-flex items-center gap-1 font-bold text-primary">
+                          <Calendar className="w-2.5 h-2.5" />
+                          {formatMeetingTime(m.start_at)}
+                        </span>
+                        {m.project && (
+                          <span className="inline-flex items-center gap-1">
+                            <Briefcase className="w-2.5 h-2.5" />
+                            {m.project.name}
+                          </span>
+                        )}
+                        {m.attendee_count > 0 && (
+                          <span className="inline-flex items-center gap-1">
+                            <Users className="w-2.5 h-2.5" />
+                            {m.attendee_count}
+                          </span>
+                        )}
+                      </div>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
       </div>
-    </>
+
+      {/* Workspaces */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-4">
+          <h2 className="text-base font-bold">Workspace Kamu</h2>
+          <div className="flex-1 h-px bg-border" />
+        </div>
+
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : organizations.length > 0 ? (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {organizations.map((org) => (
+              <Link
+                key={org.id}
+                href={`/org/${org.id}`}
+                className="group p-5 border border-border rounded-2xl bg-card hover:border-primary/50 hover:shadow-md transition-all"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="w-10 h-10 bg-secondary rounded-xl flex items-center justify-center border border-border group-hover:bg-primary/5 transition-colors">
+                    <Building2 className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:translate-x-1 group-hover:text-primary transition-all" />
+                </div>
+                <h3 className="font-bold text-base group-hover:text-primary transition-colors line-clamp-1">{org.name}</h3>
+                <p className="text-[10px] text-muted-foreground mt-1 inline-flex items-center gap-1.5">
+                  <Users className="w-3 h-3" /> Workspace
+                </p>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-16 border border-dashed border-border rounded-2xl space-y-2">
+            <div className="w-12 h-12 bg-secondary rounded-full flex items-center justify-center mx-auto mb-2">
+              <Building2 className="w-6 h-6 text-muted-foreground" />
+            </div>
+            <h3 className="font-bold">Belum ada workspace</h3>
+            <p className="text-xs text-muted-foreground max-w-xs mx-auto">Buat workspace pertama kamu untuk mulai mengelola proyek tim.</p>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
