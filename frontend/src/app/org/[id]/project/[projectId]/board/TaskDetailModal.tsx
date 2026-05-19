@@ -443,7 +443,7 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
       <div className="relative">
         {isDragging && (
           <div className="fixed inset-0 z-[60] bg-primary/20 backdrop-blur-sm flex items-center justify-center pointer-events-none">
-            <div className="bg-white px-8 py-6 rounded-3xl shadow-2xl border-2 border-dashed border-primary">
+            <div className="bg-card px-8 py-6 rounded-3xl shadow-2xl border-2 border-dashed border-primary">
               <p className="text-base font-bold text-primary flex items-center gap-3">
                 <UploadCloud className="w-6 h-6" />
                 Lepaskan file untuk lampirkan ke tugas ini

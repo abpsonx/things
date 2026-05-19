@@ -91,7 +91,7 @@ export default function InviteTeamMemberModal({
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-3xl w-full max-w-md shadow-2xl border border-border overflow-hidden"
+        className="bg-card rounded-3xl w-full max-w-md shadow-2xl border border-border overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">

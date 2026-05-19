@@ -72,7 +72,7 @@ export default function ArchivedTasksModal({ isOpen, onClose, projectId, onChang
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-3xl w-full max-w-2xl shadow-2xl border border-border overflow-hidden max-h-[80vh] flex flex-col"
+        className="bg-card rounded-3xl w-full max-w-2xl shadow-2xl border border-border overflow-hidden max-h-[80vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
