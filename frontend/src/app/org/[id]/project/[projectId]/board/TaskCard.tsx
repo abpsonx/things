@@ -66,6 +66,15 @@ export default function TaskCard({
 
   const style = { transform: CSS.Translate.toString(transform), transition };
 
+  // All hooks must be called unconditionally before any early return.
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editTitle, setEditTitle] = useState(task.title);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isEditingTitle) titleInputRef.current?.select();
+  }, [isEditingTitle]);
+
   if (isDragging && !isOverlay) {
     return (
       <div
@@ -75,14 +84,6 @@ export default function TaskCard({
       />
     );
   }
-
-  const [isEditingTitle, setIsEditingTitle] = useState(false);
-  const [editTitle, setEditTitle] = useState(task.title);
-  const titleInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (isEditingTitle) titleInputRef.current?.select();
-  }, [isEditingTitle]);
 
   const saveTitle = async () => {
     const next = editTitle.trim();
