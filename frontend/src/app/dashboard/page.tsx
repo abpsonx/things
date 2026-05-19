@@ -108,7 +108,18 @@ export default function DashboardPage() {
   const taskStats = stats?.task_stats || { todo: 0, in_progress: 0, completed: 0, total: 0 };
   const myTasks: MyTask[] = stats?.my_tasks || [];
   const meetings: Meeting[] = stats?.upcoming_meetings || [];
-  const chartData = stats?.chart_data || [];
+  // Filter out zero-value slices so paddingAngle doesn't leave broken gaps
+  // when only one or two statuses actually have tasks. Also swap the To Do
+  // slate-400 for slate-500 so it doesn't disappear into the background.
+  const rawChart = (stats?.chart_data || []) as { name: string; value: number; fill: string }[];
+  const palette: Record<string, string> = {
+    "To Do": "#64748b",
+    "In Progress": "#3b82f6",
+    Completed: "#10b981",
+  };
+  const chartData = rawChart
+    .filter((c) => (c.value || 0) > 0)
+    .map((c) => ({ ...c, fill: palette[c.name] || c.fill }));
   const hasAnyTask = (taskStats.total || 0) > 0;
 
   return (
@@ -263,7 +274,7 @@ export default function DashboardPage() {
           </div>
 
           <div className="flex items-center justify-center gap-4 mt-4 text-[10px]">
-            <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-slate-400" /><span className="font-semibold text-muted-foreground">To Do</span><span className="font-bold">{taskStats.todo}</span></span>
+            <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-slate-500" /><span className="font-semibold text-muted-foreground">To Do</span><span className="font-bold">{taskStats.todo}</span></span>
             <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-blue-500" /><span className="font-semibold text-muted-foreground">In Progress</span><span className="font-bold">{taskStats.in_progress}</span></span>
             <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500" /><span className="font-semibold text-muted-foreground">Done</span><span className="font-bold">{taskStats.completed}</span></span>
           </div>
