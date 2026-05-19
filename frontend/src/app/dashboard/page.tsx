@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { format, isValid, isToday, isTomorrow, isThisWeek } from "date-fns";
@@ -66,6 +67,7 @@ function formatMeetingTime(iso: string) {
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
@@ -171,14 +173,17 @@ export default function DashboardPage() {
             <ul className="flex-1 space-y-1.5 -mx-1.5">
               {myTasks.map((t) => {
                 const due = formatDueLabel(t.due_date);
-                const href = t.project
-                  ? `/org/${t.project.org_id}/project/${t.project.id}/board?task=${t.id}`
-                  : "#";
+                const handleClick = () => {
+                  if (!t.project) return;
+                  router.push(`/org/${t.project.org_id}/project/${t.project.id}/board?task=${t.id}`);
+                };
                 return (
                   <li key={t.id}>
-                    <Link
-                      href={href}
-                      className="block px-3 py-2 rounded-xl hover:bg-secondary/60 transition-colors"
+                    <button
+                      type="button"
+                      onClick={handleClick}
+                      disabled={!t.project}
+                      className="w-full text-left block px-3 py-2 rounded-xl hover:bg-secondary/60 transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       <p className="text-sm font-semibold leading-snug line-clamp-2">{t.title}</p>
                       <div className="flex items-center gap-2 mt-1 text-[10px]">
@@ -201,7 +206,7 @@ export default function DashboardPage() {
                           {due.label}
                         </span>
                       </div>
-                    </Link>
+                    </button>
                   </li>
                 );
               })}
@@ -287,10 +292,18 @@ export default function DashboardPage() {
           ) : (
             <ul className="flex-1 space-y-1.5 -mx-1.5">
               {meetings.map((m) => {
-                const href = m.project ? `/org/${m.project.org_id}/project/${m.project.id}/calendar` : "#";
+                const handleClick = () => {
+                  if (!m.project) return;
+                  router.push(`/org/${m.project.org_id}/project/${m.project.id}/calendar`);
+                };
                 return (
                   <li key={m.id}>
-                    <Link href={href} className="block px-3 py-2 rounded-xl hover:bg-secondary/60 transition-colors">
+                    <button
+                      type="button"
+                      onClick={handleClick}
+                      disabled={!m.project}
+                      className="w-full text-left block px-3 py-2 rounded-xl hover:bg-secondary/60 transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+                    >
                       <p className="text-sm font-semibold leading-snug line-clamp-1">{m.title}</p>
                       <div className="flex items-center gap-2 mt-1 text-[10px] text-muted-foreground">
                         <span className="inline-flex items-center gap-1 font-bold text-primary">
@@ -310,7 +323,7 @@ export default function DashboardPage() {
                           </span>
                         )}
                       </div>
-                    </Link>
+                    </button>
                   </li>
                 );
               })}
