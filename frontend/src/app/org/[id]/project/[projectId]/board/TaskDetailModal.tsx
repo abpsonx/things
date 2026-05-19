@@ -689,6 +689,27 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
 
           <div className="space-y-2">
             <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1">
+              <Clock className="w-3 h-3" /> Pengulangan
+            </label>
+            <CustomSelect
+              options={[
+                { value: "", label: "Tidak diulang" },
+                { value: "daily", label: "Setiap hari" },
+                { value: "weekly", label: "Setiap minggu" },
+                { value: "monthly", label: "Setiap bulan" },
+              ]}
+              value={task?.recurrence || ""}
+              onChange={(recurrence) => updateTask({ recurrence: recurrence || null })}
+            />
+            {task?.recurrence && (
+              <p className="text-[10px] text-muted-foreground italic">
+                Saat ditandai selesai, salinan baru otomatis dibuat dgn deadline berikutnya.
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1">
               <Calendar className="w-3 h-3" /> Due Date
             </label>
             <div className="relative group">

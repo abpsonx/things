@@ -20,6 +20,54 @@ from app.services import log_activity
 router = APIRouter(prefix="/projects/{project_id}/tasks", tags=["Tasks"])
 
 
+def _shift_due_date(due, recurrence):
+    """Shift a datetime by one recurrence interval. Returns None if no rule or no due."""
+    if not due or not recurrence:
+        return None
+    from datetime import timedelta
+    if recurrence == "daily":
+        return due + timedelta(days=1)
+    if recurrence == "weekly":
+        return due + timedelta(weeks=1)
+    if recurrence == "monthly":
+        # Naive month shift — clamp to last day of the next month if needed
+        month = due.month + 1
+        year = due.year + (1 if month > 12 else 0)
+        month = ((month - 1) % 12) + 1
+        # Try same day; fall back if invalid
+        import calendar
+        day = min(due.day, calendar.monthrange(year, month)[1])
+        return due.replace(year=year, month=month, day=day)
+    return None
+
+
+async def _maybe_clone_recurring(db, task, project_id, current_user_id):
+    """If task is recurring, create a fresh copy with shifted due date. Best-effort."""
+    if not task.recurrence:
+        return
+    next_due = _shift_due_date(task.due_date, task.recurrence)
+    result = await db.execute(
+        select(func.coalesce(func.max(Task.position), 0))
+        .where(Task.project_id == project_id, Task.status == "todo")
+    )
+    max_pos = result.scalar() or 0
+    clone = Task(
+        project_id=task.project_id,
+        team_id=task.team_id,
+        title=task.title,
+        description=task.description,
+        status="todo",
+        priority=task.priority,
+        assignee_id=task.assignee_id,
+        created_by=current_user_id,
+        due_date=next_due,
+        position=max_pos + 1,
+        recurrence=task.recurrence,
+    )
+    db.add(clone)
+    await db.flush()
+
+
 async def _get_project(db, project_id):
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
@@ -249,9 +297,13 @@ async def update_task(
 
     update_data = data.model_dump(exclude_unset=True)
     old_status = task.status
-    
+
     for key, value in update_data.items():
         setattr(task, key, value)
+
+    # Clone recurring task when transitioning to "done"
+    if old_status != "done" and task.status == "done" and task.recurrence:
+        await _maybe_clone_recurring(db, task, project_id, current_user.id)
 
     action = "task_moved" if "status" in update_data and update_data["status"] != old_status else "task_updated"
     meta = update_data.copy()
@@ -321,6 +373,10 @@ async def move_task(
     old_status = task.status
     task.status = data.status
     task.position = data.position
+
+    # Clone recurring task when transitioning to "done"
+    if old_status != "done" and task.status == "done" and task.recurrence:
+        await _maybe_clone_recurring(db, task, project_id, current_user.id)
 
     await log_activity(
         db, org_id=project.org_id, user_id=current_user.id,

@@ -26,6 +26,10 @@ class Task(Base):
     # after we successfully push the task to Google so we can update or
     # delete the same event later.
     google_event_id = Column(String(255), nullable=True)
+    # Recurrence rule. One of: "daily", "weekly", "monthly", or NULL.
+    # When the task is marked done, a fresh copy is cloned with the due
+    # date shifted by the interval.
+    recurrence = Column(String(16), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

@@ -90,6 +90,14 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
 
+        # recurrence column on tasks — supports "daily" | "weekly" | "monthly"
+        try:
+            await conn.execute(text(
+                "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS recurrence VARCHAR(16)"
+            ))
+        except Exception as e:
+            print(f"[boot] tasks.recurrence add skipped: {e}")
+
         # task_dependencies — edges in the blocker→blocked task graph
         try:
             await conn.execute(text(

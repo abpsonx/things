@@ -162,6 +162,7 @@ class TaskCreate(BaseModel):
     assignee_id: Optional[UUID] = None
     due_date: Optional[datetime] = None
     position: int = 0
+    recurrence: Optional[str] = None
 
 
 class TaskUpdate(BaseModel):
@@ -172,6 +173,7 @@ class TaskUpdate(BaseModel):
     assignee_id: Optional[UUID] = None
     due_date: Optional[datetime] = None
     position: Optional[int] = None
+    recurrence: Optional[str] = None
 
 
 class TaskMoveRequest(BaseModel):
@@ -225,6 +227,7 @@ class TaskResponse(BaseModel):
     comments_count: int = 0
     attachments_count: int = 0
     assignee: Optional[UserResponse] = None
+    recurrence: Optional[str] = None
 
     class Config:
         from_attributes = True
