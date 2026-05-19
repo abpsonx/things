@@ -263,6 +263,38 @@ async def add_project_member(
     return {"message": f"Berhasil menambahkan {data.email} ke project"}
 
 
+@router.delete("/{project_id}/members/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_project_member(
+    org_id: str,
+    project_id: str,
+    member_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Remove a member from a project."""
+    await _check_org_membership(db, org_id, current_user.id)
+
+    result = await db.execute(
+        select(ProjectMember).where(
+            ProjectMember.id == member_id,
+            ProjectMember.project_id == project_id,
+        )
+    )
+    pm = result.scalar_one_or_none()
+    if not pm:
+        raise HTTPException(status_code=404, detail="Member tidak ditemukan di project")
+
+    await log_activity(
+        db, org_id=org_id, user_id=current_user.id,
+        action="member_removed", entity_type="member", entity_id=pm.user_id,
+        project_id=project_id, metadata={"user_id": str(pm.user_id)},
+    )
+
+    await db.delete(pm)
+    await db.commit()
+    return None
+
+
 @router.get("/{project_id}/activity", response_model=List[ActivityLogResponse])
 async def list_project_activity_logs(
     org_id: str,

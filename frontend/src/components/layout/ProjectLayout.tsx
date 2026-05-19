@@ -19,9 +19,13 @@ import {
   Megaphone,
   Send,
   X,
+  UserPlus,
+  Trash2,
 } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import Modal from "@/components/ui/Modal";
+import InviteProjectMemberModal from "@/components/project/InviteProjectMemberModal";
+import { toast } from "sonner";
 
 interface Project {
   id: string;
@@ -39,7 +43,32 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
   const [loading, setLoading] = useState(true);
   const [members, setMembers] = useState<any[]>([]);
   const [isMembersOpen, setIsMembersOpen] = useState(false);
+  const [isInviteOpen, setIsInviteOpen] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
   const [profileMember, setProfileMember] = useState<any | null>(null);
+
+  const fetchMembers = async () => {
+    try {
+      const res = await api.get(`/organizations/${orgId}/projects/${projectId}/members`);
+      setMembers(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      console.error("Failed to refresh members", err);
+    }
+  };
+
+  const handleRemoveMember = async (memberId: string, memberName: string) => {
+    if (!confirm(`Keluarkan ${memberName} dari project?`)) return;
+    setRemovingId(memberId);
+    try {
+      await api.delete(`/organizations/${orgId}/projects/${projectId}/members/${memberId}`);
+      toast.success(`${memberName} dikeluarkan dari project`);
+      fetchMembers();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || "Gagal mengeluarkan anggota");
+    } finally {
+      setRemovingId(null);
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -113,6 +142,13 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
             </div>
           </div>
         </div>
+        <button
+          onClick={() => setIsInviteOpen(true)}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-primary text-white text-xs font-bold hover:bg-primary/90 shadow-md shadow-primary/20 transition-all"
+        >
+          <UserPlus className="w-4 h-4" />
+          <span className="hidden sm:inline">Tambah Anggota</span>
+        </button>
       </div>
 
       {/* Navigation Tabs */}
@@ -155,29 +191,53 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
             <div className="text-center py-8 text-muted-foreground text-sm">Belum ada anggota</div>
           ) : (
             members.map((m) => (
-              <button
-                key={m.user_id}
-                onClick={() => { setProfileMember(m); setIsMembersOpen(false); }}
-                className="w-full flex items-center gap-3 p-3 rounded-2xl border border-border hover:border-primary/40 hover:bg-secondary/40 transition-all text-left"
+              <div
+                key={m.id || m.user_id}
+                className="w-full flex items-center gap-3 p-3 rounded-2xl border border-border hover:border-primary/40 hover:bg-secondary/40 transition-all"
               >
-                <div className="w-11 h-11 rounded-2xl bg-secondary border border-border flex items-center justify-center overflow-hidden font-bold text-sm shrink-0">
-                  {m.user?.avatar_url
-                    ? <img src={m.user.avatar_url} alt={m.user.name} className="w-full h-full object-cover" />
-                    : (m.user?.name || "?").charAt(0).toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold truncate">{m.user?.name || "User"}</p>
-                  <p className="text-[10px] text-muted-foreground truncate">{m.user?.email}</p>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => { setProfileMember(m); setIsMembersOpen(false); }}
+                  className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                >
+                  <div className="w-11 h-11 rounded-2xl bg-secondary border border-border flex items-center justify-center overflow-hidden font-bold text-sm shrink-0">
+                    {m.user?.avatar_url
+                      ? <img src={m.user.avatar_url} alt={m.user.name} className="w-full h-full object-cover" />
+                      : (m.user?.name || "?").charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold truncate">{m.user?.name || "User"}</p>
+                    <p className="text-[10px] text-muted-foreground truncate">{m.user?.email}</p>
+                  </div>
+                </button>
                 <span className={cn(
-                  "text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full",
+                  "text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full shrink-0",
                   m.role === "manager" ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground",
                 )}>{m.role}</span>
-              </button>
+                {m.user_id !== currentUser?.id && m.role !== "manager" && (
+                  <button
+                    onClick={() => handleRemoveMember(m.id, m.user?.name || "member")}
+                    disabled={removingId === m.id}
+                    className="p-2 rounded-xl text-muted-foreground hover:text-red-600 hover:bg-red-50 disabled:opacity-50 transition-all shrink-0"
+                    title="Keluarkan dari project"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             ))
           )}
         </div>
       </Modal>
+
+      <InviteProjectMemberModal
+        isOpen={isInviteOpen}
+        onClose={() => setIsInviteOpen(false)}
+        orgId={orgId as string}
+        projectId={projectId as string}
+        existingMembers={members}
+        onAdded={fetchMembers}
+      />
 
       {/* Profile detail modal */}
       <Modal
