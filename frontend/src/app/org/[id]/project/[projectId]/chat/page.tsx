@@ -1103,31 +1103,39 @@ export default function ChatPage() {
                     </div>
 
                     <div className="relative flex-1">
-                      {fileQuery !== null && fileMatches.length > 0 && (
+                      {fileQuery !== null && (
                         <div className="absolute bottom-full left-0 right-0 mb-2 bg-card border border-border rounded-2xl shadow-xl overflow-hidden z-30 max-h-[240px] overflow-y-auto">
                           <div className="px-3 py-1.5 border-b border-border text-[10px] font-bold text-muted-foreground uppercase tracking-wide bg-secondary/30">
-                            Tag file
+                            Tag file {fileMatches.length > 0 && `(${fileMatches.length})`}
                           </div>
-                          {fileMatches.map((f, i) => (
-                            <button
-                              key={`${f.kind}-${f.id}`}
-                              type="button"
-                              onMouseDown={(e) => { e.preventDefault(); insertFileToken(f); }}
-                              onMouseEnter={() => setFileHighlight(i)}
-                              className={cn(
-                                "w-full flex items-center gap-3 px-3 py-2 text-left transition-colors",
-                                i === fileHighlight ? "bg-primary/10" : "hover:bg-secondary/50",
-                              )}
-                            >
-                              <div className="w-7 h-7 rounded-lg bg-secondary border border-border flex items-center justify-center text-xs shrink-0">
-                                {f.kind === "doc" ? "📄" : "📎"}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs font-bold truncate">{f.name}</p>
-                                <p className="text-[10px] text-muted-foreground capitalize">{f.kind === "doc" ? "Wiki" : "Lampiran task"}</p>
-                              </div>
-                            </button>
-                          ))}
+                          {fileMatches.length === 0 ? (
+                            <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+                              {allFiles.length === 0
+                                ? "Belum ada file di project. Upload lampiran di task atau bikin Wiki dulu."
+                                : `Tidak ada file cocok "${fileQuery}"`}
+                            </div>
+                          ) : (
+                            fileMatches.map((f, i) => (
+                              <button
+                                key={`${f.kind}-${f.id}`}
+                                type="button"
+                                onMouseDown={(e) => { e.preventDefault(); insertFileToken(f); }}
+                                onMouseEnter={() => setFileHighlight(i)}
+                                className={cn(
+                                  "w-full flex items-center gap-3 px-3 py-2 text-left transition-colors",
+                                  i === fileHighlight ? "bg-primary/10" : "hover:bg-secondary/50",
+                                )}
+                              >
+                                <div className="w-7 h-7 rounded-lg bg-secondary border border-border flex items-center justify-center text-xs shrink-0">
+                                  {f.kind === "doc" ? "📄" : "📎"}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-bold truncate">{f.name}</p>
+                                  <p className="text-[10px] text-muted-foreground capitalize">{f.kind === "doc" ? "Wiki" : "Lampiran task"}</p>
+                                </div>
+                              </button>
+                            ))
+                          )}
                         </div>
                       )}
                       {mentionQuery !== null && mentionMatches.length > 0 && (

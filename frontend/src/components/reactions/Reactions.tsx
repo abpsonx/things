@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { SmilePlus } from "lucide-react";
 import api from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -26,15 +27,33 @@ function ChipWithPopover({
   onDark?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const chipRef = useRef<HTMLButtonElement>(null);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!open || !chipRef.current) return;
+    const rect = chipRef.current.getBoundingClientRect();
+    // Anchor popover above the chip, horizontally centered, then clamp to
+    // viewport so it never spills off-screen.
+    const POPOVER_W = 240;
+    const desiredLeft = rect.left + rect.width / 2 - POPOVER_W / 2;
+    const left = Math.max(8, Math.min(window.innerWidth - POPOVER_W - 8, desiredLeft));
+    setCoords({ top: rect.top - 8, left });
+  }, [open]);
+
   return (
-    <div
-      className="relative"
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-    >
+    <>
       <button
+        ref={chipRef}
         type="button"
         onClick={onClick}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
         className={cn(
           "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-semibold border transition-all",
           bucket.me
@@ -47,19 +66,19 @@ function ChipWithPopover({
         <span className="text-[12px] leading-none">{bucket.emoji}</span>
         <span className="leading-none">{bucket.count}</span>
       </button>
-      {open && bucket.users.length > 0 && (
-        <div className="absolute z-40 bottom-full mb-1 left-1/2 -translate-x-1/2 bg-slate-900 text-white rounded-xl shadow-xl px-3 py-2 text-[11px] font-medium whitespace-nowrap pointer-events-none">
+      {mounted && open && bucket.users.length > 0 && coords && createPortal(
+        <div
+          className="fixed z-[200] -translate-y-full bg-slate-900 text-white rounded-xl shadow-xl px-3 py-2 text-[11px] font-medium pointer-events-none"
+          style={{ top: coords.top, left: coords.left, width: 240 }}
+        >
           <div className="flex items-center gap-1.5 mb-1 text-[10px] uppercase tracking-wider opacity-70">
             <span>{bucket.emoji}</span>
             <span>·</span>
-            <span>{bucket.count} {bucket.count === 1 ? "reaksi" : "reaksi"}</span>
+            <span>{bucket.count} reaksi</span>
           </div>
-          <div className="space-y-0.5 max-w-[200px]">
+          <div className="space-y-0.5">
             {bucket.users.slice(0, 12).map((u) => (
-              <div key={u.id} className="truncate">
-                {u.name}
-                {bucket.me && u.id === bucket.users.find((x) => x.name)?.id && ""}
-              </div>
+              <div key={u.id} className="truncate">{u.name}</div>
             ))}
             {bucket.users.length > 12 && (
               <div className="opacity-60">+{bucket.users.length - 12} lainnya</div>
@@ -70,9 +89,10 @@ function ChipWithPopover({
               Klik untuk hapus reaksimu
             </div>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
-    </div>
+    </>
   );
 }
 
