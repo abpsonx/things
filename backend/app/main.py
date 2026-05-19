@@ -90,6 +90,14 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
 
+        # daily digest opt-in on users
+        try:
+            await conn.execute(text(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_digest_enabled BOOLEAN DEFAULT TRUE"
+            ))
+        except Exception as e:
+            print(f"[boot] users.daily_digest_enabled add skipped: {e}")
+
         # recurrence column on tasks — supports "daily" | "weekly" | "monthly"
         try:
             await conn.execute(text(

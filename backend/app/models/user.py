@@ -23,6 +23,9 @@ class User(Base):
     google_access_token = Column(Text, nullable=True)
     google_refresh_token = Column(Text, nullable=True)
 
+    # Daily digest opt-in (1am UTC ≈ 8am Jakarta)
+    daily_digest_enabled = Column(Boolean, default=True)
+
     # Relationships
     org_memberships = relationship("OrgMember", back_populates="user", cascade="all, delete-orphan")
     project_memberships = relationship("ProjectMember", back_populates="user", cascade="all, delete-orphan")

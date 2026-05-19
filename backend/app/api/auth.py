@@ -130,7 +130,9 @@ async def update_me(
     """Update current user profile."""
     if "name" in data:
         current_user.name = data["name"]
-    
+    if "daily_digest_enabled" in data:
+        current_user.daily_digest_enabled = bool(data["daily_digest_enabled"])
+
     await db.commit()
     await db.refresh(current_user)
     return UserResponse.model_validate(current_user)

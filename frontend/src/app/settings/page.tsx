@@ -261,6 +261,35 @@ export default function SettingsPage() {
             <h2 className="text-base font-bold">Notifikasi &amp; Alerts</h2>
           </div>
           <PushNotificationManager />
+
+          <div className="p-6 border border-border rounded-2xl bg-card flex items-center justify-between gap-4">
+            <div className="space-y-1">
+              <p className="text-sm font-bold">Email ringkasan harian</p>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                Setiap jam 8 pagi (WIB), kamu dapat email berisi task yang overdue, due hari ini, dan due minggu ini.
+              </p>
+            </div>
+            <button
+              onClick={async () => {
+                const next = !(currentUser?.daily_digest_enabled ?? true);
+                try {
+                  await api.put("/auth/me", { daily_digest_enabled: next });
+                  updateUser({ daily_digest_enabled: next } as any);
+                } catch (err) {
+                  console.error("Failed to toggle daily digest", err);
+                }
+              }}
+              className={`w-12 h-6 rounded-full relative transition-all shrink-0 ${
+                (currentUser?.daily_digest_enabled ?? true) ? "bg-primary" : "bg-slate-200"
+              }`}
+            >
+              <div
+                className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${
+                  (currentUser?.daily_digest_enabled ?? true) ? "right-1" : "left-1"
+                }`}
+              />
+            </button>
+          </div>
         </section>
 
         {/* Integrations Section */}

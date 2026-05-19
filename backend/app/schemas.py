@@ -33,6 +33,7 @@ class UserResponse(BaseModel):
     is_verified: bool
     role: str = "staff"
     created_at: datetime
+    daily_digest_enabled: bool = True
 
     class Config:
         from_attributes = True

@@ -7,6 +7,7 @@ interface User {
   email: string;
   avatar_url?: string | null;
   is_verified: boolean;
+  daily_digest_enabled?: boolean;
 }
 
 interface AuthState {
