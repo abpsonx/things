@@ -1,6 +1,6 @@
 """Pydantic schemas for API request/response validation."""
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional, List
+from typing import Optional, List, Any
 from datetime import datetime
 from uuid import UUID
 
@@ -385,7 +385,10 @@ class MessageResponse(BaseModel):
     is_pinned: bool = False
     is_starred: bool = False
     poll_id: Optional[UUID] = None
-    poll: Optional[dict] = None
+    # Optional[Any] so Pydantic's from_attributes doesn't trip when the
+    # SQLAlchemy relationship hands back a Poll ORM object. The handler
+    # always replaces it with a plain dict before returning.
+    poll: Optional[Any] = None
     created_at: datetime
     user: Optional[UserResponse] = None
 
