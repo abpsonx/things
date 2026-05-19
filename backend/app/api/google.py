@@ -20,11 +20,22 @@ GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 SCOPES = "https://www.googleapis.com/auth/calendar.events"
 
+def _redirect_uri() -> str:
+    """Public callback URL Google should redirect back to.
+
+    Built from FRONTEND_URL because BACKEND_URL in our .env already ends
+    with `/api`, which would double-prefix the path. Trailing slash is
+    stripped to avoid an accidental `//api/...`.
+    """
+    base = (settings.FRONTEND_URL or "").rstrip("/")
+    return f"{base}/api/google/callback"
+
+
 @router.get("/login")
 async def google_login(current_user: User = Depends(get_current_user)):
     """Generate Google OAuth login URL for the current user."""
-    redirect_uri = f"{settings.BACKEND_URL}/api/google/callback"
-    
+    redirect_uri = _redirect_uri()
+
     params = {
         "client_id": settings.GOOGLE_CLIENT_ID,
         "redirect_uri": redirect_uri,
@@ -41,7 +52,7 @@ async def google_login(current_user: User = Depends(get_current_user)):
 @router.get("/callback")
 async def google_callback(code: str, state: str, request: Request, db: AsyncSession = Depends(get_db)):
     """Handle Google OAuth callback and save tokens."""
-    redirect_uri = f"{settings.BACKEND_URL}/api/google/callback"
+    redirect_uri = _redirect_uri()
     
     async with httpx.AsyncClient() as client:
         response = await client.post(
