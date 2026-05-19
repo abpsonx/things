@@ -77,6 +77,7 @@ export default function KanbanColumn({
     <div className="flex flex-col w-[300px] min-w-[300px] bg-card rounded-2xl p-4 border border-border">
       <div className="flex items-center justify-between mb-4 px-1">
         <div className="flex items-center gap-2 flex-1 min-w-0">
+          <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 shrink-0" aria-hidden />
           {isRenaming ? (
             <input
               autoFocus
@@ -92,8 +93,8 @@ export default function KanbanColumn({
           ) : (
             <h3 className="font-bold text-sm tracking-tight truncate">{title}</h3>
           )}
-          <span className="text-[10px] font-medium bg-secondary/60 text-muted-foreground px-1.5 py-0.5 rounded-full shrink-0">
-            {tasks.length}
+          <span className="text-[10px] font-medium text-muted-foreground shrink-0">
+            {tasks.length} {tasks.length === 1 ? "Tugas" : "Tugas"}
           </span>
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
