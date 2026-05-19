@@ -19,6 +19,7 @@ import {
   Activity,
   Folder,
   Users,
+  CheckSquare,
   X
 } from "lucide-react";
 import CreateTeamModal from "@/components/team/CreateTeamModal";
@@ -87,6 +88,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
 
   const navItems = [
     { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
+    { icon: CheckSquare, label: "Tugas Saya", href: "/my-tasks" },
     { icon: Briefcase, label: "Proyek", href: "/projects" },
     { 
       icon: MessageSquare, 
