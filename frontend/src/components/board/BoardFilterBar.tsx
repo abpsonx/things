@@ -90,7 +90,7 @@ function Dropdown({
         className={cn(
           "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all",
           active
-            ? "bg-primary text-white border-primary"
+            ? "bg-primary text-primary-foreground border-primary"
             : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-secondary/50",
         )}
       >
@@ -153,7 +153,7 @@ export default function BoardFilterBar({
         className={cn(
           "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all",
           filter.mineOnly
-            ? "bg-primary text-white border-primary"
+            ? "bg-primary text-primary-foreground border-primary"
             : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-secondary/50",
         )}
       >
@@ -339,7 +339,7 @@ export default function BoardFilterBar({
                       onSaveView(savingName.trim());
                       setSavingName("");
                     }}
-                    className="p-1.5 rounded-lg bg-primary text-white disabled:opacity-50"
+                    className="p-1.5 rounded-lg bg-primary text-primary-foreground disabled:opacity-50"
                   >
                     <Plus className="w-3.5 h-3.5" />
                   </button>

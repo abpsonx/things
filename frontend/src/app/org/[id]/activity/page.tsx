@@ -119,7 +119,7 @@ export default function ActivityLogPage() {
             <button
               onClick={handleExport}
               disabled={exporting}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-primary text-white text-xs font-bold hover:bg-primary/90 disabled:opacity-50 shadow-md shadow-primary/20 transition-all shrink-0"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 disabled:opacity-50 shadow-md shadow-primary/20 transition-all shrink-0"
             >
               {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
               Export CSV

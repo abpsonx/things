@@ -123,7 +123,7 @@ export default function ArchivedTasksModal({ isOpen, onClose, projectId, onChang
                     <button
                       onClick={() => restore(t.id)}
                       disabled={busyId === t.id}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-primary text-white text-[11px] font-bold hover:bg-primary/90 disabled:opacity-50 transition-all"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-primary text-primary-foreground text-[11px] font-bold hover:bg-primary/90 disabled:opacity-50 transition-all"
                     >
                       <RotateCcw className="w-3 h-3" />
                       Pulihkan

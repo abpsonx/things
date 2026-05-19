@@ -320,7 +320,7 @@ export default function TeamBoardPage() {
           </div>
           <button
             onClick={() => setIsInviteOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-primary text-white text-xs font-bold hover:bg-primary/90 shadow-md shadow-primary/20 transition-all"
+            className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 shadow-md shadow-primary/20 transition-all"
           >
             <UserPlus className="w-4 h-4" />
             <span className="hidden sm:inline">Tambah Anggota</span>

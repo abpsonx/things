@@ -399,7 +399,7 @@ export default function KanbanBoard() {
             className={cn(
               "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all",
               selectMode
-                ? "bg-primary text-white border-primary"
+                ? "bg-primary text-primary-foreground border-primary"
                 : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-secondary/50",
             )}
           >

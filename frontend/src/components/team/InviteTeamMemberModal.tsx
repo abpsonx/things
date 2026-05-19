@@ -166,7 +166,7 @@ export default function InviteTeamMemberModal({
                     <button
                       onClick={() => handleAdd(m)}
                       disabled={isAdding}
-                      className="px-3 py-1.5 rounded-xl bg-primary text-white text-[11px] font-bold hover:bg-primary/90 disabled:opacity-50 shrink-0 transition-all"
+                      className="px-3 py-1.5 rounded-xl bg-primary text-primary-foreground text-[11px] font-bold hover:bg-primary/90 disabled:opacity-50 shrink-0 transition-all"
                     >
                       {isAdding ? "..." : "Tambah"}
                     </button>

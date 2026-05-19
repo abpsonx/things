@@ -919,7 +919,7 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
                         ))}
                       </div>
                       <div className="flex gap-2">
-                        <button type="submit" className="flex-1 py-1 bg-primary text-white text-[10px] font-bold rounded">Buat</button>
+                        <button type="submit" className="flex-1 py-1 bg-primary text-primary-foreground text-[10px] font-bold rounded">Buat</button>
                         <button type="button" onClick={() => setIsCreatingLabel(false)} className="px-2 py-1 text-[10px] text-muted-foreground">Batal</button>
                       </div>
                     </form>

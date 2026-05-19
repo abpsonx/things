@@ -1,0 +1,170 @@
+
+import asyncio
+
+from typing import Dict, Set
+
+from fastapi import WebSocket
+
+import logging
+
+logger = logging.getLogger(__name__)
+
+class __DMConnectionManager__:
+
+"""
+
+    Manages native WebSocket connections for DM channels.
+
+    Each DM channel has a set of connected WebSocket clients.
+
+    """
+
+def __init__(self):
+
+# Struktur: channel_id -> set of WebSocket connections
+
+        self.channels: Dict[str, Set[WebSocket]] = {}
+
+async def connect(self, websocket: WebSocket, channel_id: str):
+
+if channel_id not in self.channels:
+
+            self.channels[channel_id] = set()
+
+        self.channels[channel_id].add(websocket)
+
+        logger.info(f"[DM-WS] Client connected to channel {channel_id}. Total: {len(self.channels[channel_id])}")
+
+def disconnect(self, websocket: WebSocket, channel_id: str):
+
+if channel_id in self.channels:
+
+            self.channels[channel_id].discard(websocket)
+
+if not self.channels[channel_id]:
+
+del self.channels[channel_id] # Hapus channel jika sudah tidak ada user
+
+        logger.info(f"[DM-WS] Client disconnected from channel {channel_id}")
+
+async def broadcast(self, channel_id: str, message: dict):
+
+"""Broadcast a message to all clients in a DM channel."""
+
+if channel_id not in self.channels:
+
+return
+
+        dead_connections: Set[WebSocket] = set()
+
+# Looping ke SEMUA user (pengirim & penerima) yang ada di channel ini
+
+for ws in list(self.channels[channel_id]):
+
+try:
+
+await ws.send_json(message)
+
+except Exception as e:
+
+                logger.warning(f"[DM-WS] Failed to send to a client, removing. Error: {e}")
+
+                dead_connections.add(ws)
+
+# Clean up dead connections
+
+for ws in dead_connections:
+
+            self.channels[channel_id].discard(ws)
+
+# Singleton instance — shared across the entire app
+
+dm_ws_manager = DMConnectionManager()
+
+Dan ini adalah handler saat pesan dikirim (di `backend/app/api/dm.py`):
+
+
+
+```
+
+python
+
+```
+
+
+
+@router.post("/channels/{channel_id}/messages")
+
+async def send_dm_message(
+
+channel_id: str,
+
+data: DMMessageCreate,
+
+db: AsyncSession = Depends(get_db),
+
+current_user: User = Depends(get_current_user),
+
+):
+
+"""Send a message in a DM channel."""
+
+    message = DMMessage(
+
+dm_channel_id=channel_id,
+
+user_id=current_user.id,
+
+content=data.content
+
+    )
+
+    db.add(message)
+
+await db.commit()
+
+await db.refresh(message)
+
+# ⚠️ BROADCAST PAYLOAD
+
+    payload = {
+
+"type": "dm_received",
+
+"channel_id": str(channel_id), # <- Pastikan type string
+
+"message": {
+
+"id": str(message.id),
+
+"content": message.content,
+
+"user_id": str(current_user.id),
+
+"dm_channel_id": str(channel_id),
+
+"created_at": message.created_at.isoformat(),
+
+"attachment_url": None,
+
+"attachment_name": None,
+
+"user": {
+
+"id": str(current_user.id),
+
+"name": current_user.name,
+
+"avatar_url": current_user.avatar_url
+
+            }
+
+        }
+
+    }
+
+# Broadcast ke SEMUA koneksi di channel_id yang sama
+
+await dm_ws_manager.broadcast(channel_id, payload)
+
+return message
