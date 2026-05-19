@@ -44,6 +44,31 @@ class Task(Base):
     attachments = relationship("Attachment", back_populates="task", cascade="all, delete-orphan")
     task_labels = relationship("TaskLabel", back_populates="task", cascade="all, delete-orphan")
 
+    # Dependencies — a task "blocks" others and is "blocked_by" others.
+    blocks_relations = relationship(
+        "TaskDependency",
+        foreign_keys="TaskDependency.blocker_id",
+        cascade="all, delete-orphan",
+    )
+    blocked_by_relations = relationship(
+        "TaskDependency",
+        foreign_keys="TaskDependency.blocked_id",
+        cascade="all, delete-orphan",
+    )
+
+
+class TaskDependency(Base):
+    """Edge in the task-dependency graph. blocker_id must finish before blocked_id can proceed."""
+    __tablename__ = "task_dependencies"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    blocker_id = Column(UUID(as_uuid=True), ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False)
+    blocked_id = Column(UUID(as_uuid=True), ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    blocker = relationship("Task", foreign_keys=[blocker_id])
+    blocked = relationship("Task", foreign_keys=[blocked_id])
+
 
 class SubTask(Base):
     __tablename__ = "subtasks"

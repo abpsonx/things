@@ -2,7 +2,7 @@
 from app.models.user import User
 from app.models.organization import Organization, OrgMember
 from app.models.project import Project, ProjectMember
-from app.models.task import Task, SubTask
+from app.models.task import Task, SubTask, TaskDependency
 from app.models.attachment import Attachment
 from app.models.label import Label, TaskLabel
 from app.models.comment import Comment
@@ -23,7 +23,7 @@ __all__ = [
     "Organization", "OrgMember",
     "Project", "ProjectMember",
     "Team", "TeamMember", "TeamMessage",
-    "Task", "SubTask", "Attachment",
+    "Task", "SubTask", "TaskDependency", "Attachment",
     "Label", "TaskLabel",
     "Comment",
     "Channel", "Message",

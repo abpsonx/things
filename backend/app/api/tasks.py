@@ -8,7 +8,7 @@ from app.core.database import get_db
 from app.models.user import User
 from app.models.organization import OrgMember
 from app.models.project import Project
-from app.models.task import Task, SubTask
+from app.models.task import Task, SubTask, TaskDependency
 from app.models.label import Label, TaskLabel
 from app.schemas import (
     TaskCreate, TaskUpdate, TaskMoveRequest, TaskResponse, 
@@ -36,6 +36,102 @@ def _task_to_response(task):
     resp.comments_count = len(task.comments) if hasattr(task, 'comments') else 0
     resp.attachments_count = len(task.attachments) if hasattr(task, 'attachments') else 0
     return resp
+
+
+def _dep_brief(t):
+    if not t:
+        return None
+    return {"id": str(t.id), "title": t.title, "status": t.status}
+
+
+@router.get("/{task_id}/dependencies")
+async def list_dependencies(
+    project_id: str, task_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List blocks + blocked_by tasks for the given task."""
+    blocks_res = await db.execute(
+        select(TaskDependency)
+        .options(selectinload(TaskDependency.blocked))
+        .where(TaskDependency.blocker_id == task_id)
+    )
+    blocked_by_res = await db.execute(
+        select(TaskDependency)
+        .options(selectinload(TaskDependency.blocker))
+        .where(TaskDependency.blocked_id == task_id)
+    )
+    return {
+        "blocks": [_dep_brief(d.blocked) for d in blocks_res.scalars().all() if d.blocked],
+        "blocked_by": [_dep_brief(d.blocker) for d in blocked_by_res.scalars().all() if d.blocker],
+    }
+
+
+@router.post("/{task_id}/dependencies")
+async def add_dependency(
+    project_id: str, task_id: str, data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Add a dependency. Body: { other_id: "<uuid>", type: "blocks" | "blocked_by" }."""
+    other_id = data.get("other_id")
+    dep_type = data.get("type", "blocks")
+    if not other_id:
+        raise HTTPException(status_code=400, detail="other_id wajib")
+    if str(other_id) == str(task_id):
+        raise HTTPException(status_code=400, detail="Task tidak bisa bergantung pada dirinya sendiri")
+
+    # Verify both tasks exist and live in the same project
+    res = await db.execute(
+        select(Task).where(Task.id.in_([task_id, other_id]), Task.project_id == project_id)
+    )
+    tasks = {str(t.id): t for t in res.scalars().all()}
+    if str(task_id) not in tasks or str(other_id) not in tasks:
+        raise HTTPException(status_code=404, detail="Task tidak ditemukan di project ini")
+
+    if dep_type == "blocks":
+        blocker_id, blocked_id = task_id, other_id
+    elif dep_type == "blocked_by":
+        blocker_id, blocked_id = other_id, task_id
+    else:
+        raise HTTPException(status_code=400, detail="type harus 'blocks' atau 'blocked_by'")
+
+    # Reject if edge already exists
+    existing = await db.execute(
+        select(TaskDependency).where(
+            TaskDependency.blocker_id == blocker_id,
+            TaskDependency.blocked_id == blocked_id,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Dependency sudah ada")
+
+    dep = TaskDependency(blocker_id=blocker_id, blocked_id=blocked_id)
+    db.add(dep)
+    await db.commit()
+    return {"id": str(dep.id)}
+
+
+@router.delete("/{task_id}/dependencies/{other_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_dependency(
+    project_id: str, task_id: str, other_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Remove a dependency edge in either direction."""
+    res = await db.execute(
+        select(TaskDependency).where(
+            ((TaskDependency.blocker_id == task_id) & (TaskDependency.blocked_id == other_id))
+            | ((TaskDependency.blocker_id == other_id) & (TaskDependency.blocked_id == task_id))
+        )
+    )
+    deps = res.scalars().all()
+    if not deps:
+        raise HTTPException(status_code=404, detail="Dependency tidak ditemukan")
+    for d in deps:
+        await db.delete(d)
+    await db.commit()
+    return None
 
 
 @router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)

@@ -90,6 +90,20 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
 
+        # task_dependencies — edges in the blocker→blocked task graph
+        try:
+            await conn.execute(text(
+                "CREATE TABLE IF NOT EXISTS task_dependencies ("
+                " id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+                " blocker_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,"
+                " blocked_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,"
+                " created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),"
+                " UNIQUE (blocker_id, blocked_id)"
+                ")"
+            ))
+        except Exception as e:
+            print(f"[boot] task_dependencies create skipped: {e}")
+
         try:
             res = await conn.execute(text(
                 "SELECT p.id FROM projects p "
