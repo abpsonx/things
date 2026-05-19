@@ -365,6 +365,21 @@ async def remove_member(
     return {"message": "Member berhasil dihapus"}
 
 
+def _disk_size(path: str) -> int | None:
+    """Best-effort file size lookup for paths stored as relative (e.g. uploads/...)."""
+    import os
+    if not path or path.startswith("http"):
+        return None
+    candidates = [path, f"/app/{path}", os.path.join(os.getcwd(), path)]
+    for p in candidates:
+        try:
+            if os.path.isfile(p):
+                return os.path.getsize(p)
+        except Exception:
+            continue
+    return None
+
+
 @router.get("/{org_id}/files")
 async def list_organization_files(
     org_id: str,
@@ -378,7 +393,7 @@ async def list_organization_files(
     from app.models.channel import Message, Channel
     from app.models.dm import DMMessage, DMChannel
     from sqlalchemy import and_, or_
-    
+
     settings = get_settings()
     all_files = []
 
@@ -392,12 +407,13 @@ async def list_organization_files(
     )
     for a in result_task.scalars().all():
         if a.task and a.task.project and str(a.task.project.org_id) == str(org_id):
+            size = a.file_size if a.file_size else _disk_size(a.file_path)
             all_files.append({
                 "id": str(a.id),
                 "source": "Task",
                 "file_name": a.file_name,
                 "file_path": a.file_path if a.file_path.startswith("http") else f"{settings.BACKEND_URL}/{a.file_path}",
-                "file_size": a.file_size,
+                "file_size": size,
                 "created_at": a.created_at,
                 "uploader": {"id": str(a.uploader.id), "name": a.uploader.name, "avatar_url": a.uploader.avatar_url},
                 "context": {"type": "Task", "name": a.task.title, "parent": a.task.project.name}
@@ -416,7 +432,7 @@ async def list_organization_files(
                 "source": "Chat",
                 "file_name": m.attachment_name or "Unnamed File",
                 "file_path": m.attachment_url if m.attachment_url.startswith("http") else f"{settings.BACKEND_URL}/{m.attachment_url}",
-                "file_size": None,
+                "file_size": _disk_size(m.attachment_url),
                 "created_at": m.created_at,
                 "uploader": {"id": str(m.user.id), "name": m.user.name, "avatar_url": m.user.avatar_url},
                 "context": {"type": "Chat", "name": m.channel.name, "parent": m.channel.project.name}
@@ -435,7 +451,7 @@ async def list_organization_files(
                 "source": "DM",
                 "file_name": dm.attachment_name or "Unnamed File",
                 "file_path": dm.attachment_url if dm.attachment_url.startswith("http") else f"{settings.BACKEND_URL}/{dm.attachment_url}",
-                "file_size": None,
+                "file_size": _disk_size(dm.attachment_url),
                 "created_at": dm.created_at,
                 "uploader": {"id": str(dm.user.id), "name": dm.user.name, "avatar_url": dm.user.avatar_url},
                 "context": {"type": "DM", "name": "Private Chat", "parent": "DM"}

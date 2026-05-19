@@ -17,6 +17,7 @@ from app.models.document import Document
 from app.models.attachment import Attachment
 from app.models.task import Task
 from app.models.project import Project
+from app.models.channel import Channel, Message
 from app.dependencies import get_current_user
 
 router = APIRouter(prefix="/projects/{project_id}/files-index", tags=["FileIndex"])
@@ -49,6 +50,15 @@ async def list_project_files(
     )
     atts = att_res.all()
 
+    # 3. Files shared in this project's chat channels
+    chat_res = await db.execute(
+        select(Message, Channel.id.label("channel_id"))
+        .join(Channel, Channel.id == Message.channel_id)
+        .where(Channel.project_id == project_id, Message.attachment_url.isnot(None))
+        .order_by(Message.created_at.desc())
+    )
+    chats = chat_res.all()
+
     out: list[dict] = []
     for d in docs:
         out.append({
@@ -67,5 +77,16 @@ async def list_project_files(
             # served from nginx /api/uploads/<path>
             "url": f"/api/uploads/{att.file_path}",
             "task_id": str(task_id),
+        })
+    for row in chats:
+        m = row[0]
+        url = m.attachment_url
+        if url and not url.startswith("http") and not url.startswith("/"):
+            url = f"/api/uploads/{url}"
+        out.append({
+            "id": str(m.id),
+            "name": m.attachment_name or "Lampiran chat",
+            "kind": "chat_file",
+            "url": url,
         })
     return out

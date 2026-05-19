@@ -356,10 +356,10 @@ export default function ChatPage() {
   const renderMessageContent = (content: string, onGreen = false) => {
     if (!content) return null;
     // Split on URL, mention token, or file token, keeping the delimiters.
-    const TOKEN_RE = /(https?:\/\/[^\s]+|@\[[^\]]+\]\([0-9a-fA-F-]{36}\)|#\[[^\]]+\]\(file:(?:doc|attachment):[0-9a-fA-F-]{36}\))/g;
+    const TOKEN_RE = /(https?:\/\/[^\s]+|@\[[^\]]+\]\([0-9a-fA-F-]{36}\)|#\[[^\]]+\]\(file:(?:doc|attachment|chat_file):[0-9a-fA-F-]{36}\))/g;
     const parts = content.split(TOKEN_RE);
     const MENTION_RE = /^@\[([^\]]+)\]\(([0-9a-fA-F-]{36})\)$/;
-    const FILE_RE = /^#\[([^\]]+)\]\(file:(doc|attachment):([0-9a-fA-F-]{36})\)$/;
+    const FILE_RE = /^#\[([^\]]+)\]\(file:(doc|attachment|chat_file):([0-9a-fA-F-]{36})\)$/;
     const URL_RE = /^https?:\/\//;
 
     return parts.map((part, i) => {
@@ -372,6 +372,7 @@ export default function ChatPage() {
           ? `/org/${orgId}/project/${projectId}/docs?doc=${id}`
           : (f?.url || "#");
         const target = kind === "doc" ? "_self" : "_blank";
+        const icon = kind === "doc" ? "📄" : kind === "chat_file" ? "💬" : "📎";
         return (
           <a
             key={i}
@@ -387,7 +388,7 @@ export default function ChatPage() {
             )}
             title={name}
           >
-            <span>{kind === "doc" ? "📄" : "📎"}</span>
+            <span>{icon}</span>
             <span className="max-w-[180px] truncate">{name}</span>
           </a>
         );
@@ -1127,11 +1128,13 @@ export default function ChatPage() {
                                 )}
                               >
                                 <div className="w-7 h-7 rounded-lg bg-secondary border border-border flex items-center justify-center text-xs shrink-0">
-                                  {f.kind === "doc" ? "📄" : "📎"}
+                                  {f.kind === "doc" ? "📄" : f.kind === "chat_file" ? "💬" : "📎"}
                                 </div>
                                 <div className="flex-1 min-w-0">
                                   <p className="text-xs font-bold truncate">{f.name}</p>
-                                  <p className="text-[10px] text-muted-foreground capitalize">{f.kind === "doc" ? "Wiki" : "Lampiran task"}</p>
+                                  <p className="text-[10px] text-muted-foreground">
+                                    {f.kind === "doc" ? "Wiki" : f.kind === "chat_file" ? "Dikirim di chat" : "Lampiran task"}
+                                  </p>
                                 </div>
                               </button>
                             ))
