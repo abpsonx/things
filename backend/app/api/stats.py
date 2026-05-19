@@ -218,3 +218,48 @@ async def get_project_stats(
             {"name": "Done", "value": stats["done"]},
         ]
     }
+
+
+@router.get("/my-tasks")
+async def list_my_tasks(
+    include_done: bool = False,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """All tasks assigned to me across every workspace.
+
+    Used by the "My Work" page and the global calendar. Archived tasks are
+    excluded; done tasks are excluded unless include_done=true.
+    """
+    now = datetime.now(timezone.utc)
+    query = (
+        select(Task)
+        .options(selectinload(Task.project), selectinload(Task.team))
+        .where(Task.assignee_id == current_user.id)
+        .where(Task.archived_at.is_(None))
+        .order_by(Task.due_date.asc().nulls_last(), Task.created_at.desc())
+    )
+    if not include_done:
+        query = query.where(Task.status != "done")
+
+    rows = (await db.execute(query)).scalars().all()
+    out = []
+    for t in rows:
+        project_ref = None
+        team_ref = None
+        if t.project:
+            project_ref = {"id": str(t.project.id), "name": t.project.name, "org_id": str(t.project.org_id)}
+        if t.team:
+            team_ref = {"id": str(t.team.id), "name": t.team.name, "org_id": str(t.team.org_id)}
+        out.append({
+            "id": str(t.id),
+            "title": t.title,
+            "description": t.description,
+            "status": t.status,
+            "priority": t.priority,
+            "due_date": t.due_date.isoformat() if t.due_date else None,
+            "is_overdue": bool(t.due_date and t.due_date < now and t.status != "done"),
+            "project": project_ref,
+            "team": team_ref,
+        })
+    return out

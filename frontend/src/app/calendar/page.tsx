@@ -1,37 +1,51 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 
 import api from "@/lib/api";
-import { 
-  ChevronLeft, 
-  ChevronRight, 
+import {
+  ChevronLeft,
+  ChevronRight,
   Calendar as CalendarIcon,
   Clock,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  CheckSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function GlobalCalendarPage() {
+  const router = useRouter();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [events, setEvents] = useState<any[]>([]);
+  const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchGlobalEvents = useCallback(async () => {
+  const fetchData = useCallback(async () => {
+    setLoading(true);
     try {
-      const res = await api.get("/projects/any/events/me"); // Note: any is dummy for prefix match
-      setEvents(res.data);
+      const [eventsRes, tasksRes] = await Promise.all([
+        api.get("/projects/any/events/me"),
+        api.get("/stats/my-tasks"),
+      ]);
+      setEvents(eventsRes.data || []);
+      setTasks((tasksRes.data || []).filter((t: any) => t.due_date));
     } catch (err) {
-      console.error("Failed to fetch global events", err);
+      console.error("Failed to fetch global calendar data", err);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchGlobalEvents();
-  }, [fetchGlobalEvents]);
+    fetchData();
+  }, [fetchData]);
+
+  const openTask = (t: any) => {
+    if (t.project) router.push(`/org/${t.project.org_id}/project/${t.project.id}/board?task=${t.id}`);
+    else if (t.team) router.push(`/org/${t.team.org_id}/team/${t.team.id}/board?task=${t.id}`);
+  };
 
   const daysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
   const firstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
@@ -51,10 +65,24 @@ export default function GlobalCalendarPage() {
   const getEventsForDay = (day: number) => {
     return events.filter(event => {
       const eventDate = new Date(event.start_at);
-      return eventDate.getDate() === day && 
-             eventDate.getMonth() === month && 
+      return eventDate.getDate() === day &&
+             eventDate.getMonth() === month &&
              eventDate.getFullYear() === year;
     });
+  };
+
+  const getTasksForDay = (day: number) => {
+    return tasks.filter((t) => {
+      const d = new Date(t.due_date);
+      return d.getDate() === day && d.getMonth() === month && d.getFullYear() === year;
+    });
+  };
+
+  const priorityColor = (priority?: string) => {
+    if (priority === "high") return "border-red-500 bg-red-50 text-red-700";
+    if (priority === "medium") return "border-amber-500 bg-amber-50 text-amber-700";
+    if (priority === "low") return "border-emerald-500 bg-emerald-50 text-emerald-700";
+    return "border-slate-400 bg-slate-50 text-slate-700";
   };
 
   const dayLabels = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
@@ -117,8 +145,8 @@ export default function GlobalCalendarPage() {
                         
                         <div className="space-y-1.5 overflow-y-auto max-h-[80px] md:max-h-[110px] custom-scrollbar">
                           {dayEvents.map((event) => (
-                            <div 
-                              key={event.id} 
+                            <div
+                              key={event.id}
                               className="px-2 py-1.5 bg-secondary border-l-2 border-primary rounded-r-md text-[9px] font-bold text-foreground hover:bg-secondary/80 transition-all cursor-pointer truncate shadow-sm"
                               title={`${event.title} - ${event.project?.name}`}
                             >
@@ -128,6 +156,23 @@ export default function GlobalCalendarPage() {
                               </div>
                               {event.title}
                             </div>
+                          ))}
+                          {getTasksForDay(day).map((t) => (
+                            <button
+                              key={t.id}
+                              onClick={() => openTask(t)}
+                              className={cn(
+                                "w-full text-left px-2 py-1.5 border-l-2 rounded-r-md text-[9px] font-bold transition-all cursor-pointer truncate shadow-sm hover:opacity-80",
+                                priorityColor(t.priority),
+                              )}
+                              title={`${t.title}${t.project?.name ? ` — ${t.project.name}` : ""}${t.team?.name ? ` — ${t.team.name}` : ""}`}
+                            >
+                              <div className="flex items-center gap-1 mb-0.5">
+                                <CheckSquare className="w-2.5 h-2.5 shrink-0" />
+                                {t.is_overdue ? "OVERDUE" : "TASK"}
+                              </div>
+                              {t.title}
+                            </button>
                           ))}
                         </div>
                       </>
