@@ -29,6 +29,7 @@ import {
   Link2,
   ExternalLink,
   BarChart3,
+  Download,
 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
 import CreatePollModal from "@/components/poll/CreatePollModal";
@@ -913,18 +914,40 @@ export default function ChatPage() {
                                 <img src={msg.attachment_url} alt="attachment" className="rounded max-w-full h-auto max-h-[200px] object-cover cursor-pointer hover:opacity-90 transition-opacity border border-border" />
                               </a>
                             ) : (
-                              <div className="flex flex-col gap-1 min-w-[160px] p-1 rounded border border-border bg-foreground/5">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-7 h-7 bg-background rounded flex items-center justify-center shrink-0 border border-border">
-                                    <Paperclip className="w-3 h-3" />
-                                  </div>
-                                  <div className="flex-1 min-w-0 text-[10px] font-bold truncate">{msg.attachment_name || "File"}</div>
+                              <a
+                                href={msg.attachment_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className={cn(
+                                  "group/file inline-flex items-center gap-2.5 px-2.5 py-2 rounded-xl border min-w-[200px] max-w-[280px] transition-all",
+                                  isMe
+                                    ? "bg-white/10 border-white/20 hover:bg-white/15"
+                                    : "bg-secondary/40 border-border hover:bg-secondary/60"
+                                )}
+                                title={msg.attachment_name || "File"}
+                              >
+                                <div className={cn(
+                                  "w-9 h-9 rounded-lg flex items-center justify-center shrink-0",
+                                  isMe ? "bg-white/15 text-white" : "bg-primary/10 text-primary"
+                                )}>
+                                  <Paperclip className="w-4 h-4" />
                                 </div>
-                                <div className="flex gap-1">
-                                  <a href={msg.attachment_url} target="_blank" rel="noreferrer" className="flex-1 text-[8px] font-bold text-center py-1 rounded transition-all tracking-wider uppercase bg-background border border-border hover:bg-secondary">View</a>
-                                  <a href={msg.attachment_url} download={msg.attachment_name || "file"} className="flex-1 text-[8px] font-bold text-center py-1 rounded transition-all tracking-wider uppercase shadow-sm bg-foreground text-background hover:bg-foreground/90">Download</a>
+                                <div className="flex-1 min-w-0">
+                                  <p className={cn("text-[12px] font-bold truncate leading-tight", isMe ? "text-white" : "text-foreground")}>
+                                    {msg.attachment_name || "File"}
+                                  </p>
+                                  <p className={cn("text-[10px] mt-0.5 leading-tight", isMe ? "text-white/60" : "text-muted-foreground")}>
+                                    Klik untuk buka
+                                  </p>
                                 </div>
-                              </div>
+                                <div className={cn(
+                                  "p-1.5 rounded-lg opacity-0 group-hover/file:opacity-100 transition-opacity",
+                                  isMe ? "text-white" : "text-primary"
+                                )}>
+                                  <Download className="w-3.5 h-3.5" />
+                                </div>
+                              </a>
                             )}
                           </div>
                         )}

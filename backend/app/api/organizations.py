@@ -366,12 +366,36 @@ async def remove_member(
 
 
 def _disk_size(path: str) -> int | None:
-    """Best-effort file size lookup for paths stored as relative (e.g. uploads/...)."""
+    """Best-effort file size lookup for paths stored as relative (e.g. uploads/...).
+
+    Handles every storage style we've used historically:
+      - "uploads/foo.pptx"          (task attachments)
+      - "/api/uploads/foo.pptx"     (team chat uploads — written by team upload)
+      - "/uploads/foo.pptx"         (older code paths)
+      - absolute "http(s)://…"      (skipped — not on local disk)
+    """
     import os
     if not path or path.startswith("http"):
         return None
-    candidates = [path, f"/app/{path}", os.path.join(os.getcwd(), path)]
+    # Strip API / leading slash prefixes so we hit /app/uploads/...
+    normalized = path
+    for prefix in ("/api/", "api/"):
+        if normalized.startswith(prefix):
+            normalized = normalized[len(prefix):]
+            break
+    normalized = normalized.lstrip("/")
+    candidates = [
+        normalized,
+        f"/app/{normalized}",
+        os.path.join(os.getcwd(), normalized),
+        path,                       # original, just in case
+        f"/app/{path.lstrip('/')}", # absolute mount
+    ]
+    seen: set[str] = set()
     for p in candidates:
+        if p in seen:
+            continue
+        seen.add(p)
         try:
             if os.path.isfile(p):
                 return os.path.getsize(p)
