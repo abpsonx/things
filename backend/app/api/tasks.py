@@ -162,9 +162,12 @@ async def update_task(
     if action == "task_moved":
         meta["old_status"] = old_status
 
+    import uuid as _uuid
     for k, v in meta.items():
         if hasattr(v, "isoformat"):
             meta[k] = v.isoformat()
+        elif isinstance(v, _uuid.UUID):
+            meta[k] = str(v)
 
     await log_activity(
         db, org_id=project.org_id, user_id=current_user.id,
