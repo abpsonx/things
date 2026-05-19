@@ -4,7 +4,7 @@ import React from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
-import { MessageSquare, Paperclip, CheckSquare, Calendar, Flag, MoreHorizontal } from "lucide-react";
+import { MessageSquare, Paperclip, CheckSquare, Calendar, Flag, MoreHorizontal, Check } from "lucide-react";
 import { format, isValid } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 
@@ -50,10 +50,16 @@ export default function TaskCard({
   task,
   isOverlay,
   onClick,
+  selected,
+  onToggleSelect,
+  selectMode,
 }: {
   task: Task;
   isOverlay?: boolean;
   onClick?: () => void;
+  selected?: boolean;
+  onToggleSelect?: () => void;
+  selectMode?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
 
@@ -84,12 +90,39 @@ export default function TaskCard({
       style={style}
       {...attributes}
       {...listeners}
-      onClick={onClick}
+      onClick={(e) => {
+        if (selectMode && onToggleSelect) {
+          e.preventDefault();
+          onToggleSelect();
+          return;
+        }
+        onClick?.();
+      }}
       className={cn(
         "relative p-4 bg-card rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] hover:shadow-[0_4px_16px_rgba(0,0,0,0.06)] hover:-translate-y-0.5 transition-all cursor-grab active:cursor-grabbing border border-border/70 mb-3 group",
         isOverlay && "shadow-2xl scale-[1.02] rotate-1",
+        selected && "ring-2 ring-primary border-primary",
       )}
     >
+      {/* Selection checkbox — only when in select mode or already selected */}
+      {(selectMode || selected) && onToggleSelect && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleSelect();
+          }}
+          className={cn(
+            "absolute -top-1.5 -left-1.5 w-5 h-5 rounded-full flex items-center justify-center transition-all border-2",
+            selected
+              ? "bg-primary border-primary text-white"
+              : "bg-white border-border text-transparent hover:border-primary",
+          )}
+        >
+          <Check className="w-3 h-3" />
+        </button>
+      )}
+
       {/* Top row: priority + menu */}
       <div className="flex items-start justify-between mb-2">
         {priority ? (

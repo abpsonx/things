@@ -303,6 +303,81 @@ async def delete_task(
     return None
 
 
+# ============ Bulk Operations ============
+
+@router.post("/bulk/update")
+async def bulk_update_tasks(
+    project_id: str,
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Bulk update tasks. Body: { task_ids: [], status?, assignee_id?, priority? }."""
+    project = await _get_project(db, project_id)
+    task_ids = data.get("task_ids") or []
+    if not task_ids:
+        raise HTTPException(status_code=400, detail="task_ids kosong")
+
+    result = await db.execute(
+        select(Task).where(Task.id.in_(task_ids), Task.project_id == project_id)
+    )
+    tasks = result.scalars().all()
+
+    updates = {k: v for k, v in data.items() if k in ("status", "assignee_id", "priority") and v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="Tidak ada field yang diupdate")
+
+    for t in tasks:
+        for k, v in updates.items():
+            setattr(t, k, v)
+
+    await log_activity(
+        db, org_id=project.org_id, user_id=current_user.id,
+        action="task_bulk_updated", entity_type="task", entity_id=None,
+        project_id=project_id,
+        metadata={"count": len(tasks), "updates": {k: str(v) for k, v in updates.items()}},
+    )
+    await db.commit()
+
+    from app.sockets.manager import sio
+    for t in tasks:
+        await sio.emit("task_updated", {"id": str(t.id)}, room=f"project_{project_id}")
+
+    return {"updated": len(tasks)}
+
+
+@router.post("/bulk/delete")
+async def bulk_delete_tasks(
+    project_id: str,
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Bulk delete tasks. Body: { task_ids: [] }."""
+    project = await _get_project(db, project_id)
+    task_ids = data.get("task_ids") or []
+    if not task_ids:
+        raise HTTPException(status_code=400, detail="task_ids kosong")
+
+    result = await db.execute(
+        select(Task).where(Task.id.in_(task_ids), Task.project_id == project_id)
+    )
+    tasks = result.scalars().all()
+
+    await log_activity(
+        db, org_id=project.org_id, user_id=current_user.id,
+        action="task_bulk_deleted", entity_type="task", entity_id=None,
+        project_id=project_id, metadata={"count": len(tasks)},
+    )
+
+    from app.sockets.manager import sio
+    for t in tasks:
+        await sio.emit("task_deleted", {"id": str(t.id)}, room=f"project_{project_id}")
+        await db.delete(t)
+    await db.commit()
+    return {"deleted": len(tasks)}
+
+
 # ============ SubTask Endpoints ============
 
 @router.post("/{task_id}/subtasks", response_model=SubTaskResponse)

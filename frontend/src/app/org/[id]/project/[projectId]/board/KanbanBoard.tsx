@@ -43,7 +43,10 @@ import KanbanColumn from "./KanbanColumn";
 import TaskDetailModal from "./TaskDetailModal";
 import BoardFilterBar from "@/components/board/BoardFilterBar";
 import { applyBoardFilter, useBoardFilter } from "@/components/board/useBoardFilter";
+import BulkActionBar from "@/components/board/BulkActionBar";
 import { useAuthStore } from "@/store/useAuthStore";
+import { CheckSquare as CheckSquareIcon } from "lucide-react";
+import { toast } from "sonner";
 
 interface Task {
   id: string;
@@ -104,6 +107,61 @@ export default function KanbanBoard() {
     () => applyBoardFilter(tasks, filter, currentUser?.id),
     [tasks, filter, currentUser?.id],
   );
+
+  // Bulk selection
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  const toggleSelect = useCallback((taskId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+    setSelectMode(false);
+  }, []);
+
+  const bulkUpdate = async (patch: Record<string, any>) => {
+    if (selectedIds.size === 0) return;
+    setBulkBusy(true);
+    try {
+      await api.post(`/projects/${projectId}/tasks/bulk/update`, {
+        task_ids: Array.from(selectedIds),
+        ...patch,
+      });
+      toast.success(`${selectedIds.size} tugas diupdate`);
+      clearSelection();
+      fetchTasks();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || "Gagal update tugas");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const bulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Hapus ${selectedIds.size} tugas? Tindakan ini tidak bisa dibatalkan.`)) return;
+    setBulkBusy(true);
+    try {
+      await api.post(`/projects/${projectId}/tasks/bulk/delete`, {
+        task_ids: Array.from(selectedIds),
+      });
+      toast.success(`${selectedIds.size} tugas dihapus`);
+      clearSelection();
+      fetchTasks();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || "Gagal hapus tugas");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
 
   // Open task detail directly when the URL has ?task=<id>
   // (used by the dashboard "Tugasmu" widget to deep-link a task).
@@ -307,17 +365,34 @@ export default function KanbanBoard() {
 
   return (
     <div className="h-[calc(100vh-250px)] flex flex-col">
-      <BoardFilterBar
-        filter={filter}
-        onChange={setFilter}
-        onReset={resetFilter}
-        members={memberOptions}
-        labels={labels}
-        savedViews={savedViews}
-        onSaveView={saveView}
-        onApplyView={applyView}
-        onDeleteView={deleteView}
-      />
+      <div className="flex items-center justify-between gap-3">
+        <BoardFilterBar
+          filter={filter}
+          onChange={setFilter}
+          onReset={resetFilter}
+          members={memberOptions}
+          labels={labels}
+          savedViews={savedViews}
+          onSaveView={saveView}
+          onApplyView={applyView}
+          onDeleteView={deleteView}
+        />
+        <button
+          onClick={() => {
+            setSelectMode((v) => !v);
+            if (selectMode) setSelectedIds(new Set());
+          }}
+          className={cn(
+            "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all shrink-0",
+            selectMode
+              ? "bg-primary text-white border-primary"
+              : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-secondary/50",
+          )}
+        >
+          <CheckSquareIcon className="w-3.5 h-3.5" />
+          {selectMode ? "Selesai pilih" : "Pilih banyak"}
+        </button>
+      </div>
       <DndContext
         sensors={sensors}
         collisionDetection={closestCorners}
@@ -343,6 +418,9 @@ export default function KanbanBoard() {
                 }}
                 onRename={(newTitle) => renameColumn(col.id, newTitle)}
                 onDelete={() => deleteColumn(col.id, col.title)}
+                selectMode={selectMode}
+                selectedIds={selectedIds}
+                onToggleSelect={toggleSelect}
               />
             ))}
 
@@ -451,12 +529,24 @@ export default function KanbanBoard() {
         </DragOverlay>
       </DndContext>
 
-      <TaskDetailModal 
+      <TaskDetailModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         taskId={selectedTaskId || ""}
         projectId={projectId as string}
         onUpdate={fetchTasks}
+      />
+
+      <BulkActionBar
+        count={selectedIds.size}
+        members={memberOptions}
+        columns={columns.map((c) => ({ id: c.slug, title: c.title }))}
+        busy={bulkBusy}
+        onClear={clearSelection}
+        onAssign={(assignee_id) => bulkUpdate({ assignee_id })}
+        onPriority={(priority) => bulkUpdate({ priority })}
+        onMove={(status) => bulkUpdate({ status })}
+        onDelete={bulkDelete}
       />
     </div>
   );

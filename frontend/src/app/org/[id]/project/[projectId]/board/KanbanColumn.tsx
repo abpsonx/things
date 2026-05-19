@@ -18,6 +18,9 @@ interface ColumnProps {
   onTaskClick: (id: string) => void;
   onRename?: (newTitle: string) => void | Promise<void>;
   onDelete?: () => void | Promise<void>;
+  selectMode?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (taskId: string) => void;
 }
 
 export default function KanbanColumn({
@@ -29,6 +32,9 @@ export default function KanbanColumn({
   onTaskClick,
   onRename,
   onDelete,
+  selectMode,
+  selectedIds,
+  onToggleSelect,
 }: ColumnProps) {
   const [isAdding, setIsAdding] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
@@ -148,7 +154,14 @@ export default function KanbanColumn({
       <div ref={setNodeRef} className="flex-1 overflow-y-auto min-h-[100px]">
         <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
           {tasks.map((task) => (
-            <TaskCard key={task.id} task={task} onClick={() => onTaskClick(task.id)} />
+            <TaskCard
+              key={task.id}
+              task={task}
+              onClick={() => onTaskClick(task.id)}
+              selectMode={selectMode}
+              selected={selectedIds?.has(task.id)}
+              onToggleSelect={onToggleSelect ? () => onToggleSelect(task.id) : undefined}
+            />
           ))}
         </SortableContext>
       </div>
