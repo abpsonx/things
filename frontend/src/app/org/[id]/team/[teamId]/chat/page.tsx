@@ -432,12 +432,14 @@ export default function TeamChatPage() {
                       </div>
                     )}
 
-                    {/* Bubble */}
+                    {/* Bubble — transparent wrapper for polls so PollBubble owns its styling */}
                     <div
-                      className={`relative p-4 rounded-2xl shadow-sm text-[14px] leading-relaxed ${
-                        isMe
-                        ? 'bg-[#3D4F6B] text-white rounded-tr-none shadow-slate-300/50'
-                        : 'bg-card text-foreground border border-border rounded-tl-none'
+                      className={`relative text-[14px] leading-relaxed ${
+                        msg.poll
+                          ? 'bg-transparent'
+                          : isMe
+                            ? 'p-4 rounded-2xl shadow-sm bg-[#3D4F6B] text-white rounded-tr-none shadow-slate-300/50'
+                            : 'p-4 rounded-2xl shadow-sm bg-card text-foreground border border-border rounded-tl-none'
                       }`}
                     >
                       {editingId === msg.id ? (

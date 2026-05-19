@@ -759,10 +759,15 @@ export default function ChatPage() {
 
                     <div className={cn("max-w-[85%] relative flex flex-col", isMe ? "items-end" : "items-start")}>
                       <div className={cn(
-                        "px-3 py-1.5 rounded-2xl shadow-sm text-[13px] relative group/msg transition-all min-w-[40px]",
-                        isMe ? "bg-[#3D4F6B] text-white rounded-tr-none" : "bg-card border border-border text-foreground rounded-tl-none",
-                        msg.is_pinned && "ring-1 ring-blue-500/30",
-                        msg.is_starred && "ring-1 ring-yellow-500/30"
+                        "text-[13px] relative group/msg transition-all min-w-[40px]",
+                        // Poll messages let PollBubble own its styling — no dark wrapper, no padding.
+                        msg.poll
+                          ? "bg-transparent"
+                          : isMe
+                            ? "px-3 py-1.5 rounded-2xl shadow-sm bg-[#3D4F6B] text-white rounded-tr-none"
+                            : "px-3 py-1.5 rounded-2xl shadow-sm bg-card border border-border text-foreground rounded-tl-none",
+                        !msg.poll && msg.is_pinned && "ring-1 ring-blue-500/30",
+                        !msg.poll && msg.is_starred && "ring-1 ring-yellow-500/30"
                       )}>
                         {msg.is_pinned && (
                           <div className="absolute -top-2 -right-2 bg-blue-500 text-white p-0.5 rounded-full shadow-sm z-10">
@@ -782,10 +787,16 @@ export default function ChatPage() {
 
                         {replyMsg && (
                           <div className={cn(
-                            "text-[10px] p-1 bg-foreground/5 rounded border-l-2 border-foreground/20 mb-1 opacity-70 truncate",
+                            "text-[10px] p-1.5 rounded border-l-2 mb-1 truncate",
+                            isMe
+                              ? "bg-white/10 border-white/40 text-white/80"
+                              : "bg-foreground/5 border-foreground/20 text-foreground/70",
                             isMe ? "text-right" : ""
                           )}>
-                            <div className="font-bold flex items-center gap-1 mb-0.5 text-[8px] opacity-60"><CornerDownRight className="w-2.5 h-2.5" /> {replyMsg.user?.name}</div>
+                            <div className={cn(
+                              "font-bold flex items-center gap-1 mb-0.5 text-[8px]",
+                              isMe ? "text-white/90" : "text-foreground/80"
+                            )}><CornerDownRight className="w-2.5 h-2.5" /> {replyMsg.user?.name}</div>
                             {replyMsg.content}
                           </div>
                         )}
@@ -825,9 +836,19 @@ export default function ChatPage() {
                           </div>
                         )}
 
-                        <div className="flex items-end justify-end gap-x-2">
+                        <div className={cn(
+                          "flex items-end justify-end gap-x-2",
+                          msg.poll && "mt-1 pr-1"
+                        )}>
                           {msg.content && !msg.poll && <p className={cn("flex-1 min-w-[30px] whitespace-pre-wrap leading-snug py-0.5", isMe ? "text-white" : "text-foreground")}>{renderMessageContent(msg.content, isMe)}</p>}
-                          <div className={cn("flex items-center gap-0.5 text-[8px] mb-[1px] shrink-0 font-medium select-none", isMe ? "text-white/70" : "text-muted-foreground/60")}>
+                          <div className={cn(
+                            "flex items-center gap-0.5 text-[8px] mb-[1px] shrink-0 font-medium select-none",
+                            msg.poll
+                              ? "text-muted-foreground/70"
+                              : isMe
+                                ? "text-white/70"
+                                : "text-muted-foreground/60"
+                          )}>
                             {(msg.edited_at || msg.is_edited) && (
                               <span className="italic mr-0.5" title={msg.edited_at ? `Diedit ${fmtEdited(msg.edited_at)}` : "Diedit"}>
                                 {msg.edited_at ? `Diedit ${fmtEdited(msg.edited_at)} ·` : "Diedit ·"}
@@ -837,8 +858,8 @@ export default function ChatPage() {
                             {isMe && (
                               <button onClick={() => setReadInfo(msg)} className="ml-0.5 transition-colors">
                                 {(msg.read_by && msg.read_by.length > 0)
-                                  ? <CheckCheck className="w-3 h-3 text-white" />
-                                  : <CheckCheck className="w-3 h-3 text-white/40" />
+                                  ? <CheckCheck className={cn("w-3 h-3", msg.poll ? "text-muted-foreground" : "text-white")} />
+                                  : <CheckCheck className={cn("w-3 h-3", msg.poll ? "text-muted-foreground/40" : "text-white/40")} />
                                 }
                               </button>
                             )}
