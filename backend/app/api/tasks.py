@@ -241,7 +241,7 @@ async def create_task(
 
 @router.get("", response_model=List[TaskResponse])
 async def list_tasks(
-    project_id: str, status_filter: str = None,
+    project_id: str, status_filter: str = None, include_archived: bool = False,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -256,9 +256,109 @@ async def list_tasks(
              .order_by(Task.position))
     if status_filter:
         query = query.where(Task.status == status_filter)
+    if not include_archived:
+        query = query.where(Task.archived_at.is_(None))
     result = await db.execute(query)
     tasks = result.scalars().all()
     return [_task_to_response(t) for t in tasks]
+
+
+@router.get("/archived", response_model=List[TaskResponse])
+async def list_archived_tasks(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Archived tasks only — used by the "Arsip" view on the board."""
+    result = await db.execute(
+        select(Task)
+        .options(
+            selectinload(Task.task_labels).selectinload(TaskLabel.label),
+            selectinload(Task.subtasks),
+            selectinload(Task.comments),
+            selectinload(Task.attachments),
+            selectinload(Task.assignee),
+        )
+        .where(Task.project_id == project_id, Task.archived_at.isnot(None))
+        .order_by(Task.archived_at.desc())
+    )
+    tasks = result.scalars().all()
+    return [_task_to_response(t) for t in tasks]
+
+
+@router.post("/{task_id}/archive", response_model=TaskResponse)
+async def archive_task(
+    project_id: str, task_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Soft-delete a task. Hidden from the active board until restored."""
+    from datetime import datetime, timezone
+    project = await _get_project(db, project_id)
+    result = await db.execute(select(Task).where(Task.id == task_id, Task.project_id == project_id))
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task tidak ditemukan")
+
+    task.archived_at = datetime.now(timezone.utc)
+
+    await log_activity(
+        db, org_id=project.org_id, user_id=current_user.id,
+        action="task_archived", entity_type="task", entity_id=task.id,
+        project_id=project_id, metadata={"title": task.title},
+    )
+    await db.commit()
+
+    from app.sockets.manager import sio
+    await sio.emit("task_deleted", {"id": task_id}, room=f"project_{project_id}")
+
+    result = await db.execute(
+        select(Task).options(
+            selectinload(Task.task_labels).selectinload(TaskLabel.label),
+            selectinload(Task.subtasks),
+            selectinload(Task.comments),
+            selectinload(Task.attachments),
+            selectinload(Task.assignee),
+        ).where(Task.id == task_id)
+    )
+    return _task_to_response(result.scalar_one())
+
+
+@router.post("/{task_id}/restore", response_model=TaskResponse)
+async def restore_task(
+    project_id: str, task_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Restore a previously archived task."""
+    project = await _get_project(db, project_id)
+    result = await db.execute(select(Task).where(Task.id == task_id, Task.project_id == project_id))
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task tidak ditemukan")
+
+    task.archived_at = None
+
+    await log_activity(
+        db, org_id=project.org_id, user_id=current_user.id,
+        action="task_restored", entity_type="task", entity_id=task.id,
+        project_id=project_id, metadata={"title": task.title},
+    )
+    await db.commit()
+
+    from app.sockets.manager import sio
+    await sio.emit("task_created", {"id": task_id}, room=f"project_{project_id}")
+
+    result = await db.execute(
+        select(Task).options(
+            selectinload(Task.task_labels).selectinload(TaskLabel.label),
+            selectinload(Task.subtasks),
+            selectinload(Task.comments),
+            selectinload(Task.attachments),
+            selectinload(Task.assignee),
+        ).where(Task.id == task_id)
+    )
+    return _task_to_response(result.scalar_one())
 
 
 @router.get("/{task_id}", response_model=TaskResponse)

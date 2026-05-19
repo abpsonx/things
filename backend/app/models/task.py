@@ -30,6 +30,8 @@ class Task(Base):
     # When the task is marked done, a fresh copy is cloned with the due
     # date shifted by the interval.
     recurrence = Column(String(16), nullable=True)
+    # Soft delete timestamp. NULL = active, otherwise hidden from boards.
+    archived_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

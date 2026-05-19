@@ -106,6 +106,14 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"[boot] tasks.recurrence add skipped: {e}")
 
+        # archived_at on tasks — soft delete (NULL = active)
+        try:
+            await conn.execute(text(
+                "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS archived_at TIMESTAMP WITH TIME ZONE"
+            ))
+        except Exception as e:
+            print(f"[boot] tasks.archived_at add skipped: {e}")
+
         # task_dependencies — edges in the blocker→blocked task graph
         try:
             await conn.execute(text(

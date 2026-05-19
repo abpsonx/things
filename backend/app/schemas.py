@@ -229,6 +229,7 @@ class TaskResponse(BaseModel):
     attachments_count: int = 0
     assignee: Optional[UserResponse] = None
     recurrence: Optional[str] = None
+    archived_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

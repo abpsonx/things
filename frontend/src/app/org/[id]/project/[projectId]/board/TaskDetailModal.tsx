@@ -362,13 +362,27 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
   };
 
   const deleteTask = async () => {
-    if (!confirm("Hapus tugas ini?")) return;
+    if (!confirm("Hapus tugas ini permanen? Pakai 'Arsipkan' kalau cuma mau menyembunyikan sementara.")) return;
     try {
       await api.delete(`/projects/${projectId}/tasks/${taskId}`);
       onUpdate();
       onClose();
     } catch (err) {
       console.error("Failed to delete task", err);
+    }
+  };
+
+  const archiveTask = async () => {
+    try {
+      if (task?.archived_at) {
+        await api.post(`/projects/${projectId}/tasks/${taskId}/restore`);
+      } else {
+        await api.post(`/projects/${projectId}/tasks/${taskId}/archive`);
+      }
+      onUpdate();
+      onClose();
+    } catch (err) {
+      console.error("Failed to archive task", err);
     }
   };
 
@@ -861,13 +875,29 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
             </div>
           </div>
 
-          <div className="pt-6 border-t border-border mt-4">
-            <button 
+          <div className="pt-6 border-t border-border mt-4 space-y-2">
+            <button
+              onClick={archiveTask}
+              className="w-full flex items-center justify-center gap-2 py-2 text-xs font-bold text-muted-foreground hover:bg-secondary rounded-xl border border-border transition-all"
+            >
+              {task?.archived_at ? (
+                <>
+                  <CheckCircle2 className="w-3 h-3" />
+                  Pulihkan dari Arsip
+                </>
+              ) : (
+                <>
+                  <AlignLeft className="w-3 h-3" />
+                  Arsipkan Tugas
+                </>
+              )}
+            </button>
+            <button
               onClick={deleteTask}
               className="w-full flex items-center justify-center gap-2 py-2 text-xs font-bold text-destructive hover:bg-destructive/10 rounded-xl border border-transparent hover:border-destructive/20 transition-all"
             >
               <Trash2 className="w-3 h-3" />
-              Hapus Tugas
+              Hapus Permanen
             </button>
           </div>
         </div>

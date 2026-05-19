@@ -44,8 +44,9 @@ import TaskDetailModal from "./TaskDetailModal";
 import BoardFilterBar from "@/components/board/BoardFilterBar";
 import { applyBoardFilter, useBoardFilter } from "@/components/board/useBoardFilter";
 import BulkActionBar from "@/components/board/BulkActionBar";
+import ArchivedTasksModal from "@/components/board/ArchivedTasksModal";
 import { useAuthStore } from "@/store/useAuthStore";
-import { CheckSquare as CheckSquareIcon } from "lucide-react";
+import { CheckSquare as CheckSquareIcon, Archive as ArchiveIcon } from "lucide-react";
 import { toast } from "sonner";
 
 interface Task {
@@ -112,6 +113,7 @@ export default function KanbanBoard() {
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [archivedOpen, setArchivedOpen] = useState(false);
 
   const toggleSelect = useCallback((taskId: string) => {
     setSelectedIds((prev) => {
@@ -381,21 +383,30 @@ export default function KanbanBoard() {
           onApplyView={applyView}
           onDeleteView={deleteView}
         />
-        <button
-          onClick={() => {
-            setSelectMode((v) => !v);
-            if (selectMode) setSelectedIds(new Set());
-          }}
-          className={cn(
-            "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all shrink-0",
-            selectMode
-              ? "bg-primary text-white border-primary"
-              : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-secondary/50",
-          )}
-        >
-          <CheckSquareIcon className="w-3.5 h-3.5" />
-          {selectMode ? "Selesai pilih" : "Pilih banyak"}
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => setArchivedOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border bg-card border-border text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-all"
+          >
+            <ArchiveIcon className="w-3.5 h-3.5" />
+            Arsip
+          </button>
+          <button
+            onClick={() => {
+              setSelectMode((v) => !v);
+              if (selectMode) setSelectedIds(new Set());
+            }}
+            className={cn(
+              "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all",
+              selectMode
+                ? "bg-primary text-white border-primary"
+                : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-secondary/50",
+            )}
+          >
+            <CheckSquareIcon className="w-3.5 h-3.5" />
+            {selectMode ? "Selesai pilih" : "Pilih banyak"}
+          </button>
+        </div>
       </div>
       <DndContext
         sensors={sensors}
@@ -551,6 +562,13 @@ export default function KanbanBoard() {
         onPriority={(priority) => bulkUpdate({ priority })}
         onMove={(status) => bulkUpdate({ status })}
         onDelete={bulkDelete}
+      />
+
+      <ArchivedTasksModal
+        isOpen={archivedOpen}
+        onClose={() => setArchivedOpen(false)}
+        projectId={projectId as string}
+        onChange={fetchTasks}
       />
     </div>
   );
