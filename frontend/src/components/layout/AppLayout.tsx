@@ -8,6 +8,7 @@ import NotificationBell from "./NotificationBell";
 import { ThemeToggle } from "./ThemeToggle";
 import { GlobalSearch } from "./GlobalSearch";
 import ChatWidget from "./ChatWidget";
+import KeyboardShortcuts from "./KeyboardShortcuts";
 import PushAutoPrompt from "@/components/notifications/PushAutoPrompt";
 import { usePresenceStore } from "@/store/usePresenceStore";
 import { Menu } from "lucide-react";
@@ -148,6 +149,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-2 md:gap-4 ml-auto">
             <GlobalSearch />
             <div className="flex items-center gap-2 border-l border-border pl-2 md:pl-4">
+              <button
+                onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "?", bubbles: true }))}
+                className="hidden md:flex items-center justify-center w-8 h-8 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
+                title="Keyboard shortcuts (?)"
+                aria-label="Keyboard shortcuts"
+              >
+                <kbd className="font-mono text-xs font-bold">?</kbd>
+              </button>
               <ThemeToggle />
               <NotificationBell />
             </div>
@@ -163,6 +172,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </div>
       <ChatWidget />
       <PushAutoPrompt />
+      <KeyboardShortcuts />
     </div>
   );
 }

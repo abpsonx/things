@@ -155,6 +155,11 @@ export default function TeamBoardPage() {
     if (orgId && teamId) {
       fetchData();
     }
+    const onShortcutCreated = () => fetchData();
+    window.addEventListener("things:task-created", onShortcutCreated);
+    return () => {
+      window.removeEventListener("things:task-created", onShortcutCreated);
+    };
   }, [orgId, teamId, fetchData]);
 
   const handleAddTask = async (status: string) => {

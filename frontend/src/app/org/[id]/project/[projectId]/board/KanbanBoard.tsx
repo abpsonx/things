@@ -272,11 +272,15 @@ export default function KanbanBoard() {
       fetchTasks();
     });
 
+    const onShortcutCreated = () => fetchTasks();
+    window.addEventListener("things:task-created", onShortcutCreated);
+
     return () => {
       socket.emit("leave_project", { project_id: projectId });
       socket.off("task_moved");
       socket.off("task_deleted");
       socket.off("task_created");
+      window.removeEventListener("things:task-created", onShortcutCreated);
     };
   }, [fetchTasks, fetchColumns, projectId]);
 
