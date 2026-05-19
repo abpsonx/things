@@ -257,6 +257,35 @@ async def add_team_member(
     return {"message": f"Berhasil menambahkan {data.email} ke team"}
 
 
+@router.delete("/{team_id}/members/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_team_member(
+    org_id: str,
+    team_id: str,
+    member_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Remove a member from a team."""
+    await _check_org_membership(db, org_id, current_user.id)
+
+    result = await db.execute(
+        select(TeamMember).where(TeamMember.id == member_id, TeamMember.team_id == team_id)
+    )
+    tm = result.scalar_one_or_none()
+    if not tm:
+        raise HTTPException(status_code=404, detail="Member tidak ditemukan di team")
+
+    await log_activity(
+        db, org_id=org_id, user_id=current_user.id,
+        action="member_removed_from_team", entity_type="member", entity_id=tm.user_id,
+        team_id=team_id, metadata={"user_id": str(tm.user_id)},
+    )
+
+    await db.delete(tm)
+    await db.commit()
+    return None
+
+
 # ============ Team Task Endpoints ============
 
 from sqlalchemy import func

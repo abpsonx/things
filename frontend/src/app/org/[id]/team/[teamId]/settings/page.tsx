@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Settings, Users, Trash2, ShieldAlert, Save, ArrowLeft } from 'lucide-react';
+import { Settings, Users, Trash2, ShieldAlert, Save, ArrowLeft, UserPlus } from 'lucide-react';
+import { toast } from 'sonner';
 import api from '@/lib/api';
 import TeamNav from '@/components/team/TeamNav';
+import InviteTeamMemberModal from '@/components/team/InviteTeamMemberModal';
 
 export default function TeamSettingsPage() {
   const params = useParams();
@@ -15,6 +17,9 @@ export default function TeamSettingsPage() {
   const [team, setTeam] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [members, setMembers] = useState<any[]>([]);
+  const [isInviteOpen, setIsInviteOpen] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
 
   // Form states
   const [name, setName] = useState('');
@@ -24,6 +29,7 @@ export default function TeamSettingsPage() {
 
   useEffect(() => {
     fetchTeam();
+    fetchMembers();
   }, [teamId]);
 
   const fetchTeam = async () => {
@@ -38,6 +44,29 @@ export default function TeamSettingsPage() {
       console.error('Failed to fetch team:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchMembers = async () => {
+    try {
+      const res = await api.get(`/organizations/${orgId}/teams/${teamId}/members`);
+      setMembers(res.data);
+    } catch (error) {
+      console.error('Failed to fetch members:', error);
+    }
+  };
+
+  const handleRemoveMember = async (memberId: string, memberName: string) => {
+    if (!confirm(`Keluarkan ${memberName} dari tim?`)) return;
+    setRemovingId(memberId);
+    try {
+      await api.delete(`/organizations/${orgId}/teams/${teamId}/members/${memberId}`);
+      toast.success(`${memberName} dikeluarkan dari tim`);
+      fetchMembers();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Gagal mengeluarkan anggota');
+    } finally {
+      setRemovingId(null);
     }
   };
 
@@ -122,6 +151,80 @@ export default function TeamSettingsPage() {
           </div>
         </div>
 
+        {/* Members */}
+        <div className="bg-white rounded-3xl border border-border shadow-sm overflow-hidden">
+          <div className="p-8 border-b border-border bg-slate-50/50 flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <Users className="w-5 h-5 text-violet-500" />
+                Anggota Tim
+                <span className="ml-2 text-xs font-bold text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">
+                  {members.length}
+                </span>
+              </h2>
+              <p className="text-sm text-muted-foreground mt-1">Kelola siapa saja yang ada di tim ini.</p>
+            </div>
+            <button
+              onClick={() => setIsInviteOpen(true)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-primary text-white text-sm font-bold hover:bg-primary/90 shadow-md shadow-primary/20 transition-all"
+            >
+              <UserPlus className="w-4 h-4" />
+              Tambah
+            </button>
+          </div>
+          <div className="p-4">
+            {members.length === 0 ? (
+              <div className="text-center py-12 text-sm text-muted-foreground">
+                Belum ada anggota
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {members.map((m: any) => (
+                  <div
+                    key={m.id}
+                    className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl hover:bg-secondary/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-full bg-secondary border border-border flex items-center justify-center text-sm font-bold overflow-hidden shrink-0">
+                        {m.user?.avatar_url ? (
+                          <img src={m.user.avatar_url} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          m.user?.name?.charAt(0)?.toUpperCase() || '?'
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-foreground truncate">{m.user?.name}</p>
+                        <p className="text-[11px] text-muted-foreground truncate">{m.user?.email}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span
+                        className={`text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-full ${
+                          m.role === 'lead'
+                            ? 'bg-violet-50 text-violet-600'
+                            : 'bg-slate-100 text-slate-600'
+                        }`}
+                      >
+                        {m.role}
+                      </span>
+                      {m.role !== 'lead' && (
+                        <button
+                          onClick={() => handleRemoveMember(m.id, m.user?.name || 'member')}
+                          disabled={removingId === m.id}
+                          className="p-2 rounded-xl text-muted-foreground hover:text-red-600 hover:bg-red-50 disabled:opacity-50 transition-all"
+                          title="Keluarkan dari tim"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Member Permissions */}
         <div className="bg-white rounded-3xl border border-border shadow-sm overflow-hidden">
           <div className="p-8 border-b border-border bg-slate-50/50">
@@ -170,6 +273,15 @@ export default function TeamSettingsPage() {
             {saving ? 'Saving...' : 'Save All Settings'}
           </button>
         </div>
+
+        <InviteTeamMemberModal
+          isOpen={isInviteOpen}
+          onClose={() => setIsInviteOpen(false)}
+          orgId={orgId}
+          teamId={teamId}
+          existingMembers={members}
+          onAdded={fetchMembers}
+        />
 
         {/* Danger Zone */}
         <div className="bg-red-50/50 rounded-3xl border border-red-100 overflow-hidden mt-12">

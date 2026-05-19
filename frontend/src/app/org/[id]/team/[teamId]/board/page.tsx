@@ -23,17 +23,19 @@ import {
   sortableKeyboardCoordinates, 
   verticalListSortingStrategy 
 } from "@dnd-kit/sortable";
-import { 
-  Plus, 
+import {
+  Plus,
   Loader2,
   Users,
   ArrowLeft,
+  UserPlus,
   X
 } from "lucide-react";
 import TeamKanbanColumn from "./TeamKanbanColumn";
 import TeamTaskCard from "./TeamTaskCard";
 import TeamNav from "@/components/team/TeamNav";
 import TeamTaskDetailModal from "./TeamTaskDetailModal";
+import InviteTeamMemberModal from "@/components/team/InviteTeamMemberModal";
 
 interface Task {
   id: string;
@@ -80,6 +82,7 @@ export default function TeamBoardPage() {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isInviteOpen, setIsInviteOpen] = useState(false);
 
   // Open task detail directly when URL has ?task=<id>
   // (used by the dashboard "Tugasmu" widget for team-scoped tasks).
@@ -281,6 +284,13 @@ export default function TeamBoardPage() {
                <span className="text-[9px] text-muted-foreground">Aktif di tim ini</span>
             </div>
           </div>
+          <button
+            onClick={() => setIsInviteOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-primary text-white text-xs font-bold hover:bg-primary/90 shadow-md shadow-primary/20 transition-all"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span className="hidden sm:inline">Tambah Anggota</span>
+          </button>
         </div>
       </div>
 
@@ -331,6 +341,15 @@ export default function TeamBoardPage() {
           onUpdate={fetchData}
         />
       )}
+
+      <InviteTeamMemberModal
+        isOpen={isInviteOpen}
+        onClose={() => setIsInviteOpen(false)}
+        orgId={orgId}
+        teamId={teamId}
+        existingMembers={members}
+        onAdded={fetchData}
+      />
     </div>
   );
 }
