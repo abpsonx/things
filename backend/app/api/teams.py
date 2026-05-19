@@ -695,6 +695,7 @@ async def list_team_messages(
 
     from app.models.poll import Poll
     from app.api.polls import _serialize as _serialize_poll
+    from app.api.reactions import fetch_reactions_for
 
     result = await db.execute(
         select(TeamMessage)
@@ -707,6 +708,9 @@ async def list_team_messages(
         .limit(100)
     )
     messages = result.scalars().all()
+    reactions_map = await fetch_reactions_for(
+        db, "team_message", [m.id for m in messages], current_user.id,
+    )
 
     # Resolve parents in one batched query so reply previews render
     parent_ids = {m.parent_id for m in messages if m.parent_id}
@@ -740,6 +744,7 @@ async def list_team_messages(
             "parent_id": str(m.parent_id) if m.parent_id else None,
             "parent": parents_map.get(str(m.parent_id)) if m.parent_id else None,
             "poll": _serialize_poll(m.poll, current_user.id) if m.poll else None,
+            "reactions": reactions_map.get(str(m.id), []),
             "user": {
                 "name": m.user.name,
                 "avatar_url": m.user.avatar_url

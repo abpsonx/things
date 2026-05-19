@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import CreatePollModal from "@/components/poll/CreatePollModal";
 import PollBubble, { PollData } from "@/components/poll/PollBubble";
+import Reactions, { ReactionBucket } from "@/components/reactions/Reactions";
 import api from "@/lib/api";
 import { socket } from "@/lib/socket";
 import { useAuthStore } from "@/store/useAuthStore";
@@ -44,6 +45,7 @@ interface Message {
   parent_id?: string | null;
   parent?: { id: string; content?: string; user?: { id?: string; name?: string } | null } | null;
   poll?: PollData | null;
+  reactions?: ReactionBucket[];
   status?: 'pending' | 'sent' | 'read';
 }
 
@@ -104,11 +106,19 @@ export default function TeamChatPage() {
       ));
     });
 
+    socket.on("reaction_updated", (payload: any) => {
+      if (payload.target_type !== "team_message") return;
+      setMessages((prev) => prev.map((m) =>
+        m.id === payload.target_id ? { ...m, reactions: payload.reactions } : m
+      ));
+    });
+
     return () => {
       socket.off("team_message");
       socket.off("message_deleted");
       socket.off("message_edited");
       socket.off("poll_updated");
+      socket.off("reaction_updated");
       socket.emit("leave_team", teamId);
     };
   }, [teamId]);
@@ -493,7 +503,19 @@ export default function TeamChatPage() {
 
                     {/* Action Button (Right for others) */}
                     {!isMe && (
-                      <div className="opacity-0 group-hover/bubble:opacity-100 transition-opacity flex items-center">
+                      <div className="opacity-0 group-hover/bubble:opacity-100 transition-opacity flex items-center gap-0.5">
+                        <button
+                          onClick={async () => {
+                            try {
+                              const res = await api.post("/reactions", { target_type: "team_message", target_id: msg.id, emoji: "👍" });
+                              setMessages((prev) => prev.map((m) => m.id === msg.id ? { ...m, reactions: res.data.reactions } : m));
+                            } catch (err) { console.error(err); }
+                          }}
+                          title="Reaksi cepat 👍"
+                          className="p-1 hover:bg-secondary rounded-lg text-muted-foreground text-sm"
+                        >
+                          👍
+                        </button>
                         <button
                           onClick={() => setReplyTo({ id: msg.id, content: msg.content, user: msg.user ? { name: msg.user.name } : null })}
                           title="Balas"
@@ -504,6 +526,21 @@ export default function TeamChatPage() {
                       </div>
                     )}
                   </div>
+
+                  {msg.reactions && msg.reactions.length > 0 && (
+                    <div className={`mt-1 px-1 flex ${isMe ? "justify-end" : "justify-start"}`}>
+                      <Reactions
+                        targetType="team_message"
+                        targetId={msg.id}
+                        reactions={msg.reactions}
+                        onChange={(next) =>
+                          setMessages((prev) => prev.map((m) =>
+                            m.id === msg.id ? { ...m, reactions: next } : m
+                          ))
+                        }
+                      />
+                    </div>
+                  )}
 
                   {/* Timestamp & Status */}
                   <div className={`flex items-center gap-1.5 mt-1 px-1`}>

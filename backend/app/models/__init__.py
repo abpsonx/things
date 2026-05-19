@@ -18,6 +18,7 @@ from app.models.document import Document
 from app.models.announcement import Announcement
 from app.models.board_column import BoardColumn
 from app.models.poll import Poll, PollVote
+from app.models.reaction import Reaction
 
 __all__ = [
     "User",
@@ -38,4 +39,5 @@ __all__ = [
     "Announcement",
     "BoardColumn",
     "Poll", "PollVote",
+    "Reaction",
 ]

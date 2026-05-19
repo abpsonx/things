@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 
 from app.core.config import get_settings
 from app.core.database import engine, Base
-from app.api import auth, projects, teams, organizations, channels, tasks, attachments, events, comments, subtasks, labels, notifications, search, stats, settings as settings_api, dm, google, documents, reports, announcements, board_columns, polls
+from app.api import auth, projects, teams, organizations, channels, tasks, attachments, events, comments, subtasks, labels, notifications, search, stats, settings as settings_api, dm, google, documents, reports, announcements, board_columns, polls, reactions
 
 
 settings = get_settings()
@@ -113,6 +113,25 @@ async def lifespan(app: FastAPI):
             ))
         except Exception as e:
             print(f"[boot] tasks.archived_at add skipped: {e}")
+
+        # Reactions — emoji reactions on comments + chat messages
+        try:
+            await conn.execute(text(
+                "CREATE TABLE IF NOT EXISTS reactions ("
+                " id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+                " target_type VARCHAR(20) NOT NULL,"
+                " target_id UUID NOT NULL,"
+                " user_id UUID NOT NULL REFERENCES users(id),"
+                " emoji VARCHAR(20) NOT NULL,"
+                " created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),"
+                " UNIQUE (target_type, target_id, user_id, emoji)"
+                ")"
+            ))
+            await conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_reactions_target ON reactions(target_type, target_id)"
+            ))
+        except Exception as e:
+            print(f"[boot] reactions migration skipped: {e}")
 
         # Polls — chat-room polling for project & team chats
         try:
@@ -237,6 +256,7 @@ app.include_router(reports.router, prefix="/api")
 app.include_router(announcements.router, prefix="/api")
 app.include_router(board_columns.router, prefix="/api")
 app.include_router(polls.router, prefix="/api")
+app.include_router(reactions.router, prefix="/api")
 
 
 # Static Files

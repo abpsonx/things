@@ -33,6 +33,7 @@ import {
 import { cn, formatDate } from "@/lib/utils";
 import CreatePollModal from "@/components/poll/CreatePollModal";
 import PollBubble, { PollData } from "@/components/poll/PollBubble";
+import Reactions, { ReactionBucket } from "@/components/reactions/Reactions";
 
 // Format an edited_at timestamp into "DD/MM HH.MM" Indonesian style.
 const fmtEdited = (iso?: string | null) => {
@@ -441,6 +442,13 @@ export default function ChatPage() {
         ));
       };
 
+      const handleReactionUpdated = (payload: any) => {
+        if (payload.target_type !== "message") return;
+        setMessages((prev) => prev.map((m) =>
+          m.id === payload.target_id ? { ...m, reactions: payload.reactions } : m
+        ));
+      };
+
       socket.on("new_message", handleNewMessage);
       socket.on("message_updated", handleUpdateMessage);
       socket.on("message_deleted", handleDeleteMessage);
@@ -449,6 +457,7 @@ export default function ChatPage() {
       socket.on("message_pinned", handleMessagePinned);
       socket.on("message_starred", handleMessageStarred);
       socket.on("poll_updated", handlePollUpdated);
+      socket.on("reaction_updated", handleReactionUpdated);
 
       return () => {
         socket.emit("leave_channel", { channel_id: activeChannel.id });
@@ -460,6 +469,7 @@ export default function ChatPage() {
         socket.off("message_pinned", handleMessagePinned);
         socket.off("message_starred", handleMessageStarred);
         socket.off("poll_updated", handlePollUpdated);
+        socket.off("reaction_updated", handleReactionUpdated);
       };
     }
   }, [activeChannel, projectId]);
@@ -866,11 +876,33 @@ export default function ChatPage() {
                           </div>
                         </div>
 
+                        {(msg.reactions && msg.reactions.length > 0) && (
+                          <div className={cn("mt-1.5", isMe ? "flex justify-end" : "")}>
+                            <Reactions
+                              targetType="message"
+                              targetId={msg.id}
+                              reactions={msg.reactions as ReactionBucket[]}
+                              onChange={(next) =>
+                                setMessages((prev) => prev.map((m) =>
+                                  m.id === msg.id ? { ...m, reactions: next } : m
+                                ))
+                              }
+                              onDark={isMe && !msg.poll}
+                            />
+                          </div>
+                        )}
+
                         {/* Quick Actions (Hover) */}
                         <div className={cn(
                           "absolute top-0 opacity-0 group-hover/msg:opacity-100 transition-all flex gap-0.5 bg-background border border-border p-0.5 rounded shadow-xl z-10",
                           isMe ? "right-full mr-1" : "left-full ml-1"
                         )}>
+                          <button onClick={async () => {
+                            try {
+                              const res = await api.post("/reactions", { target_type: "message", target_id: msg.id, emoji: "👍" });
+                              setMessages((prev) => prev.map((m) => m.id === msg.id ? { ...m, reactions: res.data.reactions } : m));
+                            } catch (err) { console.error(err); }
+                          }} title="Reaksi cepat 👍" className="p-0.5 hover:bg-secondary rounded text-muted-foreground transition-all">👍</button>
                           <button onClick={() => toggleStar(msg)} title={msg.is_starred ? "Unstar" : "Star"} className={cn("p-0.5 hover:bg-secondary rounded transition-all", msg.is_starred ? "text-yellow-500" : "text-muted-foreground")}><Star className="w-2.5 h-2.5" /></button>
                           <button onClick={() => togglePin(msg)} title={msg.is_pinned ? "Unpin" : "Pin"} className={cn("p-0.5 hover:bg-secondary rounded transition-all", msg.is_pinned ? "text-blue-500" : "text-muted-foreground")}><Pin className="w-2.5 h-2.5" /></button>
                           <button onClick={() => setReplyingTo(msg)} title="Reply" className="p-0.5 hover:bg-secondary rounded text-muted-foreground transition-all"><Reply className="w-2.5 h-2.5" /></button>

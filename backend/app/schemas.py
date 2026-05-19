@@ -255,6 +255,7 @@ class CommentResponse(BaseModel):
     content: str
     created_at: datetime
     user: Optional[UserResponse] = None
+    reactions: List[Any] = []
 
     class Config:
         from_attributes = True
@@ -389,6 +390,7 @@ class MessageResponse(BaseModel):
     # SQLAlchemy relationship hands back a Poll ORM object. The handler
     # always replaces it with a plain dict before returning.
     poll: Optional[Any] = None
+    reactions: List[Any] = []
     created_at: datetime
     user: Optional[UserResponse] = None
 

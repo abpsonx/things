@@ -193,6 +193,7 @@ async def get_messages(
     """Get message history for a channel."""
     from app.models.poll import Poll
     from app.api.polls import _serialize as _serialize_poll
+    from app.api.reactions import fetch_reactions_for
 
     result = await db.execute(
         select(Message)
@@ -204,11 +205,15 @@ async def get_messages(
         .order_by(Message.created_at.asc())
     )
     msgs = result.scalars().all()
+    reactions_map = await fetch_reactions_for(
+        db, "message", [m.id for m in msgs], current_user.id,
+    )
     out: list = []
     for m in msgs:
         resp = MessageResponse.model_validate(m)
         if m.poll:
             resp.poll = _serialize_poll(m.poll, current_user.id)
+        resp.reactions = reactions_map.get(str(m.id), [])
         out.append(resp)
     return out
 

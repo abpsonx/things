@@ -83,17 +83,23 @@ async def list_comments(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from app.api.reactions import fetch_reactions_for
+
     result = await db.execute(
         select(Comment).options(selectinload(Comment.user))
         .where(Comment.task_id == task_id)
         .order_by(Comment.created_at.asc())
     )
     comments = result.scalars().all()
+    reactions_map = await fetch_reactions_for(
+        db, "comment", [c.id for c in comments], current_user.id,
+    )
     return [
         CommentResponse(
             id=c.id, task_id=c.task_id, user_id=c.user_id,
             content=c.content, created_at=c.created_at,
             user=UserResponse.model_validate(c.user) if c.user else None,
+            reactions=reactions_map.get(str(c.id), []),
         )
         for c in comments
     ]

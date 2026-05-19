@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import Modal from "@/components/ui/Modal";
 import CustomSelect from "@/components/ui/Select";
 import Popover from "@/components/ui/Popover";
+import Reactions, { ReactionBucket } from "@/components/reactions/Reactions";
 import api from "@/lib/api";
 import { 
   Clock, 
@@ -721,16 +722,26 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
             {/* Comments List */}
             <div className="space-y-6">
               {comments.map((comment) => (
-                <div key={comment.id} className="flex gap-3">
+                <div key={comment.id} className="flex gap-3 group/comment">
                   <div className="w-8 h-8 rounded-full bg-secondary border border-border flex-shrink-0 flex items-center justify-center font-bold text-[10px]">
                     {comment.user?.name.charAt(0)}
                   </div>
-                  <div className="space-y-1">
+                  <div className="space-y-1 flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold">{comment.user?.name}</span>
                       <span className="text-[10px] text-muted-foreground">{formatDate(comment.created_at)}</span>
                     </div>
                     <p className="text-sm text-foreground">{comment.content}</p>
+                    <Reactions
+                      targetType="comment"
+                      targetId={comment.id}
+                      reactions={(comment.reactions as ReactionBucket[]) || []}
+                      onChange={(next: ReactionBucket[]) =>
+                        setComments((prev) => prev.map((c: any) =>
+                          c.id === comment.id ? { ...c, reactions: next } : c
+                        ))
+                      }
+                    />
                   </div>
                 </div>
               ))}
