@@ -229,6 +229,64 @@ async def list_activity_logs(
     return [ActivityLogResponse.model_validate(log) for log in logs]
 
 
+@router.get("/{org_id}/activity/export")
+async def export_activity_csv(
+    org_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Export activity log as CSV. Owner/manager only."""
+    from fastapi.responses import StreamingResponse
+    import csv, io, json
+
+    if not is_superuser(current_user):
+        m = await db.execute(
+            select(OrgMember).where(
+                OrgMember.org_id == org_id,
+                OrgMember.user_id == current_user.id,
+                OrgMember.role.in_(["owner", "manager"]),
+            )
+        )
+        if not m.scalar_one_or_none():
+            raise HTTPException(status_code=403, detail="Hanya owner/manager yang bisa export")
+
+    result = await db.execute(
+        select(ActivityLog)
+        .options(selectinload(ActivityLog.user))
+        .where(ActivityLog.org_id == org_id)
+        .order_by(ActivityLog.created_at.desc())
+        .limit(10000)
+    )
+    logs = result.scalars().all()
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([
+        "timestamp", "user", "user_email", "action",
+        "entity_type", "entity_id", "project_id", "team_id", "metadata",
+    ])
+    for log in logs:
+        writer.writerow([
+            log.created_at.isoformat() if log.created_at else "",
+            log.user.name if log.user else "",
+            log.user.email if log.user else "",
+            log.action or "",
+            log.entity_type or "",
+            str(log.entity_id) if log.entity_id else "",
+            str(log.project_id) if log.project_id else "",
+            str(log.team_id) if log.team_id else "",
+            json.dumps(log.metadata_) if log.metadata_ else "",
+        ])
+
+    buf.seek(0)
+    filename = f"activity-{org_id}-{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv"
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
 @router.patch("/{org_id}/members/{member_id}")
 async def update_member_role(
     org_id: str,

@@ -4,19 +4,21 @@ import React, { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
 import api from "@/lib/api";
-import { 
-  Activity, 
-  History, 
-  User, 
-  ChevronRight, 
-  Clock, 
+import {
+  Activity,
+  History,
+  User,
+  ChevronRight,
+  Clock,
   Loader2,
   FileText,
   Layout,
   MessageSquare,
   UserPlus,
-  ArrowUpRight
+  ArrowUpRight,
+  Download,
 } from "lucide-react";
+import { toast } from "sonner";
 import Link from "next/link";
 import { formatDate } from "@/lib/utils";
 
@@ -33,6 +35,30 @@ export default function ActivityLogPage() {
   const { id: orgId } = useParams();
   const [logs, setLogs] = useState<Log[]>([]);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const res = await api.get(`/organizations/${orgId}/activity/export`, {
+        responseType: "blob",
+      });
+      const blob = new Blob([res.data], { type: "text/csv" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `activity-${orgId}-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success("Audit log diunduh");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || "Gagal export. Hanya owner/manager yang bisa.");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   useEffect(() => {
     const fetchLogs = async () => {
@@ -82,11 +108,23 @@ export default function ActivityLogPage() {
             <ChevronRight className="w-4 h-4" />
             <span className="text-foreground font-medium text-xs tracking-widest uppercase">Audit Trail</span>
           </div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <Activity className="w-8 h-8 text-primary" />
-            Riwayat Aktivitas
-          </h1>
-          <p className="text-muted-foreground">Lacak semua perubahan yang terjadi di workspace kamu.</p>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+                <Activity className="w-8 h-8 text-primary" />
+                Riwayat Aktivitas
+              </h1>
+              <p className="text-muted-foreground mt-2">Lacak semua perubahan yang terjadi di workspace kamu.</p>
+            </div>
+            <button
+              onClick={handleExport}
+              disabled={exporting}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-primary text-white text-xs font-bold hover:bg-primary/90 disabled:opacity-50 shadow-md shadow-primary/20 transition-all shrink-0"
+            >
+              {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              Export CSV
+            </button>
+          </div>
         </div>
 
         {/* Logs List */}
