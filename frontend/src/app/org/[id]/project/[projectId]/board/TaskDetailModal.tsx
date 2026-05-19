@@ -164,8 +164,10 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
 
   const updateTask = async (updates: any) => {
     try {
-      await api.put(`/projects/${projectId}/tasks/${taskId}`, updates);
-      setTask({ ...task, ...updates });
+      const res = await api.put(`/projects/${projectId}/tasks/${taskId}`, updates);
+      // Use server response — it includes derived fields like `assignee`
+      // that don't come from the patch payload (only assignee_id does).
+      setTask(res.data ? { ...task, ...res.data } : { ...task, ...updates });
       onUpdate();
     } catch (err: any) {
       console.error("Failed to update task", err);
