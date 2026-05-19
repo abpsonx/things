@@ -171,7 +171,9 @@ export default function DashboardPage() {
             <ul className="flex-1 space-y-1.5 -mx-1.5">
               {myTasks.map((t) => {
                 const due = formatDueLabel(t.due_date);
-                const href = t.project ? `/org/${t.project.org_id}/project/${t.project.id}/board` : "#";
+                const href = t.project
+                  ? `/org/${t.project.org_id}/project/${t.project.id}/board?task=${t.id}`
+                  : "#";
                 return (
                   <li key={t.id}>
                     <Link

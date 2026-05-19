@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import ProjectLayout from "@/components/layout/ProjectLayout";
 import api from "@/lib/api";
 import { socket } from "@/lib/socket";
@@ -64,12 +64,23 @@ interface BoardColumnRow {
 
 export default function KanbanBoard() {
   const { id: orgId, projectId } = useParams();
+  const searchParams = useSearchParams();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [columns, setColumns] = useState<BoardColumnRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Open task detail directly when the URL has ?task=<id>
+  // (used by the dashboard "Tugasmu" widget to deep-link a task).
+  useEffect(() => {
+    const t = searchParams?.get("task");
+    if (t) {
+      setSelectedTaskId(t);
+      setIsModalOpen(true);
+    }
+  }, [searchParams]);
   const [projectNote, setProjectNote] = useState("");
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [isNotesVisible, setIsNotesVisible] = useState(true);
