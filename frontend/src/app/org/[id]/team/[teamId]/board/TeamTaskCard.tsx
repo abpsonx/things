@@ -4,18 +4,14 @@ import React from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
-import { 
-  Clock, 
-  MessageSquare, 
-  Paperclip,
-  Calendar
-} from "lucide-react";
-import { format } from "date-fns";
+import { MessageSquare, Paperclip, Calendar, Flag, MoreHorizontal } from "lucide-react";
+import { format, isValid } from "date-fns";
+import { id as idLocale } from "date-fns/locale";
 
 interface Task {
   id: string;
   title: string;
-  description: string;
+  description?: string;
   status: string;
   priority: "low" | "medium" | "high";
   due_date?: string;
@@ -25,7 +21,21 @@ interface Task {
   assignee?: { name: string; avatar_url?: string };
 }
 
-export default function TeamTaskCard({ task, isOverlay, onClick }: { task: Task, isOverlay?: boolean, onClick?: () => void }) {
+const PRIORITY_META: Record<string, { label: string; flagColor: string; textColor: string } | undefined> = {
+  high: { label: "HIGH PRIORITY", flagColor: "text-red-500", textColor: "text-red-500" },
+  medium: { label: "MEDIUM PRIORITY", flagColor: "text-amber-500", textColor: "text-amber-500" },
+  low: { label: "LOW PRIORITY", flagColor: "text-emerald-500", textColor: "text-emerald-500" },
+};
+
+export default function TeamTaskCard({
+  task,
+  isOverlay,
+  onClick,
+}: {
+  task: Task;
+  isOverlay?: boolean;
+  onClick?: () => void;
+}) {
   const {
     attributes,
     listeners,
@@ -35,27 +45,23 @@ export default function TeamTaskCard({ task, isOverlay, onClick }: { task: Task,
     isDragging,
   } = useSortable({ id: task.id });
 
-  const style = {
-    transform: CSS.Translate.toString(transform),
-    transition,
-  };
-
-  const priorityMeta: Record<string, { label: string; className: string }> = {
-    high: { label: "Urgent", className: "bg-red-500/10 text-red-600 border border-red-500/20" },
-    medium: { label: "Sedang", className: "bg-amber-500/10 text-amber-700 border border-amber-500/20" },
-    low: { label: "Santai", className: "bg-slate-500/10 text-slate-600 border border-slate-500/20" },
-  };
-  const priority = priorityMeta[task.priority];
+  const style = { transform: CSS.Translate.toString(transform), transition };
 
   if (isDragging && !isOverlay) {
     return (
-      <div 
+      <div
         ref={setNodeRef}
         style={style}
-        className="h-24 bg-secondary/30 border-2 border-dashed border-border rounded-xl mb-3"
+        className="h-28 bg-secondary/40 border-2 border-dashed border-border rounded-2xl mb-2"
       />
     );
   }
+
+  const priority = PRIORITY_META[task.priority];
+  const dueDate = task.due_date ? new Date(task.due_date) : null;
+  const dueDateValid = !!dueDate && isValid(dueDate);
+  const filesCount = task.attachments_count || 0;
+  const commentsCount = task.comments_count || 0;
 
   return (
     <div
@@ -65,58 +71,83 @@ export default function TeamTaskCard({ task, isOverlay, onClick }: { task: Task,
       {...listeners}
       onClick={onClick}
       className={cn(
-        "p-4 bg-card border border-border rounded-xl mb-3 hover:border-primary/30 hover:shadow-md transition-all group cursor-grab active:cursor-grabbing",
-        isOverlay && "shadow-2xl border-primary scale-105 rotate-1 z-50"
+        "relative p-4 bg-card rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] hover:shadow-[0_4px_16px_rgba(0,0,0,0.06)] hover:-translate-y-0.5 transition-all cursor-grab active:cursor-grabbing border border-border/70 mb-3 group",
+        isOverlay && "shadow-2xl scale-[1.02] rotate-1",
       )}
     >
-      <div className="space-y-3">
-        {priority && (
-          <span
-            className={cn(
-              "inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded-md",
-              priority.className,
-            )}
-          >
+      {/* Top row: priority + menu */}
+      <div className="flex items-start justify-between mb-2">
+        {priority ? (
+          <span className={cn("inline-flex items-center gap-1.5 text-[10px] font-extrabold tracking-wider", priority.textColor)}>
+            <Flag className={cn("w-3 h-3 fill-current", priority.flagColor)} />
             {priority.label}
           </span>
-        )}
+        ) : <span />}
+        <button
+          type="button"
+          onClick={(e) => e.stopPropagation()}
+          className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+        >
+          <MoreHorizontal className="w-4 h-4" />
+        </button>
+      </div>
 
-        <h4 className="text-sm font-bold leading-snug group-hover:text-primary transition-colors">
-          {task.title}
-        </h4>
+      {/* Title */}
+      <h4 className="text-[14px] font-extrabold leading-snug text-foreground mb-2">{task.title}</h4>
 
-        <div className="flex items-center justify-between pt-2">
-          <div className="flex items-center gap-3 text-muted-foreground">
-            {task.due_date && (
-              <div className="flex items-center gap-1 text-[9px] font-bold text-primary bg-primary/5 px-1.5 py-0.5 rounded">
-                <Clock className="w-2.5 h-2.5" />
-                {format(new Date(task.due_date), "d MMM")}
+      {/* Assignee + due date row */}
+      {(task.assignee || dueDateValid) && (
+        <div className="flex items-center justify-between gap-2 mb-2">
+          {task.assignee ? (
+            <div className="flex items-center gap-2 min-w-0">
+              <div
+                className="w-6 h-6 rounded-full bg-secondary border border-border flex items-center justify-center text-[9px] font-bold overflow-hidden shrink-0"
+                title={task.assignee.name}
+              >
+                {task.assignee.avatar_url ? (
+                  <img src={task.assignee.avatar_url} alt={task.assignee.name} className="w-full h-full object-cover" />
+                ) : (
+                  (task.assignee.name || "?").charAt(0).toUpperCase()
+                )}
               </div>
-            )}
+              <span className="text-[11px] font-semibold text-foreground/80 truncate">{task.assignee.name}</span>
+            </div>
+          ) : (
+            <span className="text-[11px] text-muted-foreground italic">Belum ada assignee</span>
+          )}
+          {dueDateValid && (
+            <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground shrink-0">
+              <Calendar className="w-3 h-3" />
+              {format(dueDate!, "d MMM yyyy", { locale: idLocale })}
+            </span>
+          )}
+        </div>
+      )}
 
-            {(task.comments_count || 0) > 0 && (
-              <div className="flex items-center gap-1 text-[9px]">
-                <MessageSquare className="w-2.5 h-2.5" />
-                {task.comments_count}
-              </div>
-            )}
+      {/* Description */}
+      {task.description && (
+        <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2 mb-3">
+          {task.description}
+        </p>
+      )}
 
-            {(task.attachments_count || 0) > 0 && (
-              <div className="flex items-center gap-1 text-[9px] text-blue-500 font-bold">
-                <Paperclip className="w-2.5 h-2.5" />
-                {task.attachments_count}
-              </div>
+      {/* Footer: files / comments */}
+      {(filesCount > 0 || commentsCount > 0) && (
+        <div className="flex items-center justify-between pt-3 border-t border-border/60 text-[11px] text-muted-foreground">
+          <div className="flex items-center gap-3">
+            {filesCount > 0 && (
+              <span className="inline-flex items-center gap-1">
+                <Paperclip className="w-3 h-3" /> {filesCount} files
+              </span>
             )}
-          </div>
-          
-          <div 
-            className="w-6 h-6 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-[10px] font-bold shrink-0 text-primary"
-            title={task.assignee?.name || "Unassigned"}
-          >
-            {task.assignee?.name?.charAt(0) || "U"}
+            {commentsCount > 0 && (
+              <span className="inline-flex items-center gap-1">
+                <MessageSquare className="w-3 h-3" /> {commentsCount}
+              </span>
+            )}
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

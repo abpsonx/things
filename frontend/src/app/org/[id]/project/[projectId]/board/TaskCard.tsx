@@ -4,7 +4,7 @@ import React from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
-import { MessageSquare, Paperclip, CheckSquare, Calendar, AlertTriangle, Flag } from "lucide-react";
+import { MessageSquare, Paperclip, CheckSquare, Calendar, Flag, MoreHorizontal } from "lucide-react";
 import { format, isValid } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 
@@ -40,19 +40,11 @@ interface Task {
   assignee?: User | null;
 }
 
-// Lighten a hex color so dark background turns into a soft chip.
-// Falls back to a neutral chip if the color is invalid.
-function chipStyle(hex: string): React.CSSProperties {
-  const m = /^#([0-9a-f]{6})$/i.exec(hex || "");
-  if (!m) return { background: "var(--secondary)", color: "var(--muted-foreground)" };
-  const r = parseInt(m[1].slice(0, 2), 16);
-  const g = parseInt(m[1].slice(2, 4), 16);
-  const b = parseInt(m[1].slice(4, 6), 16);
-  return {
-    background: `rgba(${r}, ${g}, ${b}, 0.12)`,
-    color: `rgb(${Math.max(r - 20, 0)}, ${Math.max(g - 20, 0)}, ${Math.max(b - 20, 0)})`,
-  };
-}
+const PRIORITY_META: Record<string, { label: string; flagColor: string; textColor: string } | undefined> = {
+  high: { label: "HIGH PRIORITY", flagColor: "text-red-500", textColor: "text-red-500" },
+  medium: { label: "MEDIUM PRIORITY", flagColor: "text-amber-500", textColor: "text-amber-500" },
+  low: { label: "LOW PRIORITY", flagColor: "text-emerald-500", textColor: "text-emerald-500" },
+};
 
 export default function TaskCard({
   task,
@@ -72,23 +64,19 @@ export default function TaskCard({
       <div
         ref={setNodeRef}
         style={style}
-        className="h-24 bg-secondary/40 border-2 border-dashed border-border rounded-xl mb-2"
+        className="h-28 bg-secondary/40 border-2 border-dashed border-border rounded-2xl mb-2"
       />
     );
   }
 
+  const priority = task.priority ? PRIORITY_META[task.priority] : undefined;
   const subtasks = task.subtasks || [];
   const doneCount = subtasks.filter((s) => s.is_done).length;
-  const labels = (task.labels || []).slice(0, 3);
+  const firstLabel = (task.labels || [])[0];
   const dueDate = task.due_date ? new Date(task.due_date) : null;
   const dueDateValid = !!dueDate && isValid(dueDate);
-
-  const priorityMeta: Record<string, { label: string; className: string; Icon: typeof AlertTriangle } | undefined> = {
-    high: { label: "Urgent", className: "bg-red-500/10 text-red-600 border border-red-500/20", Icon: AlertTriangle },
-    medium: { label: "Sedang", className: "bg-amber-500/10 text-amber-700 border border-amber-500/20", Icon: Flag },
-    low: { label: "Santai", className: "bg-slate-500/10 text-slate-600 border border-slate-500/20", Icon: Flag },
-  };
-  const priority = task.priority ? priorityMeta[task.priority] : undefined;
+  const filesCount = task.attachments_count || 0;
+  const commentsCount = task.comments_count || 0;
 
   return (
     <div
@@ -98,99 +86,96 @@ export default function TaskCard({
       {...listeners}
       onClick={onClick}
       className={cn(
-        "p-3 bg-card border border-border rounded-xl mb-2 hover:border-primary/40 hover:shadow-sm transition-all cursor-grab active:cursor-grabbing",
-        isOverlay && "shadow-xl border-primary scale-[1.02] rotate-1",
+        "relative p-4 bg-card rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] hover:shadow-[0_4px_16px_rgba(0,0,0,0.06)] hover:-translate-y-0.5 transition-all cursor-grab active:cursor-grabbing border border-border/70 mb-3 group",
+        isOverlay && "shadow-2xl scale-[1.02] rotate-1",
       )}
     >
-      {/* Priority chip */}
-      {priority && (
-        <span
-          className={cn(
-            "inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded-md mb-1.5",
-            priority.className,
-          )}
+      {/* Top row: priority + menu */}
+      <div className="flex items-start justify-between mb-2">
+        {priority ? (
+          <span className={cn("inline-flex items-center gap-1.5 text-[10px] font-extrabold tracking-wider", priority.textColor)}>
+            <Flag className={cn("w-3 h-3 fill-current", priority.flagColor)} />
+            {priority.label}
+          </span>
+        ) : <span />}
+        <button
+          type="button"
+          onClick={(e) => e.stopPropagation()}
+          className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
         >
-          <priority.Icon className="w-2.5 h-2.5" />
-          {priority.label}
-        </span>
-      )}
+          <MoreHorizontal className="w-4 h-4" />
+        </button>
+      </div>
 
       {/* Title */}
-      <h4 className="text-[13px] font-bold leading-snug text-foreground">{task.title}</h4>
+      <h4 className="text-[14px] font-extrabold leading-snug text-foreground mb-2">{task.title}</h4>
 
-      {/* Description */}
-      {task.description && (
-        <p className="text-[11px] text-muted-foreground line-clamp-2 leading-relaxed mt-1">
-          {task.description}
-        </p>
-      )}
-
-      {/* Labels */}
-      {labels.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-2">
-          {labels.map((l) => (
-            <span
-              key={l.id}
-              style={chipStyle(l.color)}
-              className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-md"
-            >
-              <span className="w-1 h-1 rounded-full" style={{ background: l.color }} />
-              {l.name}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* Due date + subtask progress */}
-      {(dueDateValid || subtasks.length > 0) && (
-        <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground">
+      {/* Assignee + due date row */}
+      {(task.assignee || dueDateValid) && (
+        <div className="flex items-center justify-between gap-2 mb-2">
+          {task.assignee ? (
+            <div className="flex items-center gap-2 min-w-0">
+              <div
+                className="w-6 h-6 rounded-full bg-secondary border border-border flex items-center justify-center text-[9px] font-bold overflow-hidden shrink-0"
+                title={task.assignee.name}
+              >
+                {task.assignee.avatar_url ? (
+                  <img src={task.assignee.avatar_url} alt={task.assignee.name} className="w-full h-full object-cover" />
+                ) : (
+                  (task.assignee.name || "?").charAt(0).toUpperCase()
+                )}
+              </div>
+              <span className="text-[11px] font-semibold text-foreground/80 truncate">{task.assignee.name}</span>
+            </div>
+          ) : (
+            <span className="text-[11px] text-muted-foreground italic">Belum ada assignee</span>
+          )}
           {dueDateValid && (
-            <span className="inline-flex items-center gap-1">
+            <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground shrink-0">
               <Calendar className="w-3 h-3" />
               {format(dueDate!, "d MMM yyyy", { locale: idLocale })}
             </span>
           )}
-          {subtasks.length > 0 && (
-            <span className="inline-flex items-center gap-1">
-              <CheckSquare className="w-3 h-3" />
-              {doneCount}/{subtasks.length}
-            </span>
-          )}
         </div>
       )}
 
-      {/* Footer: assignee + meta */}
-      {(task.assignee || (task.comments_count || 0) > 0 || (task.attachments_count || 0) > 0) && (
-        <div className="flex items-center justify-between mt-3 pt-2 border-t border-border/60">
-          {task.assignee ? (
-            <div
-              className="w-6 h-6 rounded-full bg-secondary border border-border flex items-center justify-center text-[9px] font-bold overflow-hidden shrink-0"
-              title={task.assignee.name}
-            >
-              {task.assignee.avatar_url ? (
-                <img src={task.assignee.avatar_url} alt={task.assignee.name} className="w-full h-full object-cover" />
-              ) : (
-                (task.assignee.name || "?").charAt(0).toUpperCase()
-              )}
-            </div>
-          ) : (
-            <div className="w-6 h-6 rounded-full border border-dashed border-border" title="Belum ada assignee" />
-          )}
+      {/* Description */}
+      {task.description && (
+        <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2 mb-3">
+          {task.description}
+        </p>
+      )}
 
-          <div className="flex items-center gap-2.5 text-[10px] text-muted-foreground">
-            {(task.attachments_count || 0) > 0 && (
-              <span className="inline-flex items-center gap-0.5">
-                <Paperclip className="w-3 h-3" />
-                {task.attachments_count}
+      {/* Footer: files / subtasks / comments / first label */}
+      {(filesCount > 0 || commentsCount > 0 || subtasks.length > 0 || firstLabel) && (
+        <div className="flex items-center justify-between pt-3 border-t border-border/60 text-[11px] text-muted-foreground">
+          <div className="flex items-center gap-3">
+            {filesCount > 0 && (
+              <span className="inline-flex items-center gap-1">
+                <Paperclip className="w-3 h-3" /> {filesCount} files
               </span>
             )}
-            {(task.comments_count || 0) > 0 && (
-              <span className="inline-flex items-center gap-0.5">
-                <MessageSquare className="w-3 h-3" />
-                {task.comments_count}
+            {subtasks.length > 0 && (
+              <span className="inline-flex items-center gap-1">
+                <CheckSquare className="w-3 h-3" /> {doneCount}/{subtasks.length}
+              </span>
+            )}
+            {commentsCount > 0 && (
+              <span className="inline-flex items-center gap-1">
+                <MessageSquare className="w-3 h-3" /> {commentsCount}
               </span>
             )}
           </div>
+          {firstLabel && (
+            <span
+              className="inline-flex items-center gap-1 font-semibold"
+              style={{ color: firstLabel.color }}
+              title={firstLabel.name}
+            >
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: firstLabel.color }} />
+              {firstLabel.name}
+            </span>
+          )}
         </div>
       )}
     </div>
