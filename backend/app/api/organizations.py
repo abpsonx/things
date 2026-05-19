@@ -12,7 +12,6 @@ from app.models.activity_log import ActivityLog
 from app.schemas import OrgCreate, OrgResponse, OrgDetailResponse, OrgMemberResponse, UserResponse, InviteMemberRequest, ActivityLogResponse
 from app.dependencies import get_current_user
 from app.services import log_activity
-from app.core.config import get_settings
 from app.core.permissions import is_superuser
 
 router = APIRouter(prefix="/organizations", tags=["Organizations"])
@@ -365,6 +364,23 @@ async def remove_member(
     return {"message": "Member berhasil dihapus"}
 
 
+def _public_url(path: str) -> str:
+    """Normalize a stored file path into a browser-resolvable URL.
+
+    Task attachments save the bare on-disk path ("uploads/foo.pptx") while
+    chat / DM uploads already include the api prefix ("/api/uploads/..."),
+    so blindly prepending BACKEND_URL produced double-/api links and 404s.
+    """
+    if not path:
+        return path
+    if path.startswith(("http://", "https://")):
+        return path
+    if path.startswith("/"):
+        # already an absolute site path (e.g. /api/uploads/foo.pptx)
+        return path
+    return f"/api/{path.lstrip('/')}"
+
+
 def _disk_size(path: str) -> int | None:
     """Best-effort file size lookup for paths stored as relative (e.g. uploads/...).
 
@@ -418,7 +434,6 @@ async def list_organization_files(
     from app.models.dm import DMMessage, DMChannel
     from sqlalchemy import and_, or_
 
-    settings = get_settings()
     all_files = []
 
     # 1. Fetch Task Attachments
@@ -436,7 +451,7 @@ async def list_organization_files(
                 "id": str(a.id),
                 "source": "Task",
                 "file_name": a.file_name,
-                "file_path": a.file_path if a.file_path.startswith("http") else f"{settings.BACKEND_URL}/{a.file_path}",
+                "file_path": _public_url(a.file_path),
                 "file_size": size,
                 "created_at": a.created_at,
                 "uploader": {"id": str(a.uploader.id), "name": a.uploader.name, "avatar_url": a.uploader.avatar_url},
@@ -455,7 +470,7 @@ async def list_organization_files(
                 "id": str(m.id),
                 "source": "Chat",
                 "file_name": m.attachment_name or "Unnamed File",
-                "file_path": m.attachment_url if m.attachment_url.startswith("http") else f"{settings.BACKEND_URL}/{m.attachment_url}",
+                "file_path": _public_url(m.attachment_url),
                 "file_size": _disk_size(m.attachment_url),
                 "created_at": m.created_at,
                 "uploader": {"id": str(m.user.id), "name": m.user.name, "avatar_url": m.user.avatar_url},
@@ -474,7 +489,7 @@ async def list_organization_files(
                 "id": str(dm.id),
                 "source": "DM",
                 "file_name": dm.attachment_name or "Unnamed File",
-                "file_path": dm.attachment_url if dm.attachment_url.startswith("http") else f"{settings.BACKEND_URL}/{dm.attachment_url}",
+                "file_path": _public_url(dm.attachment_url),
                 "file_size": _disk_size(dm.attachment_url),
                 "created_at": dm.created_at,
                 "uploader": {"id": str(dm.user.id), "name": dm.user.name, "avatar_url": dm.user.avatar_url},
