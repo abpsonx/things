@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import api from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/useAuthStore";
@@ -67,7 +67,8 @@ export default function TeamBoardPage() {
   const params = useParams();
   const orgId = params.id as string;
   const teamId = params.teamId as string;
-  
+  const searchParams = useSearchParams();
+
   const router = useRouter();
   const { user } = useAuthStore();
   const [team, setTeam] = useState<TeamInfo | null>(null);
@@ -79,6 +80,16 @@ export default function TeamBoardPage() {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Open task detail directly when URL has ?task=<id>
+  // (used by the dashboard "Tugasmu" widget for team-scoped tasks).
+  useEffect(() => {
+    const t = searchParams?.get("task");
+    if (t) {
+      setSelectedTaskId(t);
+      setIsModalOpen(true);
+    }
+  }, [searchParams]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {

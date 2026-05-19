@@ -27,6 +27,12 @@ interface Organization {
   created_at: string;
 }
 
+interface OrgRef {
+  id: string;
+  name: string;
+  org_id: string;
+}
+
 interface MyTask {
   id: string;
   title: string;
@@ -34,7 +40,8 @@ interface MyTask {
   priority?: string;
   due_date?: string | null;
   is_overdue: boolean;
-  project: { id: string; name: string; org_id: string } | null;
+  project: OrgRef | null;
+  team?: OrgRef | null;
 }
 
 interface Meeting {
@@ -184,24 +191,34 @@ export default function DashboardPage() {
             <ul className="flex-1 space-y-1.5 -mx-1.5">
               {myTasks.map((t) => {
                 const due = formatDueLabel(t.due_date);
+                // Task may live on a project OR a team — pick whichever is set.
+                const ctx = t.project
+                  ? { kind: "project" as const, ref: t.project }
+                  : t.team
+                    ? { kind: "team" as const, ref: t.team }
+                    : null;
                 const handleClick = () => {
-                  if (!t.project) return;
-                  router.push(`/org/${t.project.org_id}/project/${t.project.id}/board?task=${t.id}`);
+                  if (!ctx) return;
+                  if (ctx.kind === "project") {
+                    router.push(`/org/${ctx.ref.org_id}/project/${ctx.ref.id}/board?task=${t.id}`);
+                  } else {
+                    router.push(`/org/${ctx.ref.org_id}/team/${ctx.ref.id}/board?task=${t.id}`);
+                  }
                 };
                 return (
                   <li key={t.id}>
                     <button
                       type="button"
                       onClick={handleClick}
-                      disabled={!t.project}
+                      disabled={!ctx}
                       className="w-full text-left block px-3 py-2 rounded-xl hover:bg-secondary/60 transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       <p className="text-sm font-semibold leading-snug line-clamp-2">{t.title}</p>
                       <div className="flex items-center gap-2 mt-1 text-[10px]">
-                        {t.project && (
+                        {ctx && (
                           <span className="inline-flex items-center gap-1 text-muted-foreground">
                             <Briefcase className="w-2.5 h-2.5" />
-                            {t.project.name}
+                            {ctx.ref.name}
                           </span>
                         )}
                         <span

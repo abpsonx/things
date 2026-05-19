@@ -70,33 +70,45 @@ async def get_dashboard_stats(
     )
     activities = (await db.execute(activity_query)).scalars().all()
 
-    # 4. My upcoming tasks (assigned to me, not done, sorted by deadline asc)
+    # 4. My upcoming tasks (assigned to me, not done, sorted by deadline asc).
+    # A task can live on a project OR a team — eager-load both so we always
+    # have a navigation target.
     now = datetime.now(timezone.utc)
     my_tasks_query = (
         select(Task)
-        .options(selectinload(Task.project))
+        .options(selectinload(Task.project), selectinload(Task.team))
         .where(Task.assignee_id == current_user.id)
         .where(Task.status != "done")
         .order_by(Task.due_date.asc().nulls_last(), Task.created_at.desc())
         .limit(8)
     )
     my_tasks = (await db.execute(my_tasks_query)).scalars().all()
-    my_tasks_payload = [
-        {
+    my_tasks_payload = []
+    for t in my_tasks:
+        project_ref = None
+        team_ref = None
+        if t.project:
+            project_ref = {
+                "id": str(t.project.id),
+                "name": t.project.name,
+                "org_id": str(t.project.org_id),
+            }
+        if t.team:
+            team_ref = {
+                "id": str(t.team.id),
+                "name": t.team.name,
+                "org_id": str(t.team.org_id),
+            }
+        my_tasks_payload.append({
             "id": str(t.id),
             "title": t.title,
             "status": t.status,
             "priority": t.priority,
             "due_date": t.due_date.isoformat() if t.due_date else None,
             "is_overdue": bool(t.due_date and t.due_date < now and t.status != "done"),
-            "project": {
-                "id": str(t.project.id),
-                "name": t.project.name,
-                "org_id": str(t.project.org_id),
-            } if t.project else None,
-        }
-        for t in my_tasks
-    ]
+            "project": project_ref,
+            "team": team_ref,
+        })
 
     # 5. Upcoming meetings — events from now where user is creator or attendee
     upcoming_events_query = (
