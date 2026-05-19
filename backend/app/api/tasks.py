@@ -72,17 +72,26 @@ async def create_task(
             selectinload(Task.task_labels).selectinload(TaskLabel.label),
             selectinload(Task.subtasks),
             selectinload(Task.comments),
-            selectinload(Task.attachments)
+            selectinload(Task.attachments),
+            selectinload(Task.assignee),
         )
         .where(Task.id == task.id)
     )
     task = result.scalar_one()
+
+    # Best-effort: push to assignee's Google Calendar with reminders
+    try:
+        from app.services.google_calendar import push_task_event
+        await push_task_event(task, db)
+    except Exception as _gcal_e:
+        print(f"[gcal] push_task_event on create failed: {_gcal_e}")
+
     resp = _task_to_response(task)
-    
+
     # Broadcast creation
     from app.sockets.manager import sio
     await sio.emit("task_created", {"id": str(task.id)}, room=f"project_{project_id}")
-    
+
     return resp
 
 
@@ -181,11 +190,20 @@ async def update_task(
             selectinload(Task.task_labels).selectinload(TaskLabel.label),
             selectinload(Task.subtasks),
             selectinload(Task.comments),
-            selectinload(Task.attachments)
+            selectinload(Task.attachments),
+            selectinload(Task.assignee),
         )
         .where(Task.id == task_id)
     )
     task = result.scalar_one()
+
+    # Mirror change to Google Calendar (best-effort)
+    try:
+        from app.services.google_calendar import push_task_event
+        await push_task_event(task, db)
+    except Exception as _gcal_e:
+        print(f"[gcal] push_task_event on update failed: {_gcal_e}")
+
     return _task_to_response(task)
 
 
@@ -218,13 +236,22 @@ async def move_task(
             selectinload(Task.task_labels).selectinload(TaskLabel.label),
             selectinload(Task.subtasks),
             selectinload(Task.comments),
-            selectinload(Task.attachments)
+            selectinload(Task.attachments),
+            selectinload(Task.assignee),
         )
         .where(Task.id == task_id)
     )
     task = result.scalar_one()
+
+    # Status flip done ↔ active needs to sync the Google event too
+    try:
+        from app.services.google_calendar import push_task_event
+        await push_task_event(task, db)
+    except Exception as _gcal_e:
+        print(f"[gcal] push_task_event on move failed: {_gcal_e}")
+
     resp = _task_to_response(task)
-    
+
     from app.sockets.manager import sio
     await sio.emit("task_moved", {
         "id": task_id,
@@ -242,20 +269,32 @@ async def delete_task(
     current_user: User = Depends(get_current_user),
 ):
     project = await _get_project(db, project_id)
-    result = await db.execute(select(Task).where(Task.id == task_id, Task.project_id == project_id))
+    result = await db.execute(
+        select(Task)
+        .options(selectinload(Task.assignee))
+        .where(Task.id == task_id, Task.project_id == project_id)
+    )
     task = result.scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="Task tidak ditemukan")
+
+    # Best-effort: remove the matching Google Calendar event before
+    # tearing down the row so we don't leave orphaned events.
+    try:
+        from app.services.google_calendar import delete_task_event
+        await delete_task_event(task, db)
+    except Exception as _gcal_e:
+        print(f"[gcal] delete_task_event failed: {_gcal_e}")
 
     await log_activity(
         db, org_id=project.org_id, user_id=current_user.id,
         action="task_deleted", entity_type="task", entity_id=task.id,
         project_id=project_id, metadata={"title": task.title},
     )
-    
+
     from app.sockets.manager import sio
     await sio.emit("task_deleted", {"id": task_id}, room=f"project_{project_id}")
-    
+
     await db.delete(task)
     await db.commit()
     return None

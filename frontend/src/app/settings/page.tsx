@@ -287,7 +287,11 @@ export default function SettingsPage() {
                 </div>
                 <div>
                   <h3 className="font-bold text-sm">Google Calendar</h3>
-                  <p className="text-[10px] text-muted-foreground">Sinkronisasikan event Things ke kalender Google kamu secara otomatis.</p>
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">
+                    Semua tugas yang di-assign ke kamu dengan deadline akan otomatis masuk Google Calendar
+                    dengan pengingat <span className="font-bold">H-1, 30 menit sebelum, dan saat deadline</span>.
+                    Event biasa di kalender Things juga ikut sync.
+                  </p>
                 </div>
               </div>
               <button 

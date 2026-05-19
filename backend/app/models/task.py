@@ -22,6 +22,10 @@ class Task(Base):
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     due_date = Column(DateTime(timezone=True), nullable=True)
     position = Column(Integer, default=0)
+    # Google Calendar event id (in the assignee's primary calendar). Set
+    # after we successfully push the task to Google so we can update or
+    # delete the same event later.
+    google_event_id = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

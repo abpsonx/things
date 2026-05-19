@@ -70,6 +70,15 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
 
+        # google_event_id on tasks so we can update/delete the matching
+        # Google Calendar event when the task is edited or finished
+        try:
+            await conn.execute(text(
+                "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS google_event_id VARCHAR(255)"
+            ))
+        except Exception:
+            pass
+
         # Dynamic kanban columns: drop the legacy status enum constraint so
         # tasks can sit in user-defined columns, then seed the four defaults
         # ("To Do", "In Progress", "Pending", "Done") for any project that
