@@ -226,15 +226,52 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
 
   const [isDragging, setIsDragging] = useState(false);
 
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    const files = Array.from(e.dataTransfer.files);
-    for (const f of files) {
-      await uploadFile(f);
-    }
-  };
+  // While this modal is open, swallow all file-drop events on the window so
+  // the browser never navigates to the dropped file (which would blank the
+  // page). The drop zone overlay handles the actual upload.
+  useEffect(() => {
+    if (!isOpen) return;
+    let dragDepth = 0;
+    const onDragEnter = (e: DragEvent) => {
+      if (!e.dataTransfer?.types?.includes("Files")) return;
+      e.preventDefault();
+      dragDepth += 1;
+      setIsDragging(true);
+    };
+    const onDragOver = (e: DragEvent) => {
+      if (!e.dataTransfer?.types?.includes("Files")) return;
+      e.preventDefault();
+    };
+    const onDragLeave = (e: DragEvent) => {
+      if (!e.dataTransfer?.types?.includes("Files")) return;
+      dragDepth -= 1;
+      if (dragDepth <= 0) {
+        dragDepth = 0;
+        setIsDragging(false);
+      }
+    };
+    const onDrop = async (e: DragEvent) => {
+      if (!e.dataTransfer?.types?.includes("Files")) return;
+      e.preventDefault();
+      e.stopPropagation();
+      dragDepth = 0;
+      setIsDragging(false);
+      const files = Array.from(e.dataTransfer.files);
+      for (const f of files) {
+        await uploadFile(f);
+      }
+    };
+    window.addEventListener("dragenter", onDragEnter);
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("dragleave", onDragLeave);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("dragenter", onDragEnter);
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("dragleave", onDragLeave);
+      window.removeEventListener("drop", onDrop);
+    };
+  }, [isOpen, taskId]);
 
   const handleDeleteAttachment = async (attachmentId: string) => {
     if (!confirm("Hapus lampiran ini?")) return;
@@ -403,24 +440,13 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={task?.title || "Detail Tugas"}>
-      <div
-        className="relative"
-        onDragOver={(e) => {
-          e.preventDefault();
-          if (!isDragging) setIsDragging(true);
-        }}
-        onDragLeave={(e) => {
-          // only clear when leaving the wrapper, not children
-          if (e.currentTarget === e.target) setIsDragging(false);
-        }}
-        onDrop={handleDrop}
-      >
+      <div className="relative">
         {isDragging && (
-          <div className="absolute inset-0 z-30 bg-primary/10 border-2 border-dashed border-primary rounded-2xl flex items-center justify-center pointer-events-none">
-            <div className="bg-white px-6 py-4 rounded-2xl shadow-lg border border-primary/30">
-              <p className="text-sm font-bold text-primary flex items-center gap-2">
-                <UploadCloud className="w-5 h-5" />
-                Lepaskan file di sini untuk lampirkan
+          <div className="fixed inset-0 z-[60] bg-primary/20 backdrop-blur-sm flex items-center justify-center pointer-events-none">
+            <div className="bg-white px-8 py-6 rounded-3xl shadow-2xl border-2 border-dashed border-primary">
+              <p className="text-base font-bold text-primary flex items-center gap-3">
+                <UploadCloud className="w-6 h-6" />
+                Lepaskan file untuk lampirkan ke tugas ini
               </p>
             </div>
           </div>

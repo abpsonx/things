@@ -1,44 +1,51 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import AddEventModal from "./AddEventModal";
 import EventDetailModal from "./EventDetailModal";
 import api from "@/lib/api";
-import { 
-  ChevronLeft, 
-  ChevronRight, 
-  Plus, 
+import {
+  ChevronLeft,
+  ChevronRight,
+  Plus,
   Calendar as CalendarIcon,
   Clock,
   MapPin,
-  Loader2
+  Loader2,
+  CheckSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function CalendarPage() {
+  const router = useRouter();
   const { id: orgId, projectId } = useParams();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [events, setEvents] = useState<any[]>([]);
+  const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<any>(null);
 
-  const fetchEvents = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     try {
-      const res = await api.get(`/projects/${projectId}/events`);
-      setEvents(res.data);
+      const [eventsRes, tasksRes] = await Promise.all([
+        api.get(`/projects/${projectId}/events`),
+        api.get(`/projects/${projectId}/tasks`),
+      ]);
+      setEvents(eventsRes.data || []);
+      setTasks((tasksRes.data || []).filter((t: any) => t.due_date && t.status !== "done"));
     } catch (err) {
-      console.error("Failed to fetch events", err);
+      console.error("Failed to fetch calendar data", err);
     } finally {
       setLoading(false);
     }
   }, [projectId]);
 
   useEffect(() => {
-    if (projectId) fetchEvents();
-  }, [projectId, fetchEvents]);
+    if (projectId) fetchData();
+  }, [projectId, fetchData]);
 
   const daysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
   const firstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
@@ -58,17 +65,35 @@ export default function CalendarPage() {
   const getEventsForDay = (day: number) => {
     return events.filter(event => {
       const eventDate = new Date(event.start_at);
-      return eventDate.getDate() === day && 
-             eventDate.getMonth() === month && 
+      return eventDate.getDate() === day &&
+             eventDate.getMonth() === month &&
              eventDate.getFullYear() === year;
     });
+  };
+
+  const getTasksForDay = (day: number) => {
+    return tasks.filter((t: any) => {
+      const d = new Date(t.due_date);
+      return d.getDate() === day && d.getMonth() === month && d.getFullYear() === year;
+    });
+  };
+
+  const priorityColor = (priority?: string) => {
+    if (priority === "high") return "border-red-500 bg-red-50 text-red-700";
+    if (priority === "medium") return "border-amber-500 bg-amber-50 text-amber-700";
+    if (priority === "low") return "border-emerald-500 bg-emerald-50 text-emerald-700";
+    return "border-slate-400 bg-slate-50 text-slate-700";
+  };
+
+  const openTask = (taskId: string) => {
+    router.push(`/org/${orgId}/project/${projectId}/board?task=${taskId}`);
   };
 
   const handleDeleteEvent = async (eventId: string) => {
     try {
       await api.delete(`/projects/${projectId}/events/${eventId}`);
       setIsDetailOpen(false);
-      fetchEvents();
+      fetchData();
     } catch (err) {
       console.error("Failed to delete event", err);
       alert("Gagal menghapus event");
@@ -136,8 +161,8 @@ export default function CalendarPage() {
                         
                         <div className="space-y-1.5 overflow-y-auto max-h-[80px] md:max-h-[110px] custom-scrollbar">
                           {dayEvents.map((event) => (
-                            <div 
-                              key={event.id} 
+                            <div
+                              key={event.id}
                               onClick={() => { setSelectedEvent(event); setIsDetailOpen(true); }}
                               className="px-2 py-1.5 bg-primary/5 border-l-2 border-primary rounded-r-md text-[9px] font-bold text-primary hover:bg-primary/10 transition-all cursor-pointer truncate"
                               title={event.title}
@@ -149,6 +174,28 @@ export default function CalendarPage() {
                               {event.title}
                             </div>
                           ))}
+                          {getTasksForDay(day).map((t: any) => {
+                            const isOverdue =
+                              new Date(t.due_date) <
+                              new Date(new Date().setHours(0, 0, 0, 0));
+                            return (
+                              <button
+                                key={t.id}
+                                onClick={() => openTask(t.id)}
+                                className={cn(
+                                  "w-full text-left px-2 py-1.5 border-l-2 rounded-r-md text-[9px] font-bold transition-all cursor-pointer truncate hover:opacity-80",
+                                  priorityColor(t.priority),
+                                )}
+                                title={t.title}
+                              >
+                                <div className="flex items-center gap-1 mb-0.5">
+                                  <CheckSquare className="w-2.5 h-2.5 shrink-0" />
+                                  {isOverdue ? "OVERDUE" : "TASK"}
+                                </div>
+                                {t.title}
+                              </button>
+                            );
+                          })}
                         </div>
 
                         {/* Hover Plus Button */}
@@ -170,7 +217,7 @@ export default function CalendarPage() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         projectId={projectId as string}
-        onSuccess={fetchEvents}
+        onSuccess={fetchData}
       />
 
       <EventDetailModal 
@@ -178,7 +225,7 @@ export default function CalendarPage() {
         onClose={() => setIsDetailOpen(false)}
         event={selectedEvent}
         onDelete={handleDeleteEvent}
-        onUpdate={fetchEvents}
+        onUpdate={fetchData}
       />
     </div>
   );
