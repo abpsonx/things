@@ -10,6 +10,7 @@ import {
   BarChart3,
   Activity,
   FileText,
+  Megaphone,
   Settings
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -27,6 +28,7 @@ export default function TeamNav({ orgId, teamId }: TeamNavProps) {
     { name: "Board", href: `/org/${orgId}/team/${teamId}/board`, icon: LayoutGrid },
     { name: "Chat", href: `/org/${orgId}/team/${teamId}/chat`, icon: MessageSquare },
     { name: "Laporan", href: `/org/${orgId}/team/${teamId}/report`, icon: BarChart3 },
+    { name: "Pengumuman", href: `/org/${orgId}/team/${teamId}/announcements`, icon: Megaphone },
     { name: "Aktivitas", href: `/org/${orgId}/team/${teamId}/activities`, icon: Activity },
     { name: "Dokumen", href: `/org/${orgId}/team/${teamId}/files`, icon: FileText },
     { name: "Settings", href: `/org/${orgId}/team/${teamId}/settings`, icon: Settings },

@@ -773,3 +773,158 @@ async def get_team_activities(
     )
     activities = result.scalars().all()
     return [ActivityLogResponse.model_validate(a) for a in activities]
+
+
+# ============ Team Announcement Endpoints ============
+
+@router.get("/{team_id}/announcements")
+async def list_team_announcements(
+    org_id: str, team_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List announcements for a team (newest first)."""
+    await _check_org_membership(db, org_id, current_user.id)
+    from app.models.announcement import Announcement
+
+    result = await db.execute(
+        select(Announcement)
+        .options(selectinload(Announcement.creator))
+        .where(Announcement.team_id == team_id)
+        .order_by(Announcement.created_at.desc())
+    )
+    rows = result.scalars().all()
+    return [
+        {
+            "id": str(a.id),
+            "title": a.title,
+            "content": a.content,
+            "created_at": a.created_at.isoformat() if a.created_at else None,
+            "updated_at": a.updated_at.isoformat() if a.updated_at else None,
+            "creator_id": str(a.creator_id) if a.creator_id else None,
+            "creator": {
+                "id": str(a.creator.id),
+                "name": a.creator.name,
+                "avatar_url": a.creator.avatar_url,
+            } if a.creator else None,
+        }
+        for a in rows
+    ]
+
+
+@router.post("/{team_id}/announcements", status_code=status.HTTP_201_CREATED)
+async def create_team_announcement(
+    org_id: str, team_id: str, data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Create a team announcement + notify all team members."""
+    await _check_org_membership(db, org_id, current_user.id)
+    from app.models.announcement import Announcement
+
+    title = (data.get("title") or "").strip()
+    content = (data.get("content") or "").strip()
+    if not title or not content:
+        raise HTTPException(status_code=400, detail="Judul dan isi pengumuman wajib")
+
+    ann = Announcement(
+        team_id=team_id,
+        creator_id=current_user.id,
+        title=title,
+        content=content,
+    )
+    db.add(ann)
+    await db.flush()
+
+    await log_activity(
+        db, org_id=org_id, user_id=current_user.id,
+        action="announcement_created", entity_type="announcement", entity_id=ann.id,
+        team_id=team_id, metadata={"title": title},
+    )
+
+    # Notify all team members except the author
+    from app.services.notification import notify_user
+    team_res = await db.execute(select(Team).where(Team.id == team_id))
+    team_row = team_res.scalar_one_or_none()
+    team_name = team_row.name if team_row else "tim"
+    members_res = await db.execute(select(TeamMember).where(TeamMember.team_id == team_id))
+    for m in members_res.scalars().all():
+        if str(m.user_id) == str(current_user.id):
+            continue
+        await notify_user(
+            db,
+            user_id=str(m.user_id),
+            type="announcement",
+            title=f"Pengumuman: {title}",
+            content=f"{current_user.name} memposting pengumuman di tim {team_name}",
+            ref_id=str(ann.id),
+            org_id=str(org_id),
+            url=f"/org/{org_id}/team/{team_id}/announcements",
+        )
+
+    await db.commit()
+    await db.refresh(ann)
+    return {
+        "id": str(ann.id),
+        "title": ann.title,
+        "content": ann.content,
+        "created_at": ann.created_at.isoformat() if ann.created_at else None,
+        "creator": {"id": str(current_user.id), "name": current_user.name, "avatar_url": current_user.avatar_url},
+    }
+
+
+@router.put("/{team_id}/announcements/{announcement_id}")
+async def update_team_announcement(
+    org_id: str, team_id: str, announcement_id: str, data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Edit a team announcement (creator only)."""
+    await _check_org_membership(db, org_id, current_user.id)
+    from app.models.announcement import Announcement
+
+    res = await db.execute(
+        select(Announcement).where(Announcement.id == announcement_id, Announcement.team_id == team_id)
+    )
+    ann = res.scalar_one_or_none()
+    if not ann:
+        raise HTTPException(status_code=404, detail="Pengumuman tidak ditemukan")
+    if str(ann.creator_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Hanya pembuat pengumuman yang bisa mengedit")
+
+    if "title" in data and data["title"]:
+        ann.title = data["title"].strip()
+    if "content" in data and data["content"]:
+        ann.content = data["content"].strip()
+    await db.commit()
+    await db.refresh(ann)
+    return {"id": str(ann.id), "title": ann.title, "content": ann.content}
+
+
+@router.delete("/{team_id}/announcements/{announcement_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_team_announcement(
+    org_id: str, team_id: str, announcement_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a team announcement (creator or org owner/manager)."""
+    member = await _check_org_membership(db, org_id, current_user.id)
+    from app.models.announcement import Announcement
+
+    res = await db.execute(
+        select(Announcement).where(Announcement.id == announcement_id, Announcement.team_id == team_id)
+    )
+    ann = res.scalar_one_or_none()
+    if not ann:
+        raise HTTPException(status_code=404, detail="Pengumuman tidak ditemukan")
+
+    can_delete = (
+        str(ann.creator_id) == str(current_user.id)
+        or member.role in ("owner", "manager")
+    )
+    if not can_delete:
+        raise HTTPException(status_code=403, detail="Hanya pembuat atau owner/manager yang bisa menghapus")
+
+    await db.delete(ann)
+    await db.commit()
+    return None
