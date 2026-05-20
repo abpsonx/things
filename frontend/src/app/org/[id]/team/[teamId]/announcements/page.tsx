@@ -22,6 +22,7 @@ import {
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { useAuthStore } from "@/store/useAuthStore";
 import TeamNav from "@/components/team/TeamNav";
+import MemberMultiSelect from "@/components/ui/MemberMultiSelect";
 import { cn } from "@/lib/utils";
 import { format, isValid } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
@@ -261,27 +262,14 @@ export default function TeamAnnouncementsPage() {
                   {/* Penerima */}
                   <div className="space-y-2">
                     <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                      <Users className="w-3.5 h-3.5" /> Penerima {recipientIds.length === 0 ? "(semua anggota tim)" : `(${recipientIds.length} dipilih)`}
+                      <Users className="w-3.5 h-3.5" /> Penerima
                     </label>
-                    <div className="flex flex-wrap gap-2">
-                      {memberOptions.map((m) => {
-                        const sel = recipientIds.includes(m.id);
-                        return (
-                          <button
-                            key={m.id}
-                            type="button"
-                            onClick={() => toggleRecipient(m.id)}
-                            className={cn(
-                              "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-semibold border transition-all",
-                              sel ? "bg-primary text-primary-foreground border-primary" : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-secondary/50",
-                            )}
-                          >
-                            {sel && <Check className="w-3 h-3" />}
-                            {m.name}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <MemberMultiSelect
+                      members={memberOptions}
+                      selectedIds={recipientIds}
+                      onChange={setRecipientIds}
+                      emptyLabel="Semua anggota tim"
+                    />
                     {recipientIds.length === 0 && (
                       <p className="text-[10px] text-muted-foreground italic">Kosongkan = dikirim ke semua anggota tim.</p>
                     )}

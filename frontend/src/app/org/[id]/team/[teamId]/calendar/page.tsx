@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import TeamNav from "@/components/team/TeamNav";
+import MemberMultiSelect from "@/components/ui/MemberMultiSelect";
 
 export default function TeamCalendarPage() {
   const params = useParams();
@@ -317,19 +318,14 @@ export default function TeamCalendarPage() {
               {/* Peserta */}
               <div className="space-y-2">
                 <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
-                  Peserta {form.attendeeIds.length === 0 ? (form.visibility === "public" ? "(semua tim)" : "(pilih minimal 1)") : `(${form.attendeeIds.length})`}
+                  Peserta {form.visibility === "private" && form.attendeeIds.length === 0 ? "(pilih minimal 1)" : ""}
                 </label>
-                <div className="flex flex-wrap gap-2">
-                  {memberOptions.map((m: any) => {
-                    const sel = form.attendeeIds.includes(m.id);
-                    return (
-                      <button key={m.id} type="button" onClick={() => toggleAttendee(m.id)} className={cn("inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-semibold border transition-all", sel ? "bg-primary text-primary-foreground border-primary" : "bg-card border-border text-muted-foreground hover:bg-secondary/50")}>
-                        {sel && <Check className="w-3 h-3" />}
-                        {m.name}
-                      </button>
-                    );
-                  })}
-                </div>
+                <MemberMultiSelect
+                  members={memberOptions}
+                  selectedIds={form.attendeeIds}
+                  onChange={(ids) => setForm((f) => ({ ...f, attendeeIds: ids }))}
+                  emptyLabel={form.visibility === "public" ? "Semua anggota tim" : "Pilih peserta"}
+                />
               </div>
 
               <textarea
