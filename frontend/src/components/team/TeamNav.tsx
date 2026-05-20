@@ -3,11 +3,12 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { 
-  LayoutDashboard, 
-  MessageSquare, 
-  BarChart3, 
-  Activity, 
+import {
+  LayoutDashboard,
+  LayoutGrid,
+  MessageSquare,
+  BarChart3,
+  Activity,
   FileText,
   Settings
 } from "lucide-react";
@@ -22,7 +23,8 @@ export default function TeamNav({ orgId, teamId }: TeamNavProps) {
   const pathname = usePathname();
 
   const navItems = [
-    { name: "Board", href: `/org/${orgId}/team/${teamId}/board`, icon: LayoutDashboard },
+    { name: "Ringkasan", href: `/org/${orgId}/team/${teamId}/summary`, icon: LayoutDashboard },
+    { name: "Board", href: `/org/${orgId}/team/${teamId}/board`, icon: LayoutGrid },
     { name: "Chat", href: `/org/${orgId}/team/${teamId}/chat`, icon: MessageSquare },
     { name: "Laporan", href: `/org/${orgId}/team/${teamId}/report`, icon: BarChart3 },
     { name: "Aktivitas", href: `/org/${orgId}/team/${teamId}/activities`, icon: Activity },
