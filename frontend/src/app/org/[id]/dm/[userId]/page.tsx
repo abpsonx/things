@@ -306,10 +306,10 @@ export default function DMChatPage() {
                                 <img src={msg.attachment_url} alt={msg.attachment_name || "img"} className="w-full rounded-lg max-h-[200px] object-cover" loading="lazy" />
                                 <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/10 transition-all flex items-center justify-center"><div className="opacity-0 group-hover/img:opacity-100 transition-opacity bg-black/50 text-white p-1.5 rounded-full"><Eye className="w-4 h-4" /></div></div>
                               </div>}
-                            {(msg.is_video || GI(msg.attachment_name || "").isVideo) &&
-                              <div className="relative rounded-lg overflow-hidden max-w-[240px]"><video src={msg.attachment_url} className="w-full rounded-lg max-h-[200px]" controls preload="metadata" /></div>}
                             {(msg.is_audio || GI(msg.attachment_name || "").isAudio) && !up2 &&
                               <VoiceNotePlayer url={msg.attachment_url} onDark={me} />}
+                            {(msg.is_video || GI(msg.attachment_name || "").isVideo) && !(msg.is_audio || GI(msg.attachment_name || "").isAudio) &&
+                              <div className="relative rounded-lg overflow-hidden max-w-[240px]"><video src={msg.attachment_url} className="w-full rounded-lg max-h-[200px]" controls preload="metadata" /></div>}
                             {!msg.is_image && !GI(msg.attachment_name || "").isImage && !msg.is_video && !GI(msg.attachment_name || "").isVideo && !msg.is_audio && !GI(msg.attachment_name || "").isAudio &&
                               <div className={cn("flex items-center gap-2 p-2 rounded-xl", me ? "bg-white/15" : "bg-secondary/50")}>
                                 <div className={cn("p-1.5 rounded-lg shrink-0", me ? "bg-white/20" : "bg-background")}>{(() => { const i = GI(msg.attachment_name || ""); if (i.isImage) return <Image className="w-4 h-4" />; if (i.isVideo) return <Video className="w-4 h-4" />; if (i.isAudio) return <Music className="w-4 h-4" />; if (i.isPdf) return <FileText className="w-4 h-4" />; return <File className="w-4 h-4" />; })()}</div>
