@@ -15,7 +15,7 @@ from app.models.invitation import Invitation
 from app.models.system_setting import SystemSetting
 from app.models.team import Team, TeamMember, TeamMessage
 from app.models.document import Document
-from app.models.announcement import Announcement
+from app.models.announcement import Announcement, AnnouncementRecipient, AnnouncementComment
 from app.models.board_column import BoardColumn
 from app.models.poll import Poll, PollVote
 from app.models.reaction import Reaction
@@ -42,4 +42,5 @@ __all__ = [
     "Poll", "PollVote",
     "Reaction",
     "TeamFile",
+    "AnnouncementRecipient", "AnnouncementComment",
 ]

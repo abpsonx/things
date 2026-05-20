@@ -126,6 +126,31 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"[boot] announcements.team_id add skipped: {e}")
 
+        # Announcement deadline + recipients + comments
+        try:
+            await conn.execute(text(
+                "ALTER TABLE announcements ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP WITH TIME ZONE"
+            ))
+            await conn.execute(text(
+                "CREATE TABLE IF NOT EXISTS announcement_recipients ("
+                " id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+                " announcement_id UUID NOT NULL REFERENCES announcements(id) ON DELETE CASCADE,"
+                " user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,"
+                " UNIQUE (announcement_id, user_id)"
+                ")"
+            ))
+            await conn.execute(text(
+                "CREATE TABLE IF NOT EXISTS announcement_comments ("
+                " id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+                " announcement_id UUID NOT NULL REFERENCES announcements(id) ON DELETE CASCADE,"
+                " user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,"
+                " content TEXT NOT NULL,"
+                " created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()"
+                ")"
+            ))
+        except Exception as e:
+            print(f"[boot] announcement extras migration skipped: {e}")
+
         # Team events — make project_id nullable + add team_id
         try:
             await conn.execute(text("ALTER TABLE events ALTER COLUMN project_id DROP NOT NULL"))

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Text, ForeignKey, DateTime
+from sqlalchemy import Column, String, Text, ForeignKey, DateTime, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -15,9 +15,41 @@ class Announcement(Base):
     creator_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     title = Column(String(255), nullable=False)
     content = Column(Text, nullable=False)
+    # Optional deadline — after this the announcement is considered expired.
+    expires_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     project = relationship("Project", back_populates="announcements")
     team = relationship("Team")
     creator = relationship("User")
+    recipients = relationship("AnnouncementRecipient", back_populates="announcement", cascade="all, delete-orphan")
+    comments = relationship("AnnouncementComment", back_populates="announcement", cascade="all, delete-orphan")
+
+
+class AnnouncementRecipient(Base):
+    """Targeted recipients. If an announcement has zero rows here, it's for everyone."""
+    __tablename__ = "announcement_recipients"
+    __table_args__ = (
+        UniqueConstraint("announcement_id", "user_id", name="uq_announcement_recipient"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    announcement_id = Column(UUID(as_uuid=True), ForeignKey("announcements.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+
+    announcement = relationship("Announcement", back_populates="recipients")
+    user = relationship("User")
+
+
+class AnnouncementComment(Base):
+    __tablename__ = "announcement_comments"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    announcement_id = Column(UUID(as_uuid=True), ForeignKey("announcements.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    announcement = relationship("Announcement", back_populates="comments")
+    user = relationship("User")

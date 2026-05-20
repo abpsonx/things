@@ -1103,33 +1103,57 @@ async def list_team_announcements(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List announcements for a team (newest first)."""
+    """List announcements for a team (newest first).
+
+    Only announcements addressed to the current user are returned: either
+    untargeted (visible to all) or where the user is an explicit recipient.
+    The creator always sees their own.
+    """
     await _check_org_membership(db, org_id, current_user.id)
-    from app.models.announcement import Announcement
+    from app.models.announcement import Announcement, AnnouncementRecipient, AnnouncementComment
+    from datetime import datetime as _dt, timezone as _tz
 
     result = await db.execute(
         select(Announcement)
-        .options(selectinload(Announcement.creator))
+        .options(
+            selectinload(Announcement.creator),
+            selectinload(Announcement.recipients).selectinload(AnnouncementRecipient.user),
+            selectinload(Announcement.comments),
+        )
         .where(Announcement.team_id == team_id)
         .order_by(Announcement.created_at.desc())
     )
     rows = result.scalars().all()
-    return [
-        {
+    now = _dt.now(_tz.utc)
+    out = []
+    for a in rows:
+        recipient_ids = [str(r.user_id) for r in (a.recipients or [])]
+        # Visibility: untargeted, a recipient, or the creator
+        if recipient_ids and str(current_user.id) not in recipient_ids and str(a.creator_id) != str(current_user.id):
+            continue
+        expires_at = a.expires_at
+        is_expired = bool(expires_at and expires_at < now)
+        out.append({
             "id": str(a.id),
             "title": a.title,
             "content": a.content,
             "created_at": a.created_at.isoformat() if a.created_at else None,
             "updated_at": a.updated_at.isoformat() if a.updated_at else None,
+            "expires_at": expires_at.isoformat() if expires_at else None,
+            "is_expired": is_expired,
             "creator_id": str(a.creator_id) if a.creator_id else None,
             "creator": {
                 "id": str(a.creator.id),
                 "name": a.creator.name,
                 "avatar_url": a.creator.avatar_url,
             } if a.creator else None,
-        }
-        for a in rows
-    ]
+            "recipients": [
+                {"id": str(r.user_id), "name": r.user.name if r.user else "", "avatar_url": r.user.avatar_url if r.user else None}
+                for r in (a.recipients or [])
+            ],
+            "comment_count": len(a.comments or []),
+        })
+    return out
 
 
 @router.post("/{team_id}/announcements", status_code=status.HTTP_201_CREATED)
@@ -1138,23 +1162,41 @@ async def create_team_announcement(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Create a team announcement + notify all team members."""
+    """Create a team announcement + notify recipients.
+
+    Body: { title, content, expires_at?, recipient_ids?[] }.
+    Empty/absent recipient_ids = everyone in the team.
+    """
     await _check_org_membership(db, org_id, current_user.id)
-    from app.models.announcement import Announcement
+    from app.models.announcement import Announcement, AnnouncementRecipient
+    from datetime import datetime as _dt
 
     title = (data.get("title") or "").strip()
     content = (data.get("content") or "").strip()
     if not title or not content:
         raise HTTPException(status_code=400, detail="Judul dan isi pengumuman wajib")
 
+    expires_at = None
+    if data.get("expires_at"):
+        try:
+            expires_at = _dt.fromisoformat(str(data["expires_at"]).replace("Z", "+00:00"))
+        except Exception:
+            expires_at = None
+
+    recipient_ids = data.get("recipient_ids") or []
+
     ann = Announcement(
         team_id=team_id,
         creator_id=current_user.id,
         title=title,
         content=content,
+        expires_at=expires_at,
     )
     db.add(ann)
     await db.flush()
+
+    for uid in recipient_ids:
+        db.add(AnnouncementRecipient(announcement_id=ann.id, user_id=uid))
 
     await log_activity(
         db, org_id=org_id, user_id=current_user.id,
@@ -1162,18 +1204,23 @@ async def create_team_announcement(
         team_id=team_id, metadata={"title": title},
     )
 
-    # Notify all team members except the author
+    # Decide who to notify: explicit recipients, otherwise all team members.
     from app.services.notification import notify_user
     team_res = await db.execute(select(Team).where(Team.id == team_id))
     team_row = team_res.scalar_one_or_none()
     team_name = team_row.name if team_row else "tim"
-    members_res = await db.execute(select(TeamMember).where(TeamMember.team_id == team_id))
-    for m in members_res.scalars().all():
-        if str(m.user_id) == str(current_user.id):
+    if recipient_ids:
+        notify_targets = [str(u) for u in recipient_ids]
+    else:
+        members_res = await db.execute(select(TeamMember).where(TeamMember.team_id == team_id))
+        notify_targets = [str(m.user_id) for m in members_res.scalars().all()]
+
+    for uid in notify_targets:
+        if uid == str(current_user.id):
             continue
         await notify_user(
             db,
-            user_id=str(m.user_id),
+            user_id=uid,
             type="announcement",
             title=f"Pengumuman: {title}",
             content=f"{current_user.name} memposting pengumuman di tim {team_name}",
@@ -1188,6 +1235,7 @@ async def create_team_announcement(
         "id": str(ann.id),
         "title": ann.title,
         "content": ann.content,
+        "expires_at": ann.expires_at.isoformat() if ann.expires_at else None,
         "created_at": ann.created_at.isoformat() if ann.created_at else None,
         "creator": {"id": str(current_user.id), "name": current_user.name, "avatar_url": current_user.avatar_url},
     }
@@ -1212,10 +1260,31 @@ async def update_team_announcement(
     if str(ann.creator_id) != str(current_user.id):
         raise HTTPException(status_code=403, detail="Hanya pembuat pengumuman yang bisa mengedit")
 
+    from app.models.announcement import AnnouncementRecipient
+    from datetime import datetime as _dt
+
     if "title" in data and data["title"]:
         ann.title = data["title"].strip()
     if "content" in data and data["content"]:
         ann.content = data["content"].strip()
+    if "expires_at" in data:
+        if data["expires_at"]:
+            try:
+                ann.expires_at = _dt.fromisoformat(str(data["expires_at"]).replace("Z", "+00:00"))
+            except Exception:
+                pass
+        else:
+            ann.expires_at = None
+    if "recipient_ids" in data:
+        # Replace recipient set
+        existing = await db.execute(
+            select(AnnouncementRecipient).where(AnnouncementRecipient.announcement_id == ann.id)
+        )
+        for r in existing.scalars().all():
+            await db.delete(r)
+        for uid in (data["recipient_ids"] or []):
+            db.add(AnnouncementRecipient(announcement_id=ann.id, user_id=uid))
+
     await db.commit()
     await db.refresh(ann)
     return {"id": str(ann.id), "title": ann.title, "content": ann.content}
@@ -1246,5 +1315,116 @@ async def delete_team_announcement(
         raise HTTPException(status_code=403, detail="Hanya pembuat atau owner/manager yang bisa menghapus")
 
     await db.delete(ann)
+    await db.commit()
+    return None
+
+
+# ---- Announcement comments ----
+
+@router.get("/{team_id}/announcements/{announcement_id}/comments")
+async def list_announcement_comments(
+    org_id: str, team_id: str, announcement_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List comments on a team announcement (oldest first)."""
+    await _check_org_membership(db, org_id, current_user.id)
+    from app.models.announcement import AnnouncementComment
+
+    res = await db.execute(
+        select(AnnouncementComment)
+        .options(selectinload(AnnouncementComment.user))
+        .where(AnnouncementComment.announcement_id == announcement_id)
+        .order_by(AnnouncementComment.created_at.asc())
+    )
+    return [
+        {
+            "id": str(c.id),
+            "content": c.content,
+            "created_at": c.created_at.isoformat() if c.created_at else None,
+            "user_id": str(c.user_id),
+            "user": {"id": str(c.user.id), "name": c.user.name, "avatar_url": c.user.avatar_url} if c.user else None,
+        }
+        for c in res.scalars().all()
+    ]
+
+
+@router.post("/{team_id}/announcements/{announcement_id}/comments", status_code=status.HTTP_201_CREATED)
+async def create_announcement_comment(
+    org_id: str, team_id: str, announcement_id: str, data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Comment on a team announcement + notify the announcement creator."""
+    await _check_org_membership(db, org_id, current_user.id)
+    from app.models.announcement import Announcement, AnnouncementComment
+
+    content = (data.get("content") or "").strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="Komentar kosong")
+
+    ann_res = await db.execute(
+        select(Announcement).where(Announcement.id == announcement_id, Announcement.team_id == team_id)
+    )
+    ann = ann_res.scalar_one_or_none()
+    if not ann:
+        raise HTTPException(status_code=404, detail="Pengumuman tidak ditemukan")
+
+    comment = AnnouncementComment(
+        announcement_id=announcement_id,
+        user_id=current_user.id,
+        content=content,
+    )
+    db.add(comment)
+
+    # Notify the announcement creator (skip self)
+    if ann.creator_id and str(ann.creator_id) != str(current_user.id):
+        from app.services.notification import notify_user
+        snippet = content[:60] + ("..." if len(content) > 60 else "")
+        await notify_user(
+            db,
+            user_id=str(ann.creator_id),
+            type="announcement_comment",
+            title="Komentar pengumuman",
+            content=f"{current_user.name} berkomentar di '{ann.title}': {snippet}",
+            ref_id=str(announcement_id),
+            org_id=str(org_id),
+            url=f"/org/{org_id}/team/{team_id}/announcements",
+        )
+
+    await db.commit()
+    await db.refresh(comment)
+    return {
+        "id": str(comment.id),
+        "content": comment.content,
+        "created_at": comment.created_at.isoformat() if comment.created_at else None,
+        "user_id": str(current_user.id),
+        "user": {"id": str(current_user.id), "name": current_user.name, "avatar_url": current_user.avatar_url},
+    }
+
+
+@router.delete("/{team_id}/announcements/{announcement_id}/comments/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_announcement_comment(
+    org_id: str, team_id: str, announcement_id: str, comment_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete an announcement comment (author or org owner/manager)."""
+    member = await _check_org_membership(db, org_id, current_user.id)
+    from app.models.announcement import AnnouncementComment
+
+    res = await db.execute(
+        select(AnnouncementComment).where(
+            AnnouncementComment.id == comment_id,
+            AnnouncementComment.announcement_id == announcement_id,
+        )
+    )
+    c = res.scalar_one_or_none()
+    if not c:
+        raise HTTPException(status_code=404, detail="Komentar tidak ditemukan")
+    if str(c.user_id) != str(current_user.id) and member.role not in ("owner", "manager"):
+        raise HTTPException(status_code=403, detail="Tidak berhak menghapus komentar ini")
+
+    await db.delete(c)
     await db.commit()
     return None
