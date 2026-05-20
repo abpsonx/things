@@ -10,11 +10,13 @@ import { id as idLocale } from "date-fns/locale";
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  projectId: string;
+  /** Base tasks URL, e.g. "/projects/{id}/tasks" or
+   *  "/organizations/{org}/teams/{team}/tasks". */
+  baseUrl: string;
   onChange: () => void;
 }
 
-export default function ArchivedTasksModal({ isOpen, onClose, projectId, onChange }: Props) {
+export default function ArchivedTasksModal({ isOpen, onClose, baseUrl, onChange }: Props) {
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -22,7 +24,7 @@ export default function ArchivedTasksModal({ isOpen, onClose, projectId, onChang
   const fetchArchived = async () => {
     setLoading(true);
     try {
-      const res = await api.get(`/projects/${projectId}/tasks/archived`);
+      const res = await api.get(`${baseUrl}/archived`);
       setTasks(res.data || []);
     } catch (err) {
       console.error("Failed to load archived tasks", err);
@@ -38,7 +40,7 @@ export default function ArchivedTasksModal({ isOpen, onClose, projectId, onChang
   const restore = async (id: string) => {
     setBusyId(id);
     try {
-      await api.post(`/projects/${projectId}/tasks/${id}/restore`);
+      await api.post(`${baseUrl}/${id}/restore`);
       toast.success("Tugas dipulihkan");
       await fetchArchived();
       onChange();
@@ -53,7 +55,7 @@ export default function ArchivedTasksModal({ isOpen, onClose, projectId, onChang
     if (!confirm(`Hapus permanen "${title}"? Tidak bisa dibatalkan.`)) return;
     setBusyId(id);
     try {
-      await api.delete(`/projects/${projectId}/tasks/${id}`);
+      await api.delete(`${baseUrl}/${id}`);
       toast.success("Tugas dihapus permanen");
       await fetchArchived();
       onChange();

@@ -29,6 +29,7 @@ import {
   Users,
   ArrowLeft,
   UserPlus,
+  Archive as ArchiveIcon,
   X
 } from "lucide-react";
 import TeamKanbanColumn from "./TeamKanbanColumn";
@@ -36,6 +37,7 @@ import TeamTaskCard from "./TeamTaskCard";
 import TeamNav from "@/components/team/TeamNav";
 import TeamTaskDetailModal from "./TeamTaskDetailModal";
 import InviteTeamMemberModal from "@/components/team/InviteTeamMemberModal";
+import ArchivedTasksModal from "@/components/board/ArchivedTasksModal";
 import BoardFilterBar from "@/components/board/BoardFilterBar";
 import { applyBoardFilter, useBoardFilter } from "@/components/board/useBoardFilter";
 
@@ -112,6 +114,7 @@ export default function TeamBoardPage() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isInviteOpen, setIsInviteOpen] = useState(false);
+  const [archivedOpen, setArchivedOpen] = useState(false);
 
   // Open task detail directly when URL has ?task=<id>
   // (used by the dashboard "Tugasmu" widget for team-scoped tasks).
@@ -319,6 +322,13 @@ export default function TeamBoardPage() {
             </div>
           </div>
           <button
+            onClick={() => setArchivedOpen(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded-2xl bg-card border border-border text-muted-foreground hover:text-foreground hover:bg-secondary/50 text-xs font-bold transition-all"
+          >
+            <ArchiveIcon className="w-4 h-4" />
+            <span className="hidden sm:inline">Arsip</span>
+          </button>
+          <button
             onClick={() => setIsInviteOpen(true)}
             className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 shadow-md shadow-primary/20 transition-all"
           >
@@ -396,6 +406,13 @@ export default function TeamBoardPage() {
         teamId={teamId}
         existingMembers={members}
         onAdded={fetchData}
+      />
+
+      <ArchivedTasksModal
+        isOpen={archivedOpen}
+        onClose={() => setArchivedOpen(false)}
+        baseUrl={`/organizations/${orgId}/teams/${teamId}/tasks`}
+        onChange={fetchData}
       />
     </div>
   );

@@ -799,13 +799,12 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
               <Calendar className="w-3 h-3" /> Due Date
             </label>
             <div className="relative group">
-              <input 
-                type="date"
-                value={task?.due_date ? task.due_date.split('T')[0] : ""}
+              <input
+                type="datetime-local"
+                value={task?.due_date ? task.due_date.slice(0, 16) : ""}
                 onChange={(e) => {
-                  const val = e.target.value;
-                  // Send as ISO string T00:00:00 to avoid validation issues
-                  updateTask({ due_date: val ? `${val}T00:00:00Z` : null });
+                  const val = e.target.value; // "YYYY-MM-DDTHH:mm"
+                  updateTask({ due_date: val ? `${val}:00` : null });
                 }}
                 className="w-full bg-background border border-border rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all appearance-none cursor-pointer"
               />

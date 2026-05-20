@@ -310,7 +310,7 @@ async def list_team_tasks(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List all tasks for a team."""
+    """List all tasks for a team (excludes archived)."""
     await _check_org_membership(db, org_id, current_user.id)
     from app.models.label import TaskLabel
     result = await db.execute(
@@ -322,11 +322,90 @@ async def list_team_tasks(
             selectinload(Task.attachments),
             selectinload(Task.assignee)
         )
-        .where(Task.team_id == team_id)
+        .where(Task.team_id == team_id, Task.archived_at.is_(None))
         .order_by(Task.position)
     )
     tasks = result.scalars().all()
     return [_task_to_response(t) for t in tasks]
+
+
+@router.get("/{team_id}/tasks/archived", response_model=List[TaskResponse])
+async def list_archived_team_tasks(
+    org_id: str, team_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Archived team tasks only."""
+    await _check_org_membership(db, org_id, current_user.id)
+    from app.models.label import TaskLabel
+    result = await db.execute(
+        select(Task)
+        .options(
+            selectinload(Task.task_labels).selectinload(TaskLabel.label),
+            selectinload(Task.subtasks),
+            selectinload(Task.comments),
+            selectinload(Task.attachments),
+            selectinload(Task.assignee),
+        )
+        .where(Task.team_id == team_id, Task.archived_at.isnot(None))
+        .order_by(Task.archived_at.desc())
+    )
+    return [_task_to_response(t) for t in result.scalars().all()]
+
+
+@router.post("/{team_id}/tasks/{task_id}/archive", response_model=TaskResponse)
+async def archive_team_task(
+    org_id: str, team_id: str, task_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Soft-delete a team task."""
+    from datetime import datetime as _dt, timezone as _tz
+    from app.models.label import TaskLabel
+    await _check_org_membership(db, org_id, current_user.id)
+    res = await db.execute(select(Task).where(Task.id == task_id, Task.team_id == team_id))
+    task = res.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task tidak ditemukan")
+    task.archived_at = _dt.now(_tz.utc)
+    await log_activity(db, org_id=org_id, user_id=current_user.id, action="task_archived",
+                       entity_type="task", entity_id=task.id, team_id=team_id, metadata={"title": task.title})
+    await db.commit()
+    res = await db.execute(
+        select(Task).options(
+            selectinload(Task.task_labels).selectinload(TaskLabel.label),
+            selectinload(Task.subtasks), selectinload(Task.comments),
+            selectinload(Task.attachments), selectinload(Task.assignee),
+        ).where(Task.id == task_id)
+    )
+    return _task_to_response(res.scalar_one())
+
+
+@router.post("/{team_id}/tasks/{task_id}/restore", response_model=TaskResponse)
+async def restore_team_task(
+    org_id: str, team_id: str, task_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Restore an archived team task."""
+    from app.models.label import TaskLabel
+    await _check_org_membership(db, org_id, current_user.id)
+    res = await db.execute(select(Task).where(Task.id == task_id, Task.team_id == team_id))
+    task = res.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task tidak ditemukan")
+    task.archived_at = None
+    await log_activity(db, org_id=org_id, user_id=current_user.id, action="task_restored",
+                       entity_type="task", entity_id=task.id, team_id=team_id, metadata={"title": task.title})
+    await db.commit()
+    res = await db.execute(
+        select(Task).options(
+            selectinload(Task.task_labels).selectinload(TaskLabel.label),
+            selectinload(Task.subtasks), selectinload(Task.comments),
+            selectinload(Task.attachments), selectinload(Task.assignee),
+        ).where(Task.id == task_id)
+    )
+    return _task_to_response(res.scalar_one())
 
 
 @router.post("/{team_id}/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)

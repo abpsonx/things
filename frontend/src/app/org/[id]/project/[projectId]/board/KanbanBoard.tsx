@@ -567,7 +567,7 @@ export default function KanbanBoard() {
       <ArchivedTasksModal
         isOpen={archivedOpen}
         onClose={() => setArchivedOpen(false)}
-        projectId={projectId as string}
+        baseUrl={`/projects/${projectId}/tasks`}
         onChange={fetchTasks}
       />
     </div>

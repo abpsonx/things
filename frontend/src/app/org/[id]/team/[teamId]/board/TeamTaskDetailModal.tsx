@@ -17,6 +17,7 @@ import {
   Send,
   MoreHorizontal,
   Trash2,
+  Archive,
   CheckCircle2,
   Plus,
   AlertCircle,
@@ -236,13 +237,27 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
   };
 
   const deleteTask = async () => {
-    if (!confirm("Hapus tugas ini?")) return;
+    if (!confirm("Hapus tugas ini permanen? Pakai 'Arsipkan' kalau cuma mau menyembunyikan.")) return;
     try {
       await api.delete(`/organizations/${orgId}/teams/${teamId}/tasks/${taskId}`);
       onUpdate();
       onClose();
     } catch (err) {
       console.error("Failed to delete task", err);
+    }
+  };
+
+  const archiveTask = async () => {
+    try {
+      if (task?.archived_at) {
+        await api.post(`/organizations/${orgId}/teams/${teamId}/tasks/${taskId}/restore`);
+      } else {
+        await api.post(`/organizations/${orgId}/teams/${teamId}/tasks/${taskId}/archive`);
+      }
+      onUpdate();
+      onClose();
+    } catch (err) {
+      console.error("Failed to archive task", err);
     }
   };
 
@@ -473,12 +488,12 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
               <Calendar className="w-3 h-3" /> Due Date
             </label>
             <div className="relative group">
-              <input 
-                type="date"
-                value={task?.due_date ? task.due_date.split('T')[0] : ""}
+              <input
+                type="datetime-local"
+                value={task?.due_date ? task.due_date.slice(0, 16) : ""}
                 onChange={(e) => {
                   const val = e.target.value;
-                  updateTask({ due_date: val ? `${val}T00:00:00Z` : null });
+                  updateTask({ due_date: val ? `${val}:00` : null });
                 }}
                 className="w-full bg-background border border-border rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all appearance-none cursor-pointer"
               />
@@ -537,13 +552,20 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
             </Popover>
           </div>
 
-          <div className="pt-6 border-t border-border mt-4">
-            <button 
+          <div className="pt-6 border-t border-border mt-4 space-y-2">
+            <button
+              onClick={archiveTask}
+              className="w-full flex items-center justify-center gap-2 py-2 text-xs font-bold text-muted-foreground hover:bg-secondary rounded-xl border border-border transition-all"
+            >
+              <Archive className="w-3 h-3" />
+              {task?.archived_at ? "Pulihkan dari Arsip" : "Arsipkan Tugas"}
+            </button>
+            <button
               onClick={deleteTask}
               className="w-full flex items-center justify-center gap-2 py-2 text-xs font-bold text-destructive hover:bg-destructive/10 rounded-xl border border-transparent hover:border-destructive/20 transition-all"
             >
               <Trash2 className="w-3 h-3" />
-              Hapus Tugas
+              Hapus Permanen
             </button>
           </div>
         </div>
