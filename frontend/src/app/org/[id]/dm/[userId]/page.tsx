@@ -11,8 +11,10 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import FileViewerModal from "@/components/ui/FileViewerModal";
+import VoiceRecorder from "@/components/chat/VoiceRecorder";
+import VoiceNotePlayer from "@/components/chat/VoiceNotePlayer";
 
-const GI = (n: string) => { const e = (n || "").toLowerCase().split(".").pop() || ""; return { isImage: ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "ico"].includes(e), isVideo: ["mp4", "webm", "mov", "avi", "mkv", "wmv"].includes(e), isAudio: ["mp3", "wav", "ogg", "aac", "flac", "m4a"].includes(e), isPdf: e === "pdf" } };
+const GI = (n: string) => { const e = (n || "").toLowerCase().split(".").pop() || ""; return { isImage: ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "ico"].includes(e), isVideo: ["mp4", "mov", "avi", "mkv", "wmv"].includes(e), isAudio: ["mp3", "wav", "ogg", "aac", "flac", "m4a", "webm"].includes(e) || (n || "").includes("voice-note"), isPdf: e === "pdf" } };
 
 // Format an edited_at timestamp into "DD/MM HH.MM" Indonesian style.
 const fmtEdited = (iso?: string | null) => {
@@ -306,7 +308,9 @@ export default function DMChatPage() {
                               </div>}
                             {(msg.is_video || GI(msg.attachment_name || "").isVideo) &&
                               <div className="relative rounded-lg overflow-hidden max-w-[240px]"><video src={msg.attachment_url} className="w-full rounded-lg max-h-[200px]" controls preload="metadata" /></div>}
-                            {!msg.is_image && !GI(msg.attachment_name || "").isImage && !msg.is_video && !GI(msg.attachment_name || "").isVideo &&
+                            {(msg.is_audio || GI(msg.attachment_name || "").isAudio) && !up2 &&
+                              <VoiceNotePlayer url={msg.attachment_url} onDark={me} />}
+                            {!msg.is_image && !GI(msg.attachment_name || "").isImage && !msg.is_video && !GI(msg.attachment_name || "").isVideo && !msg.is_audio && !GI(msg.attachment_name || "").isAudio &&
                               <div className={cn("flex items-center gap-2 p-2 rounded-xl", me ? "bg-white/15" : "bg-secondary/50")}>
                                 <div className={cn("p-1.5 rounded-lg shrink-0", me ? "bg-white/20" : "bg-background")}>{(() => { const i = GI(msg.attachment_name || ""); if (i.isImage) return <Image className="w-4 h-4" />; if (i.isVideo) return <Video className="w-4 h-4" />; if (i.isAudio) return <Music className="w-4 h-4" />; if (i.isPdf) return <FileText className="w-4 h-4" />; return <File className="w-4 h-4" />; })()}</div>
                                 <div className="min-w-0 flex-1"><p className="text-xs font-medium truncate">{msg.attachment_name || "File"}</p><p className={cn("text-[9px]", me ? "text-white/70" : "text-muted-foreground")}>{FS(msg.file_size)}</p></div>
@@ -406,6 +410,7 @@ export default function DMChatPage() {
         <form onSubmit={sendMsg} className="flex gap-2 items-end">
           <input type="file" ref={fi} onChange={onFP} className="hidden" accept="*/*" />
           <button type="button" onClick={() => fi.current?.click()} disabled={up !== null} className="p-3 bg-secondary/50 rounded-xl hover:bg-secondary transition-colors disabled:opacity-40"><Paperclip className="w-5 h-5 text-muted-foreground" /></button>
+          <div className="bg-secondary/50 rounded-xl flex items-center"><VoiceRecorder onSend={upload} /></div>
           <button type="button" onClick={() => setSe2(!se2)} className="p-3 bg-secondary/50 rounded-xl hover:bg-secondary transition-colors"><Smile className="w-5 h-5 text-muted-foreground" /></button>
           <div className="flex-1 relative">
             <textarea value={tx} onChange={e => setTx(e.target.value)} onKeyDown={e => { if (e.nativeEvent.isComposing) return; if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMsg(); } }} placeholder="Tulis pesan..." rows={1} className="w-full px-4 py-3 bg-secondary/30 border border-border rounded-2xl focus:outline-none focus:ring-1 focus:ring-primary/20 transition-all text-sm resize-none" />

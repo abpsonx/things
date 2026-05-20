@@ -25,6 +25,8 @@ import {
 import CreatePollModal from "@/components/poll/CreatePollModal";
 import PollBubble, { PollData } from "@/components/poll/PollBubble";
 import Reactions, { ReactionBucket } from "@/components/reactions/Reactions";
+import VoiceRecorder from "@/components/chat/VoiceRecorder";
+import VoiceNotePlayer, { isAudioFile } from "@/components/chat/VoiceNotePlayer";
 import api from "@/lib/api";
 import { socket } from "@/lib/socket";
 import { useAuthStore } from "@/store/useAuthStore";
@@ -246,6 +248,19 @@ export default function TeamChatPage() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  const sendVoiceNote = async (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      await api.post(`/organizations/${orgId}/teams/${teamId}/chat/upload`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+    } catch (err) {
+      console.error("Failed to send voice note", err);
+      alert("Gagal mengirim voice note");
+    }
+  };
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -284,6 +299,9 @@ export default function TeamChatPage() {
           }}
         />
       );
+    }
+    if (msg.file_url && (isAudioFile(msg.file_url, msg.file_name) || msg.file_type?.startsWith("audio/"))) {
+      return <VoiceNotePlayer url={msg.file_url} onDark={isMe} />;
     }
     if (msg.file_url) {
       const isImage = msg.file_type?.startsWith('image/');
@@ -730,8 +748,9 @@ export default function TeamChatPage() {
               >
                 <BarChart3 className="w-5 h-5" />
               </button>
-              <button 
-                type="button" 
+              <VoiceRecorder onSend={sendVoiceNote} />
+              <button
+                type="button"
                 onClick={() => setShowEmojiPicker(!showEmojiPicker)}
                 className={`p-2 transition-all rounded-xl ${showEmojiPicker ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-primary hover:bg-primary/10'}`}
               >

@@ -35,6 +35,8 @@ import { cn, formatDate } from "@/lib/utils";
 import CreatePollModal from "@/components/poll/CreatePollModal";
 import PollBubble, { PollData } from "@/components/poll/PollBubble";
 import Reactions, { ReactionBucket } from "@/components/reactions/Reactions";
+import VoiceRecorder from "@/components/chat/VoiceRecorder";
+import VoiceNotePlayer, { isAudioFile } from "@/components/chat/VoiceNotePlayer";
 
 // Format an edited_at timestamp into "DD/MM HH.MM" Indonesian style.
 const fmtEdited = (iso?: string | null) => {
@@ -649,6 +651,28 @@ export default function ChatPage() {
     }
   };
 
+  const sendVoiceNote = async (file: File) => {
+    if (!activeChannel) return;
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const uploadRes = await api.post(
+        `/projects/${projectId}/channels/${activeChannel.id}/messages/upload`,
+        formData,
+        { headers: { "Content-Type": "multipart/form-data" } }
+      );
+      const res = await api.post(`/projects/${projectId}/channels/${activeChannel.id}/messages`, {
+        content: "🎤 Voice note",
+        attachment_url: uploadRes.data.url,
+        attachment_name: uploadRes.data.filename || file.name,
+      });
+      setMessages((prev) => (prev.find((m) => m.id === res.data.id) ? prev : [...prev, res.data]));
+    } catch (err) {
+      console.error("Failed to send voice note", err);
+      alert("Gagal mengirim voice note");
+    }
+  };
+
   const deleteMessage = async (msgId: string) => {
     if (!confirm("Hapus pesan ini?")) return;
     try {
@@ -908,8 +932,10 @@ export default function ChatPage() {
                         )}
 
                         {msg.attachment_url && (
-                          <div className={cn("mb-1", !msg.content ? "mb-0" : "")}>
-                            {msg.attachment_url.match(/\.(jpeg|jpg|gif|png|webp)$/i) ? (
+                          <div className={cn("mb-1", !msg.content || msg.content === "🎤 Voice note" ? "mb-0" : "")}>
+                            {isAudioFile(msg.attachment_url, msg.attachment_name) ? (
+                              <VoiceNotePlayer url={msg.attachment_url} onDark={isMe} />
+                            ) : msg.attachment_url.match(/\.(jpeg|jpg|gif|png|webp)$/i) ? (
                               <a href={msg.attachment_url} target="_blank" rel="noreferrer">
                                 <img src={msg.attachment_url} alt="attachment" className="rounded max-w-full h-auto max-h-[200px] object-cover cursor-pointer hover:opacity-90 transition-opacity border border-border" />
                               </a>
@@ -968,7 +994,7 @@ export default function ChatPage() {
                           "flex items-end justify-end gap-x-2",
                           msg.poll && "mt-1 pr-1"
                         )}>
-                          {msg.content && !msg.poll && <p className={cn("flex-1 min-w-[30px] whitespace-pre-wrap leading-snug py-0.5", isMe ? "text-white" : "text-foreground")}>{renderMessageContent(msg.content, isMe)}</p>}
+                          {msg.content && !msg.poll && !(msg.attachment_url && msg.content === "🎤 Voice note") && <p className={cn("flex-1 min-w-[30px] whitespace-pre-wrap leading-snug py-0.5", isMe ? "text-white" : "text-foreground")}>{renderMessageContent(msg.content, isMe)}</p>}
                           <div className={cn(
                             "flex items-center gap-0.5 text-[8px] mb-[1px] shrink-0 font-medium select-none",
                             msg.poll
@@ -1124,6 +1150,7 @@ export default function ChatPage() {
                       >
                         <BarChart3 className="w-5 h-5" />
                       </button>
+                      <VoiceRecorder onSend={sendVoiceNote} />
                     </div>
 
                     <div className="relative flex-1">
