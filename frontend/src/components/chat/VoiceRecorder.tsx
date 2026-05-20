@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Mic, Trash2, Send, Loader2, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -44,12 +44,45 @@ export default function VoiceRecorder({ onSend, disabled, className }: Props) {
 
   const start = async () => {
     if (disabled) return;
+
+    // getUserMedia only exists in secure contexts (https or localhost).
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert("Browser tidak mendukung rekam audio, atau halaman tidak diakses lewat HTTPS.");
+      return;
+    }
+    if (typeof MediaRecorder === "undefined") {
+      alert("Browser tidak mendukung MediaRecorder. Coba update Chrome/Safari.");
+      return;
+    }
+
+    let stream: MediaStream;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err: any) {
+      const name = err?.name || "";
+      let msg = "Tidak bisa akses mikrofon.";
+      if (name === "NotAllowedError" || name === "SecurityError") msg = "Izin mikrofon ditolak. Aktifkan di setelan situs lalu reload.";
+      else if (name === "NotReadableError" || name === "TrackStartError") msg = "Mikrofon sedang dipakai aplikasi lain (Zoom/Meet/dll). Tutup dulu lalu coba lagi.";
+      else if (name === "NotFoundError" || name === "DevicesNotFoundError") msg = "Tidak ada perangkat mikrofon terdeteksi.";
+      else if (name) msg = `Gagal akses mikrofon (${name}).`;
+      console.error("getUserMedia failed:", err);
+      alert(msg);
+      return;
+    }
+
+    try {
       streamRef.current = stream;
       const mime = pickMime();
-      mimeRef.current = mime;
-      const mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      // Construct the recorder; if the chosen mime is rejected, fall back
+      // to the browser default (no options).
+      let mr: MediaRecorder;
+      try {
+        mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+        mimeRef.current = mime || mr.mimeType || "";
+      } catch {
+        mr = new MediaRecorder(stream);
+        mimeRef.current = mr.mimeType || "";
+      }
       chunksRef.current = [];
       cancelledRef.current = false;
 
@@ -75,9 +108,11 @@ export default function VoiceRecorder({ onSend, disabled, className }: Props) {
       setRecording(true);
       setSeconds(0);
       timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
-    } catch (err) {
-      console.error("Mic access denied / failed", err);
-      alert("Tidak bisa akses mikrofon. Pastikan izin mikrofon diberikan.");
+    } catch (err: any) {
+      console.error("MediaRecorder failed:", err);
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+      alert(`Gagal memulai rekaman${err?.name ? ` (${err.name})` : ""}. Coba refresh halaman.`);
     }
   };
 
