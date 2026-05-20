@@ -11,6 +11,7 @@ import {
   Activity,
   FileText,
   Megaphone,
+  Calendar,
   Settings
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -27,6 +28,7 @@ export default function TeamNav({ orgId, teamId }: TeamNavProps) {
     { name: "Ringkasan", href: `/org/${orgId}/team/${teamId}/summary`, icon: LayoutDashboard },
     { name: "Board", href: `/org/${orgId}/team/${teamId}/board`, icon: LayoutGrid },
     { name: "Chat", href: `/org/${orgId}/team/${teamId}/chat`, icon: MessageSquare },
+    { name: "Jadwal", href: `/org/${orgId}/team/${teamId}/calendar`, icon: Calendar },
     { name: "Laporan", href: `/org/${orgId}/team/${teamId}/report`, icon: BarChart3 },
     { name: "Pengumuman", href: `/org/${orgId}/team/${teamId}/announcements`, icon: Megaphone },
     { name: "Aktivitas", href: `/org/${orgId}/team/${teamId}/activities`, icon: Activity },

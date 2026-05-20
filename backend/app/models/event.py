@@ -11,7 +11,9 @@ class Event(Base):
     __tablename__ = "events"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    # Exactly one of project_id / team_id is set.
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True)
+    team_id = Column(UUID(as_uuid=True), ForeignKey("teams.id", ondelete="CASCADE"), nullable=True)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
@@ -22,6 +24,7 @@ class Event(Base):
 
     # Relationships
     project = relationship("Project", back_populates="events")
+    team = relationship("Team")
     creator = relationship("User", foreign_keys=[created_by])
     attendees = relationship("EventAttendee", back_populates="event", cascade="all, delete-orphan")
 

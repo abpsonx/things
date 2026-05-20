@@ -775,6 +775,133 @@ async def get_team_activities(
     return [ActivityLogResponse.model_validate(a) for a in activities]
 
 
+# ============ Team Calendar / Event Endpoints ============
+
+@router.get("/{team_id}/events")
+async def list_team_events(
+    org_id: str, team_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List events for a team."""
+    await _check_org_membership(db, org_id, current_user.id)
+    from app.models.event import Event
+
+    result = await db.execute(
+        select(Event)
+        .options(selectinload(Event.creator))
+        .where(Event.team_id == team_id)
+        .order_by(Event.start_at.asc())
+    )
+    rows = result.scalars().all()
+    return [
+        {
+            "id": str(e.id),
+            "title": e.title,
+            "description": e.description,
+            "start_at": e.start_at.isoformat() if e.start_at else None,
+            "end_at": e.end_at.isoformat() if e.end_at else None,
+            "created_by": str(e.created_by),
+            "creator": {"id": str(e.creator.id), "name": e.creator.name} if e.creator else None,
+        }
+        for e in rows
+    ]
+
+
+@router.post("/{team_id}/events", status_code=status.HTTP_201_CREATED)
+async def create_team_event(
+    org_id: str, team_id: str, data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Create a team event + notify members."""
+    await _check_org_membership(db, org_id, current_user.id)
+    from app.models.event import Event
+    from datetime import datetime as _dt
+
+    title = (data.get("title") or "").strip()
+    start_at = data.get("start_at")
+    if not title or not start_at:
+        raise HTTPException(status_code=400, detail="Judul & waktu mulai wajib")
+
+    def _parse(v):
+        if not v:
+            return None
+        try:
+            return _dt.fromisoformat(str(v).replace("Z", "+00:00"))
+        except Exception:
+            return None
+
+    ev = Event(
+        team_id=team_id,
+        created_by=current_user.id,
+        title=title,
+        description=data.get("description"),
+        start_at=_parse(start_at),
+        end_at=_parse(data.get("end_at")),
+    )
+    db.add(ev)
+    await db.flush()
+
+    await log_activity(
+        db, org_id=org_id, user_id=current_user.id,
+        action="event_created", entity_type="event", entity_id=ev.id,
+        team_id=team_id, metadata={"title": title},
+    )
+
+    # Notify team members except creator
+    from app.services.notification import notify_user
+    team_res = await db.execute(select(Team).where(Team.id == team_id))
+    team_row = team_res.scalar_one_or_none()
+    team_name = team_row.name if team_row else "tim"
+    members_res = await db.execute(select(TeamMember).where(TeamMember.team_id == team_id))
+    for m in members_res.scalars().all():
+        if str(m.user_id) == str(current_user.id):
+            continue
+        await notify_user(
+            db,
+            user_id=str(m.user_id),
+            type="event",
+            title=f"Jadwal baru: {title}",
+            content=f"{current_user.name} membuat jadwal di tim {team_name}",
+            ref_id=str(ev.id),
+            org_id=str(org_id),
+            url=f"/org/{org_id}/team/{team_id}/calendar",
+        )
+
+    await db.commit()
+    await db.refresh(ev)
+    return {
+        "id": str(ev.id),
+        "title": ev.title,
+        "description": ev.description,
+        "start_at": ev.start_at.isoformat() if ev.start_at else None,
+        "end_at": ev.end_at.isoformat() if ev.end_at else None,
+    }
+
+
+@router.delete("/{team_id}/events/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_team_event(
+    org_id: str, team_id: str, event_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a team event (creator or org owner/manager)."""
+    member = await _check_org_membership(db, org_id, current_user.id)
+    from app.models.event import Event
+
+    res = await db.execute(select(Event).where(Event.id == event_id, Event.team_id == team_id))
+    ev = res.scalar_one_or_none()
+    if not ev:
+        raise HTTPException(status_code=404, detail="Event tidak ditemukan")
+    if str(ev.created_by) != str(current_user.id) and member.role not in ("owner", "manager"):
+        raise HTTPException(status_code=403, detail="Hanya pembuat atau owner/manager yang bisa hapus")
+
+    await db.delete(ev)
+    await db.commit()
+    return None
+
+
 # ============ Team Announcement Endpoints ============
 
 @router.get("/{team_id}/announcements")
