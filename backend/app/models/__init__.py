@@ -19,6 +19,7 @@ from app.models.announcement import Announcement
 from app.models.board_column import BoardColumn
 from app.models.poll import Poll, PollVote
 from app.models.reaction import Reaction
+from app.models.team_file import TeamFile
 
 __all__ = [
     "User",
@@ -40,4 +41,5 @@ __all__ = [
     "BoardColumn",
     "Poll", "PollVote",
     "Reaction",
+    "TeamFile",
 ]

@@ -775,6 +775,199 @@ async def get_team_activities(
     return [ActivityLogResponse.model_validate(a) for a in activities]
 
 
+# ============ Team File + Wiki Endpoints ============
+
+@router.get("/{team_id}/files-direct")
+async def list_team_files(
+    org_id: str, team_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List files uploaded directly to the team."""
+    await _check_org_membership(db, org_id, current_user.id)
+    from app.models.team_file import TeamFile
+
+    res = await db.execute(
+        select(TeamFile)
+        .options(selectinload(TeamFile.uploader))
+        .where(TeamFile.team_id == team_id)
+        .order_by(TeamFile.created_at.desc())
+    )
+    rows = res.scalars().all()
+    return [
+        {
+            "id": str(f.id),
+            "file_name": f.file_name,
+            "file_url": f.file_path if f.file_path.startswith(("http", "/")) else f"/api/{f.file_path}",
+            "file_size": f.file_size,
+            "created_at": f.created_at.isoformat() if f.created_at else None,
+            "uploader": {"id": str(f.uploader.id), "name": f.uploader.name, "avatar_url": f.uploader.avatar_url} if f.uploader else None,
+        }
+        for f in rows
+    ]
+
+
+@router.post("/{team_id}/files-direct")
+async def upload_team_file(
+    org_id: str, team_id: str, file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Upload a file directly to the team."""
+    await _check_org_membership(db, org_id, current_user.id)
+    from app.models.team_file import TeamFile
+
+    upload_dir = f"uploads/teams/{team_id}/files"
+    os.makedirs(upload_dir, exist_ok=True)
+    safe_name = file.filename or "file"
+    stored = f"{upload_dir}/{datetime.now().timestamp()}_{safe_name}"
+    with open(stored, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    size = None
+    try:
+        size = os.path.getsize(stored)
+    except Exception:
+        pass
+
+    tf = TeamFile(
+        team_id=team_id,
+        uploaded_by=current_user.id,
+        file_name=safe_name,
+        file_path=stored,
+        file_size=size,
+    )
+    db.add(tf)
+    await db.commit()
+    await db.refresh(tf)
+    return {
+        "id": str(tf.id),
+        "file_name": tf.file_name,
+        "file_url": f"/api/{tf.file_path}",
+        "file_size": tf.file_size,
+        "created_at": tf.created_at.isoformat() if tf.created_at else None,
+        "uploader": {"id": str(current_user.id), "name": current_user.name, "avatar_url": current_user.avatar_url},
+    }
+
+
+@router.delete("/{team_id}/files-direct/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_team_file(
+    org_id: str, team_id: str, file_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a directly-uploaded team file (uploader or org owner/manager)."""
+    member = await _check_org_membership(db, org_id, current_user.id)
+    from app.models.team_file import TeamFile
+
+    res = await db.execute(select(TeamFile).where(TeamFile.id == file_id, TeamFile.team_id == team_id))
+    tf = res.scalar_one_or_none()
+    if not tf:
+        raise HTTPException(status_code=404, detail="File tidak ditemukan")
+    if str(tf.uploaded_by) != str(current_user.id) and member.role not in ("owner", "manager"):
+        raise HTTPException(status_code=403, detail="Hanya pengupload atau owner/manager yang bisa hapus")
+
+    try:
+        if tf.file_path and os.path.isfile(tf.file_path):
+            os.remove(tf.file_path)
+    except Exception:
+        pass
+    await db.delete(tf)
+    await db.commit()
+    return None
+
+
+@router.get("/{team_id}/docs")
+async def list_team_docs(
+    org_id: str, team_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List team wiki documents."""
+    await _check_org_membership(db, org_id, current_user.id)
+    from app.models.document import Document
+
+    res = await db.execute(
+        select(Document)
+        .where(Document.team_id == team_id)
+        .order_by(Document.updated_at.desc())
+    )
+    rows = res.scalars().all()
+    return [
+        {
+            "id": str(d.id),
+            "title": d.title,
+            "content": d.content,
+            "updated_at": d.updated_at.isoformat() if d.updated_at else None,
+        }
+        for d in rows
+    ]
+
+
+@router.post("/{team_id}/docs")
+async def create_team_doc(
+    org_id: str, team_id: str, data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Create a team wiki document."""
+    await _check_org_membership(db, org_id, current_user.id)
+    from app.models.document import Document
+
+    doc = Document(
+        team_id=team_id,
+        created_by=current_user.id,
+        title=(data.get("title") or "Tanpa Judul").strip() or "Tanpa Judul",
+        content=data.get("content") or "",
+    )
+    db.add(doc)
+    await db.commit()
+    await db.refresh(doc)
+    return {"id": str(doc.id), "title": doc.title, "content": doc.content}
+
+
+@router.patch("/{team_id}/docs/{doc_id}")
+async def update_team_doc(
+    org_id: str, team_id: str, doc_id: str, data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Update a team wiki document."""
+    await _check_org_membership(db, org_id, current_user.id)
+    from app.models.document import Document
+
+    res = await db.execute(select(Document).where(Document.id == doc_id, Document.team_id == team_id))
+    doc = res.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Dokumen tidak ditemukan")
+    if "title" in data and data["title"] is not None:
+        doc.title = data["title"].strip() or "Tanpa Judul"
+    if "content" in data and data["content"] is not None:
+        doc.content = data["content"]
+    await db.commit()
+    await db.refresh(doc)
+    return {"id": str(doc.id), "title": doc.title, "content": doc.content}
+
+
+@router.delete("/{team_id}/docs/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_team_doc(
+    org_id: str, team_id: str, doc_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a team wiki document."""
+    await _check_org_membership(db, org_id, current_user.id)
+    from app.models.document import Document
+
+    res = await db.execute(select(Document).where(Document.id == doc_id, Document.team_id == team_id))
+    doc = res.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Dokumen tidak ditemukan")
+    await db.delete(doc)
+    await db.commit()
+    return None
+
+
 # ============ Team Calendar / Event Endpoints ============
 
 @router.get("/{team_id}/events")

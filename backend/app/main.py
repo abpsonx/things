@@ -138,6 +138,34 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"[boot] events.team_id add skipped: {e}")
 
+        # Team documents (wiki) — make project_id nullable + add team_id
+        try:
+            await conn.execute(text("ALTER TABLE documents ALTER COLUMN project_id DROP NOT NULL"))
+        except Exception as e:
+            print(f"[boot] documents.project_id nullable skipped: {e}")
+        try:
+            await conn.execute(text(
+                "ALTER TABLE documents ADD COLUMN IF NOT EXISTS team_id UUID REFERENCES teams(id) ON DELETE CASCADE"
+            ))
+        except Exception as e:
+            print(f"[boot] documents.team_id add skipped: {e}")
+
+        # team_files — files uploaded directly to a team
+        try:
+            await conn.execute(text(
+                "CREATE TABLE IF NOT EXISTS team_files ("
+                " id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+                " team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,"
+                " uploaded_by UUID NOT NULL REFERENCES users(id),"
+                " file_name VARCHAR(255) NOT NULL,"
+                " file_path VARCHAR(512) NOT NULL,"
+                " file_size INTEGER,"
+                " created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()"
+                ")"
+            ))
+        except Exception as e:
+            print(f"[boot] team_files create skipped: {e}")
+
         # Reactions — emoji reactions on comments + chat messages
         try:
             await conn.execute(text(
