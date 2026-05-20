@@ -19,6 +19,10 @@ class Event(Base):
     description = Column(Text, nullable=True)
     start_at = Column(DateTime(timezone=True), nullable=False)
     end_at = Column(DateTime(timezone=True), nullable=True)
+    # "public" (semua anggota) | "private" (hanya peserta + pembuat)
+    visibility = Column(String(10), default="public", nullable=False)
+    # "meeting" | "event" | "sale" | "promo" | "other"
+    category = Column(String(20), default="meeting", nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     google_event_id = Column(String(255), nullable=True)
 

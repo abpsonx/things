@@ -162,6 +162,11 @@ async def lifespan(app: FastAPI):
             ))
         except Exception as e:
             print(f"[boot] events.team_id add skipped: {e}")
+        try:
+            await conn.execute(text("ALTER TABLE events ADD COLUMN IF NOT EXISTS visibility VARCHAR(10) DEFAULT 'public' NOT NULL"))
+            await conn.execute(text("ALTER TABLE events ADD COLUMN IF NOT EXISTS category VARCHAR(20) DEFAULT 'meeting' NOT NULL"))
+        except Exception as e:
+            print(f"[boot] events.visibility/category add skipped: {e}")
 
         # Team documents (wiki) — make project_id nullable + add team_id
         try:

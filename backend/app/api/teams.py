@@ -976,29 +976,45 @@ async def list_team_events(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List events for a team."""
+    """List events for a team.
+
+    Private events are only visible to their attendees + the creator.
+    """
     await _check_org_membership(db, org_id, current_user.id)
-    from app.models.event import Event
+    from app.models.event import Event, EventAttendee
 
     result = await db.execute(
         select(Event)
-        .options(selectinload(Event.creator))
+        .options(
+            selectinload(Event.creator),
+            selectinload(Event.attendees).selectinload(EventAttendee.user),
+        )
         .where(Event.team_id == team_id)
         .order_by(Event.start_at.asc())
     )
     rows = result.scalars().all()
-    return [
-        {
+    out = []
+    for e in rows:
+        attendee_ids = [str(a.user_id) for a in (e.attendees or [])]
+        if (e.visibility or "public") == "private":
+            if str(current_user.id) not in attendee_ids and str(e.created_by) != str(current_user.id):
+                continue
+        out.append({
             "id": str(e.id),
             "title": e.title,
             "description": e.description,
             "start_at": e.start_at.isoformat() if e.start_at else None,
             "end_at": e.end_at.isoformat() if e.end_at else None,
+            "visibility": e.visibility or "public",
+            "category": e.category or "meeting",
             "created_by": str(e.created_by),
             "creator": {"id": str(e.creator.id), "name": e.creator.name} if e.creator else None,
-        }
-        for e in rows
-    ]
+            "attendees": [
+                {"id": str(a.user_id), "name": a.user.name if a.user else "", "avatar_url": a.user.avatar_url if a.user else None}
+                for a in (e.attendees or [])
+            ],
+        })
+    return out
 
 
 @router.post("/{team_id}/events", status_code=status.HTTP_201_CREATED)
@@ -1007,9 +1023,14 @@ async def create_team_event(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Create a team event + notify members."""
+    """Create a team event + notify recipients.
+
+    Body: { title, description?, start_at, end_at?, visibility?, category?, attendee_ids?[] }.
+    visibility: "public" (default, semua) | "private" (hanya peserta).
+    Empty attendee_ids on a public event = whole team.
+    """
     await _check_org_membership(db, org_id, current_user.id)
-    from app.models.event import Event
+    from app.models.event import Event, EventAttendee
     from datetime import datetime as _dt
 
     title = (data.get("title") or "").strip()
@@ -1025,6 +1046,10 @@ async def create_team_event(
         except Exception:
             return None
 
+    visibility = data.get("visibility") if data.get("visibility") in ("public", "private") else "public"
+    category = data.get("category") if data.get("category") in ("meeting", "event", "sale", "promo", "other") else "meeting"
+    attendee_ids = data.get("attendee_ids") or []
+
     ev = Event(
         team_id=team_id,
         created_by=current_user.id,
@@ -1032,9 +1057,14 @@ async def create_team_event(
         description=data.get("description"),
         start_at=_parse(start_at),
         end_at=_parse(data.get("end_at")),
+        visibility=visibility,
+        category=category,
     )
     db.add(ev)
     await db.flush()
+
+    for uid in attendee_ids:
+        db.add(EventAttendee(event_id=ev.id, user_id=uid, status="invited"))
 
     await log_activity(
         db, org_id=org_id, user_id=current_user.id,
@@ -1042,18 +1072,25 @@ async def create_team_event(
         team_id=team_id, metadata={"title": title},
     )
 
-    # Notify team members except creator
+    # Decide notify targets: explicit attendees, else (public) whole team.
     from app.services.notification import notify_user
     team_res = await db.execute(select(Team).where(Team.id == team_id))
     team_row = team_res.scalar_one_or_none()
     team_name = team_row.name if team_row else "tim"
-    members_res = await db.execute(select(TeamMember).where(TeamMember.team_id == team_id))
-    for m in members_res.scalars().all():
-        if str(m.user_id) == str(current_user.id):
+    if attendee_ids:
+        notify_targets = [str(u) for u in attendee_ids]
+    elif visibility == "public":
+        members_res = await db.execute(select(TeamMember).where(TeamMember.team_id == team_id))
+        notify_targets = [str(m.user_id) for m in members_res.scalars().all()]
+    else:
+        notify_targets = []
+
+    for uid in notify_targets:
+        if uid == str(current_user.id):
             continue
         await notify_user(
             db,
-            user_id=str(m.user_id),
+            user_id=uid,
             type="event",
             title=f"Jadwal baru: {title}",
             content=f"{current_user.name} membuat jadwal di tim {team_name}",
@@ -1070,6 +1107,8 @@ async def create_team_event(
         "description": ev.description,
         "start_at": ev.start_at.isoformat() if ev.start_at else None,
         "end_at": ev.end_at.isoformat() if ev.end_at else None,
+        "visibility": ev.visibility,
+        "category": ev.category,
     }
 
 
