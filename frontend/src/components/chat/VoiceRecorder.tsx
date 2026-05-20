@@ -45,27 +45,48 @@ export default function VoiceRecorder({ onSend, disabled, className }: Props) {
   const start = async () => {
     if (disabled) return;
 
+    /* eslint-disable no-console */
+    console.log("[VoiceRecorder] start() clicked");
+    console.log("[VoiceRecorder] isSecureContext:", typeof window !== "undefined" ? window.isSecureContext : "n/a");
+    console.log("[VoiceRecorder] location.protocol:", typeof location !== "undefined" ? location.protocol : "n/a");
+    console.log("[VoiceRecorder] navigator.mediaDevices:", !!navigator.mediaDevices);
+    console.log("[VoiceRecorder] getUserMedia:", !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia));
+    console.log("[VoiceRecorder] MediaRecorder defined:", typeof MediaRecorder !== "undefined");
+
     // getUserMedia only exists in secure contexts (https or localhost).
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      console.error("[VoiceRecorder] mediaDevices/getUserMedia missing — likely non-HTTPS or unsupported browser");
       alert("Browser tidak mendukung rekam audio, atau halaman tidak diakses lewat HTTPS.");
       return;
     }
     if (typeof MediaRecorder === "undefined") {
+      console.error("[VoiceRecorder] MediaRecorder undefined");
       alert("Browser tidak mendukung MediaRecorder. Coba update Chrome/Safari.");
       return;
     }
 
+    // Surface enumerated devices for debugging
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const mics = devices.filter((d) => d.kind === "audioinput");
+      console.log("[VoiceRecorder] audioinput devices:", mics.length, mics.map((m) => ({ label: m.label, id: m.deviceId })));
+    } catch (e) {
+      console.warn("[VoiceRecorder] enumerateDevices failed", e);
+    }
+
     let stream: MediaStream;
     try {
+      console.log("[VoiceRecorder] requesting getUserMedia({ audio: true }) ...");
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log("[VoiceRecorder] getUserMedia OK, tracks:", stream.getAudioTracks().map((t) => ({ label: t.label, state: t.readyState, enabled: t.enabled })));
     } catch (err: any) {
       const name = err?.name || "";
+      console.error("[VoiceRecorder] getUserMedia FAILED:", { name, message: err?.message, err });
       let msg = "Tidak bisa akses mikrofon.";
       if (name === "NotAllowedError" || name === "SecurityError") msg = "Izin mikrofon ditolak. Aktifkan di setelan situs lalu reload.";
       else if (name === "NotReadableError" || name === "TrackStartError") msg = "Mikrofon sedang dipakai aplikasi lain (Zoom/Meet/dll). Tutup dulu lalu coba lagi.";
       else if (name === "NotFoundError" || name === "DevicesNotFoundError") msg = "Tidak ada perangkat mikrofon terdeteksi.";
-      else if (name) msg = `Gagal akses mikrofon (${name}).`;
-      console.error("getUserMedia failed:", err);
+      else if (name) msg = `Gagal akses mikrofon (${name}: ${err?.message || ""}).`;
       alert(msg);
       return;
     }
@@ -73,16 +94,19 @@ export default function VoiceRecorder({ onSend, disabled, className }: Props) {
     try {
       streamRef.current = stream;
       const mime = pickMime();
+      console.log("[VoiceRecorder] pickMime ->", mime || "(default)");
       // Construct the recorder; if the chosen mime is rejected, fall back
       // to the browser default (no options).
       let mr: MediaRecorder;
       try {
         mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
         mimeRef.current = mime || mr.mimeType || "";
-      } catch {
+      } catch (e) {
+        console.warn("[VoiceRecorder] MediaRecorder(mime) rejected, falling back to default", e);
         mr = new MediaRecorder(stream);
         mimeRef.current = mr.mimeType || "";
       }
+      console.log("[VoiceRecorder] MediaRecorder created, mimeType:", mr.mimeType, "state:", mr.state);
       chunksRef.current = [];
       cancelledRef.current = false;
 
@@ -104,12 +128,13 @@ export default function VoiceRecorder({ onSend, disabled, className }: Props) {
       };
 
       mr.start();
+      console.log("[VoiceRecorder] recording started, state:", mr.state);
       mediaRecorderRef.current = mr;
       setRecording(true);
       setSeconds(0);
       timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
     } catch (err: any) {
-      console.error("MediaRecorder failed:", err);
+      console.error("[VoiceRecorder] MediaRecorder start failed:", { name: err?.name, message: err?.message, err });
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
       alert(`Gagal memulai rekaman${err?.name ? ` (${err.name})` : ""}. Coba refresh halaman.`);
