@@ -29,6 +29,8 @@ import VoiceRecorder from "@/components/chat/VoiceRecorder";
 import VoiceNotePlayer, { isAudioFile } from "@/components/chat/VoiceNotePlayer";
 import api from "@/lib/api";
 import { socket } from "@/lib/socket";
+import { useTyping } from "@/lib/useTyping";
+import TypingIndicator from "@/components/chat/TypingIndicator";
 import { useAuthStore } from "@/store/useAuthStore";
 import TeamNav from "@/components/team/TeamNav";
 import { format } from "date-fns";
@@ -57,6 +59,11 @@ export default function TeamChatPage() {
   const orgId = params.id as string;
   const teamId = params.teamId as string;
   const { user: currentUser } = useAuthStore();
+
+  const { typingNames, onInput: onTypingInput, stopTyping } = useTyping(
+    teamId ? `team_${teamId}` : null,
+    currentUser ? { id: currentUser.id, name: currentUser.name } : null,
+  );
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
@@ -166,6 +173,7 @@ export default function TeamChatPage() {
     const contentToSend = newMessage;
     const parentIdToSend = replyTo?.id || null;
     setNewMessage("");
+    stopTyping();
     setReplyTo(null);
 
     try {
@@ -706,6 +714,9 @@ export default function TeamChatPage() {
             </button>
           </div>
         )}
+        <div className="max-w-5xl mx-auto h-5">
+          <TypingIndicator names={typingNames} />
+        </div>
         <form onSubmit={sendMessage} className="max-w-5xl mx-auto flex items-end gap-4">
           <div className="flex-1 relative group">
             <textarea
@@ -715,6 +726,7 @@ export default function TeamChatPage() {
               value={newMessage}
               onChange={(e) => {
                 setNewMessage(e.target.value);
+                onTypingInput();
                 e.target.style.height = 'auto';
                 e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
               }}

@@ -5,6 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import Modal from "@/components/ui/Modal";
 import api from "@/lib/api";
 import { socket } from "@/lib/socket";
+import { useTyping } from "@/lib/useTyping";
+import TypingIndicator from "@/components/chat/TypingIndicator";
 import {
   Send,
   Hash,
@@ -105,6 +107,12 @@ export default function ChatPage() {
   // them in the textarea as plain `@Name` (no uuid noise) and only expand
   // them to the full `@[Name](uuid)` token right before sending.
   const pickedMentionsRef = useRef<Map<string, string>>(new Map());
+
+  // Typing indicator (real-time via Socket.IO)
+  const { typingNames, onInput: onTypingInput, stopTyping } = useTyping(
+    activeChannel ? `channel_${activeChannel.id}` : null,
+    currentUser ? { id: currentUser.id, name: currentUser.name } : null,
+  );
 
   // Fetch Current User
   useEffect(() => {
@@ -640,6 +648,7 @@ export default function ChatPage() {
       }
 
       setNewMessage("");
+      stopTyping();
       pickedMentionsRef.current.clear();
       setAttachment(null);
       setUploadingFile(false);
@@ -1110,6 +1119,10 @@ export default function ChatPage() {
                 </div>
               )}
 
+              <div className="max-w-[1200px] mx-auto h-5">
+                <TypingIndicator names={typingNames} />
+              </div>
+
               <form onSubmit={handleSendMessage} className="flex items-end gap-4 max-w-[1200px] mx-auto relative">
                 <div className="flex-1 relative">
                   {/* Emoji Picker */}
@@ -1229,6 +1242,7 @@ export default function ChatPage() {
                         onChange={(e) => {
                           const val = e.target.value;
                           setNewMessage(val);
+                          onTypingInput();
                           e.target.style.height = 'auto';
                           e.target.style.height = Math.min(e.target.scrollHeight, 150) + 'px';
                           const caret = e.target.selectionStart ?? val.length;

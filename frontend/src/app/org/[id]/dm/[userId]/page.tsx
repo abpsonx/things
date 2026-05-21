@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import FileViewerModal from "@/components/ui/FileViewerModal";
 import VoiceRecorder from "@/components/chat/VoiceRecorder";
 import VoiceNotePlayer from "@/components/chat/VoiceNotePlayer";
+import TypingIndicator from "@/components/chat/TypingIndicator";
 
 const GI = (n: string) => { const e = (n || "").toLowerCase().split(".").pop() || ""; return { isImage: ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "ico"].includes(e), isVideo: ["mp4", "mov", "avi", "mkv", "wmv"].includes(e), isAudio: ["mp3", "wav", "ogg", "aac", "flac", "m4a", "webm"].includes(e) || (n || "").includes("voice-note"), isPdf: e === "pdf" } };
 
@@ -85,6 +86,7 @@ export default function DMChatPage() {
   const [un, setUn] = useState("");
   const [rm, setRm] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<any | null>(null);
+  const [tp, setTp] = useState<string | null>(null); // other person's name while they're typing
 
   const sc = useRef<HTMLDivElement>(null);
   const ws = useRef<WebSocket | null>(null);
@@ -94,6 +96,9 @@ export default function DMChatPage() {
   const pi = useRef<any>(null);
   const init = useRef(false);
   const connectWsRef = useRef<((cid: string) => void) | null>(null);
+  const tpExpiry = useRef<any>(null);   // clears the "typing" indicator after silence
+  const tpLastEmit = useRef(0);         // throttle outgoing typing pings
+  const tpStop = useRef<any>(null);     // sends typing:false after we stop typing
 
   // Store uid in ref so WS closure always has latest value
   const uidRef = useRef(uid);
@@ -132,6 +137,16 @@ export default function DMChatPage() {
           setMs(prev => prev.map(m => m.id === d.message.id ? { ...m, content: d.message.content, edited_at: d.message.edited_at || m.edited_at } : m));
         } else if (d.type === "dm_deleted") {
           setMs(prev => prev.filter(m => m.id !== d.message_id));
+        } else if (d.type === "dm_typing") {
+          if (d.user_id === uidRef.current) return;
+          if (d.typing) {
+            setTp(d.name || "Mengetik");
+            if (tpExpiry.current) clearTimeout(tpExpiry.current);
+            tpExpiry.current = setTimeout(() => setTp(null), 4000);
+          } else {
+            if (tpExpiry.current) clearTimeout(tpExpiry.current);
+            setTp(null);
+          }
         }
       } catch { }
     };
@@ -158,6 +173,24 @@ export default function DMChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [oid, tid]);
 
+  // ─── Typing indicator ──────────────────────────────────────────────────────
+  const sendTyping = (typing: boolean) => {
+    const w = ws.current;
+    if (!w || w.readyState !== WebSocket.OPEN) return;
+    try { w.send(JSON.stringify({ type: "typing", name: cu?.name, typing })); } catch { }
+  };
+  const onTypingInput = () => {
+    const now = Date.now();
+    if (now - tpLastEmit.current > 1500) { tpLastEmit.current = now; sendTyping(true); }
+    if (tpStop.current) clearTimeout(tpStop.current);
+    tpStop.current = setTimeout(() => { sendTyping(false); tpLastEmit.current = 0; }, 2500);
+  };
+  const stopTyping = () => {
+    if (tpStop.current) clearTimeout(tpStop.current);
+    sendTyping(false);
+    tpLastEmit.current = 0;
+  };
+
   // ─── Send ────────────────────────────────────────────────────────────────
   const sendMsg = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -171,7 +204,7 @@ export default function DMChatPage() {
       user: replyTo.user ? { id: replyTo.user.id, name: replyTo.user.name } : null,
     } : null;
     const o = { id, content: tx, user_id: uid, dm_channel_id: ch.id, created_at: new Date().toISOString(), attachment_url: null, attachment_name: null, is_read: false, is_delivered: false, reactions: {}, user: { id: uid, name: cu?.name, avatar_url: cu?.avatar_url }, parent_id: replyTo?.id || null, parent: replyParent, _opt: true };
-    setMs(p => [...p, o]); setTx(""); setReplyTo(null); scrollDown();
+    setMs(p => [...p, o]); setTx(""); stopTyping(); setReplyTo(null); scrollDown();
     try {
       const r = await api.post(`/dm/channels/${ch.id}/messages`, { content: o.content, temp_id: id, parent_id: replyTo?.id || null });
       setMs(prev => prev.map(m => m.id === id ? { ...r.data, reactions: r.data.reactions || {} } : m));
@@ -407,13 +440,14 @@ export default function DMChatPage() {
           <div className="flex-1 min-w-0"><p className="truncate font-medium">{un}</p><div className="h-1 bg-secondary rounded-full mt-1 overflow-hidden"><div className="h-full bg-primary rounded-full transition-all duration-300 ease-out" style={{ width: `${up}%` }} /></div></div>
           <span className="text-muted-foreground font-mono text-[10px] shrink-0">{Math.round(up)}%</span>
         </div>}
+        <div className="h-5"><TypingIndicator names={tp ? [tp] : []} /></div>
         <form onSubmit={sendMsg} className="flex gap-2 items-end">
           <input type="file" ref={fi} onChange={onFP} className="hidden" accept="*/*" />
           <button type="button" onClick={() => fi.current?.click()} disabled={up !== null} className="p-3 bg-secondary/50 rounded-xl hover:bg-secondary transition-colors disabled:opacity-40"><Paperclip className="w-5 h-5 text-muted-foreground" /></button>
           <div className="bg-secondary/50 rounded-xl flex items-center"><VoiceRecorder onSend={upload} /></div>
           <button type="button" onClick={() => setSe2(!se2)} className="p-3 bg-secondary/50 rounded-xl hover:bg-secondary transition-colors"><Smile className="w-5 h-5 text-muted-foreground" /></button>
           <div className="flex-1 relative">
-            <textarea value={tx} onChange={e => setTx(e.target.value)} onKeyDown={e => { if (e.nativeEvent.isComposing) return; if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMsg(); } }} placeholder="Tulis pesan..." rows={1} className="w-full px-4 py-3 bg-secondary/30 border border-border rounded-2xl focus:outline-none focus:ring-1 focus:ring-primary/20 transition-all text-sm resize-none" />
+            <textarea value={tx} onChange={e => { setTx(e.target.value); onTypingInput(); }} onKeyDown={e => { if (e.nativeEvent.isComposing) return; if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMsg(); } }} placeholder="Tulis pesan..." rows={1} className="w-full px-4 py-3 bg-secondary/30 border border-border rounded-2xl focus:outline-none focus:ring-1 focus:ring-primary/20 transition-all text-sm resize-none" />
           </div>
           <button type="submit" disabled={!tx.trim() || se || up !== null} className="p-3 bg-primary text-primary-foreground rounded-xl hover:shadow-lg transition-all disabled:opacity-50">{se ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}</button>
         </form>

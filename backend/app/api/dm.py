@@ -567,6 +567,20 @@ async def dm_websocket(
                 )
                 if data == "ping":
                     await websocket.send_text("pong")
+                    continue
+                # Relay typing indicator to the other participant(s)
+                try:
+                    parsed = json.loads(data)
+                except (ValueError, TypeError):
+                    parsed = None
+                if isinstance(parsed, dict) and parsed.get("type") == "typing":
+                    await dm_ws_manager.broadcast(channel_id, {
+                        "type": "dm_typing",
+                        "sender_id": user_id,
+                        "user_id": user_id,
+                        "name": parsed.get("name"),
+                        "typing": bool(parsed.get("typing")),
+                    })
             except asyncio.TimeoutError:
                 logger.warning(f"[DM-WS] Client timeout (no ping for 60s), closing {channel_id}")
                 break

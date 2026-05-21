@@ -75,6 +75,28 @@ async def send_message(sid, data):
             "created_at": "now" # In real usage, this comes from DB
         }, room=f"channel_{channel_id}")
 @sio.event
+async def typing(sid, data):
+    """Relay a typing indicator to everyone else in the room.
+
+    data: { room: "channel_<id>" | "team_<id>", user_id, name, typing: bool }
+    """
+    room = data.get("room")
+    if not room:
+        return
+    await sio.emit(
+        "typing",
+        {
+            "room": room,
+            "user_id": data.get("user_id"),
+            "name": data.get("name"),
+            "typing": bool(data.get("typing")),
+        },
+        room=room,
+        skip_sid=sid,
+    )
+
+
+@sio.event
 async def join_team(sid, team_id):
     if team_id:
         await sio.enter_room(sid, f"team_{team_id}")
