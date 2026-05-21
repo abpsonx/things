@@ -31,8 +31,6 @@ import {
   Download,
   File as FileIcon,
   UploadCloud,
-  Link2,
-  Ban,
 } from "lucide-react";
 import { useParams } from "next/navigation";
 import { cn, formatDate } from "@/lib/utils";
@@ -43,67 +41,6 @@ interface TaskDetailProps {
   taskId: string;
   projectId: string;
   onUpdate: () => void;
-}
-
-function DepPicker({
-  query,
-  setQuery,
-  tasks,
-  excludeIds,
-  onPick,
-  onClose,
-}: {
-  query: string;
-  setQuery: (q: string) => void;
-  tasks: any[];
-  excludeIds: string[];
-  onPick: (id: string) => void;
-  onClose: () => void;
-}) {
-  const q = query.trim().toLowerCase();
-  const exclude = new Set(excludeIds);
-  const filtered = tasks
-    .filter((t) => !exclude.has(t.id))
-    .filter((t) => !q || (t.title || "").toLowerCase().includes(q))
-    .slice(0, 8);
-
-  return (
-    <div className="border border-border rounded-xl bg-card p-2 space-y-1 shadow-sm">
-      <div className="relative">
-        <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-        <input
-          autoFocus
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Cari tugas..."
-          className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-border bg-background text-xs focus:outline-none focus:ring-2 focus:ring-primary/20"
-        />
-      </div>
-      <div className="max-h-48 overflow-y-auto">
-        {filtered.length === 0 ? (
-          <p className="px-2 py-3 text-xs text-muted-foreground text-center">
-            {q ? "Tidak ada yang cocok" : "Tidak ada tugas lain"}
-          </p>
-        ) : (
-          filtered.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => onPick(t.id)}
-              className="w-full text-left px-2 py-1.5 rounded-lg hover:bg-secondary text-xs font-semibold truncate"
-            >
-              {t.title}
-            </button>
-          ))
-        )}
-      </div>
-      <button
-        onClick={onClose}
-        className="w-full text-[11px] text-muted-foreground hover:text-foreground py-1"
-      >
-        Batal
-      </button>
-    </div>
-  );
 }
 
 export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, onUpdate }: TaskDetailProps) {
@@ -122,11 +59,6 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
   const [attachments, setAttachments] = useState<any[]>([]);
   const [isUploading, setIsUploading] = useState(false);
 
-  const [blocks, setBlocks] = useState<any[]>([]);
-  const [blockedBy, setBlockedBy] = useState<any[]>([]);
-  const [allTasks, setAllTasks] = useState<any[]>([]);
-  const [depPickerOpen, setDepPickerOpen] = useState<"blocks" | "blocked_by" | null>(null);
-  const [depQuery, setDepQuery] = useState("");
 
   const [members, setMembers] = useState<any[]>([]);
   const [availableLabels, setAvailableLabels] = useState<any[]>([]);
@@ -156,53 +88,20 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
   const fetchTaskDetail = async () => {
     setLoading(true);
     try {
-      const [taskRes, commentsRes, attachmentsRes, depsRes, allTasksRes] = await Promise.all([
+      const [taskRes, commentsRes, attachmentsRes] = await Promise.all([
         api.get(`/projects/${projectId}/tasks/${taskId}`),
         api.get(`/tasks/${taskId}/comments`),
         api.get(`/tasks/${taskId}/attachments`),
-        api.get(`/projects/${projectId}/tasks/${taskId}/dependencies`).catch(() => ({ data: { blocks: [], blocked_by: [] } })),
-        api.get(`/projects/${projectId}/tasks`).catch(() => ({ data: [] })),
       ]);
       setTask(taskRes.data);
       setDescription(taskRes.data.description || "");
       setComments(commentsRes.data);
       setSubtasks(taskRes.data.subtasks || []);
       setAttachments(attachmentsRes.data);
-      setBlocks(depsRes.data.blocks || []);
-      setBlockedBy(depsRes.data.blocked_by || []);
-      setAllTasks(allTasksRes.data || []);
     } catch (err) {
       console.error("Failed to fetch task detail", err);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const addDependency = async (otherId: string, type: "blocks" | "blocked_by") => {
-    try {
-      await api.post(`/projects/${projectId}/tasks/${taskId}/dependencies`, {
-        other_id: otherId,
-        type,
-      });
-      setDepPickerOpen(null);
-      setDepQuery("");
-      // refresh deps
-      const r = await api.get(`/projects/${projectId}/tasks/${taskId}/dependencies`);
-      setBlocks(r.data.blocks || []);
-      setBlockedBy(r.data.blocked_by || []);
-    } catch (err: any) {
-      alert(err?.response?.data?.detail || "Gagal menambah dependency");
-    }
-  };
-
-  const removeDependency = async (otherId: string) => {
-    try {
-      await api.delete(`/projects/${projectId}/tasks/${taskId}/dependencies/${otherId}`);
-      const r = await api.get(`/projects/${projectId}/tasks/${taskId}/dependencies`);
-      setBlocks(r.data.blocks || []);
-      setBlockedBy(r.data.blocked_by || []);
-    } catch (err: any) {
-      alert(err?.response?.data?.detail || "Gagal menghapus dependency");
     }
   };
 
@@ -535,112 +434,6 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
                 >
                   <Plus className="w-3 h-3" /> Tambah sub-task
                 </button>
-              )}
-            </div>
-          </div>
-
-          {/* Dependencies Section */}
-          <div className="space-y-4 pt-6 border-t border-border">
-            <div className="flex items-center gap-2 text-sm font-bold text-muted-foreground uppercase tracking-widest">
-              <Link2 className="w-4 h-4" />
-              Dependensi
-            </div>
-
-            {/* Blocked by */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
-                  Diblokir oleh
-                </span>
-                <button
-                  onClick={() => {
-                    setDepPickerOpen(depPickerOpen === "blocked_by" ? null : "blocked_by");
-                    setDepQuery("");
-                  }}
-                  className="text-[11px] font-bold text-primary hover:underline"
-                >
-                  + Tambah
-                </button>
-              </div>
-              {blockedBy.length === 0 && depPickerOpen !== "blocked_by" ? (
-                <p className="text-xs text-muted-foreground italic">Tidak ada</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {blockedBy.map((d) => (
-                    <span
-                      key={d.id}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-50 text-red-700 text-[11px] font-semibold border border-red-200"
-                    >
-                      <Ban className="w-3 h-3" />
-                      <span className="max-w-[180px] truncate">{d.title}</span>
-                      <button
-                        onClick={() => removeDependency(d.id)}
-                        className="hover:bg-red-100 rounded p-0.5"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-              {depPickerOpen === "blocked_by" && (
-                <DepPicker
-                  query={depQuery}
-                  setQuery={setDepQuery}
-                  tasks={allTasks}
-                  excludeIds={[taskId, ...blockedBy.map((d) => d.id), ...blocks.map((d) => d.id)]}
-                  onPick={(id: string) => addDependency(id, "blocked_by")}
-                  onClose={() => setDepPickerOpen(null)}
-                />
-              )}
-            </div>
-
-            {/* Blocks */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
-                  Memblokir
-                </span>
-                <button
-                  onClick={() => {
-                    setDepPickerOpen(depPickerOpen === "blocks" ? null : "blocks");
-                    setDepQuery("");
-                  }}
-                  className="text-[11px] font-bold text-primary hover:underline"
-                >
-                  + Tambah
-                </button>
-              </div>
-              {blocks.length === 0 && depPickerOpen !== "blocks" ? (
-                <p className="text-xs text-muted-foreground italic">Tidak ada</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {blocks.map((d) => (
-                    <span
-                      key={d.id}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 text-[11px] font-semibold border border-amber-200"
-                    >
-                      <Link2 className="w-3 h-3" />
-                      <span className="max-w-[180px] truncate">{d.title}</span>
-                      <button
-                        onClick={() => removeDependency(d.id)}
-                        className="hover:bg-amber-100 rounded p-0.5"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-              {depPickerOpen === "blocks" && (
-                <DepPicker
-                  query={depQuery}
-                  setQuery={setDepQuery}
-                  tasks={allTasks}
-                  excludeIds={[taskId, ...blockedBy.map((d) => d.id), ...blocks.map((d) => d.id)]}
-                  onPick={(id: string) => addDependency(id, "blocks")}
-                  onClose={() => setDepPickerOpen(null)}
-                />
               )}
             </div>
           </div>
