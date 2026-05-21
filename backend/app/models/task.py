@@ -1,7 +1,7 @@
 """Task, SubTask, and Attachment models."""
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Text, DateTime, Integer, ForeignKey, CheckConstraint
+from sqlalchemy import Column, String, Text, DateTime, Date, Integer, ForeignKey, CheckConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy import Boolean
@@ -32,6 +32,9 @@ class Task(Base):
     recurrence = Column(String(16), nullable=True)
     # Soft delete timestamp. NULL = active, otherwise hidden from boards.
     archived_at = Column(DateTime(timezone=True), nullable=True)
+    # Date (UTC) of the last deadline reminder sent, so we notify at most
+    # once per day per task instead of every scheduler tick.
+    last_reminded_on = Column(Date, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

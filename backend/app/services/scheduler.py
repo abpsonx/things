@@ -78,35 +78,49 @@ async def check_reminders():
             now = datetime.now(timezone.utc)
             tomorrow = now + timedelta(days=1)
             
+            today = now.date()
+            tomorrow_end = (now + timedelta(days=1)).replace(hour=23, minute=59, second=59, microsecond=0)
+
             async with async_session() as db:
-                # 1. Check Tasks due tomorrow
-                # Find tasks due within the next 24 hours that aren't done
-                # We should add a flag 'reminder_sent' to tasks to avoid spamming,
-                # but for simplicity, we'll check if due_date is exactly between tomorrow-1hr and tomorrow
-                start_window = tomorrow - timedelta(hours=1)
-                end_window = tomorrow
-                
+                # 1. Deadline reminders — at most ONCE per day per task.
+                # Cover tasks that are overdue or due within the next ~2 days
+                # (i.e. H-1 and hari-H). The `last_reminded_on` guard keeps the
+                # 5-minute tick from spamming the same task all day.
                 tasks_query = select(Task).where(
                     and_(
                         Task.status != "done",
-                        Task.due_date >= start_window,
-                        Task.due_date <= end_window
+                        Task.archived_at.is_(None),
+                        Task.assignee_id.isnot(None),
+                        Task.due_date.isnot(None),
+                        Task.due_date <= tomorrow_end,
+                        or_(
+                            Task.last_reminded_on.is_(None),
+                            Task.last_reminded_on < today,
+                        ),
                     )
                 )
-                
+
                 result = await db.execute(tasks_query)
                 tasks = result.scalars().all()
-                
+
                 for task in tasks:
-                    if task.assignee_id:
-                        print(f"[SCHEDULER] Sending reminder for task: {task.title}")
-                        await notify_user(
-                            db=db,
-                            user_id=task.assignee_id,
-                            type="deadline",
-                            content=f"Reminder: Task '{task.title}' deadline is tomorrow!",
-                            ref_id=str(task.id)
-                        )
+                    overdue = task.due_date < now
+                    if overdue:
+                        content = f"Tugas '{task.title}' sudah lewat deadline!"
+                    else:
+                        content = f"Reminder: deadline tugas '{task.title}' sudah dekat."
+                    print(f"[SCHEDULER] Sending daily reminder for task: {task.title}")
+                    await notify_user(
+                        db=db,
+                        user_id=task.assignee_id,
+                        type="deadline",
+                        content=content,
+                        ref_id=str(task.id)
+                    )
+                    task.last_reminded_on = today
+
+                if tasks:
+                    await db.commit()
 
                 # 2. Check Events starting in 1 hour
                 event_start_window = now + timedelta(hours=1)

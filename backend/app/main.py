@@ -114,6 +114,15 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"[boot] tasks.archived_at add skipped: {e}")
 
+        # last_reminded_on on tasks — the date (UTC) we last sent a deadline
+        # reminder, so the scheduler only notifies once per day per task.
+        try:
+            await conn.execute(text(
+                "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS last_reminded_on DATE"
+            ))
+        except Exception as e:
+            print(f"[boot] tasks.last_reminded_on add skipped: {e}")
+
         # Team announcements — make project_id nullable + add team_id
         try:
             await conn.execute(text("ALTER TABLE announcements ALTER COLUMN project_id DROP NOT NULL"))
