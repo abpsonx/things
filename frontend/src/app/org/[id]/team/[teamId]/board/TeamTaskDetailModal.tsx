@@ -6,6 +6,7 @@ import CustomSelect from "@/components/ui/Select";
 import Popover from "@/components/ui/Popover";
 import api from "@/lib/api";
 import MentionTextarea from "@/components/ui/MentionTextarea";
+import TaskActivityLog from "@/components/board/TaskActivityLog";
 import { 
   Clock, 
   MessageSquare, 
@@ -51,7 +52,8 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
   const [newComment, setNewComment] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  
+  const [logReload, setLogReload] = useState(0);
+
   const [subtasks, setSubtasks] = useState<any[]>([]);
   const [isAddingSubtask, setIsAddingSubtask] = useState(false);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
@@ -173,6 +175,7 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
       await api.put(`/organizations/${orgId}/teams/${teamId}/tasks/${taskId}`, updates);
       // Re-fetch full detail to get populated relationships (like assignee name)
       fetchTaskDetail();
+      setLogReload((n) => n + 1);
       onUpdate();
     } catch (err: any) {
       console.error("Failed to update task", err);
@@ -415,11 +418,14 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
             </div>
           </div>
 
-          {/* Activity / Comments */}
+          {/* Activity Log (audit trail) */}
+          <TaskActivityLog taskId={taskId} reloadKey={logReload} />
+
+          {/* Comments */}
           <div className="space-y-6 pt-6 border-t border-border">
             <div className="flex items-center gap-2 text-sm font-bold text-muted-foreground uppercase tracking-widest">
               <MessageSquare className="w-4 h-4" />
-              Aktivitas & Komentar
+              Komentar
             </div>
 
             {/* Comment Form */}

@@ -470,12 +470,14 @@ async def move_team_task(
     task.status = data.status
     task.position = data.position
 
-    await log_activity(
-        db, org_id=org_id, user_id=current_user.id,
-        action="task_moved", entity_type="task", entity_id=task.id,
-        team_id=team_id,
-        metadata={"old_status": old_status, "new_status": data.status, "position": data.position},
-    )
+    if old_status != data.status:
+        from app.services.task_activity import status_label
+        await log_activity(
+            db, org_id=org_id, user_id=current_user.id,
+            action="task_moved", entity_type="task", entity_id=task.id,
+            team_id=team_id,
+            metadata={"summary": [f"Status: {status_label(old_status)} → {status_label(data.status)}"]},
+        )
     await db.commit()
 
     result = await db.execute(
@@ -533,8 +535,23 @@ async def update_team_task(
         raise HTTPException(status_code=404, detail="Task tidak ditemukan")
 
     update_data = data.model_dump(exclude_unset=True)
+    old_status = task.status
+    old_values = {
+        "title": task.title, "description": task.description, "priority": task.priority,
+        "status": task.status, "assignee_id": task.assignee_id, "due_date": task.due_date,
+    }
     for key, value in update_data.items():
         setattr(task, key, value)
+
+    from app.services.task_activity import build_task_change_summary
+    summary = await build_task_change_summary(db, old_values, update_data)
+    if summary:
+        action = "task_moved" if "status" in update_data and update_data["status"] != old_status else "task_updated"
+        await log_activity(
+            db, org_id=org_id, user_id=current_user.id,
+            action=action, entity_type="task", entity_id=task.id,
+            team_id=team_id, metadata={"summary": summary},
+        )
 
     await db.commit()
 

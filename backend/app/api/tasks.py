@@ -397,6 +397,10 @@ async def update_task(
 
     update_data = data.model_dump(exclude_unset=True)
     old_status = task.status
+    old_values = {
+        "title": task.title, "description": task.description, "priority": task.priority,
+        "status": task.status, "assignee_id": task.assignee_id, "due_date": task.due_date,
+    }
 
     for key, value in update_data.items():
         setattr(task, key, value)
@@ -406,22 +410,16 @@ async def update_task(
         await _maybe_clone_recurring(db, task, project_id, current_user.id)
 
     action = "task_moved" if "status" in update_data and update_data["status"] != old_status else "task_updated"
-    meta = update_data.copy()
-    if action == "task_moved":
-        meta["old_status"] = old_status
 
-    import uuid as _uuid
-    for k, v in meta.items():
-        if hasattr(v, "isoformat"):
-            meta[k] = v.isoformat()
-        elif isinstance(v, _uuid.UUID):
-            meta[k] = str(v)
+    from app.services.task_activity import build_task_change_summary
+    summary = await build_task_change_summary(db, old_values, update_data)
 
-    await log_activity(
-        db, org_id=project.org_id, user_id=current_user.id,
-        action=action, entity_type="task", entity_id=task.id,
-        project_id=project_id, metadata=meta,
-    )
+    if summary:
+        await log_activity(
+            db, org_id=project.org_id, user_id=current_user.id,
+            action=action, entity_type="task", entity_id=task.id,
+            project_id=project_id, metadata={"summary": summary},
+        )
 
     if "assignee_id" in update_data and update_data["assignee_id"] and str(update_data["assignee_id"]) != str(current_user.id):
         from app.services.notification import notify_user
@@ -478,12 +476,14 @@ async def move_task(
     if old_status != "done" and task.status == "done" and task.recurrence:
         await _maybe_clone_recurring(db, task, project_id, current_user.id)
 
-    await log_activity(
-        db, org_id=project.org_id, user_id=current_user.id,
-        action="task_moved", entity_type="task", entity_id=task.id,
-        project_id=project_id,
-        metadata={"old_status": old_status, "new_status": data.status, "position": data.position},
-    )
+    if old_status != data.status:
+        from app.services.task_activity import status_label
+        await log_activity(
+            db, org_id=project.org_id, user_id=current_user.id,
+            action="task_moved", entity_type="task", entity_id=task.id,
+            project_id=project_id,
+            metadata={"summary": [f"Status: {status_label(old_status)} → {status_label(data.status)}"]},
+        )
     await db.commit()
 
     result = await db.execute(

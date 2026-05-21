@@ -6,6 +6,7 @@ import CustomSelect from "@/components/ui/Select";
 import Popover from "@/components/ui/Popover";
 import Reactions, { ReactionBucket } from "@/components/reactions/Reactions";
 import MentionTextarea from "@/components/ui/MentionTextarea";
+import TaskActivityLog from "@/components/board/TaskActivityLog";
 import api from "@/lib/api";
 import { 
   Clock, 
@@ -51,6 +52,7 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [description, setDescription] = useState("");
+  const [logReload, setLogReload] = useState(0);
   
   const [subtasks, setSubtasks] = useState<any[]>([]);
   const [isAddingSubtask, setIsAddingSubtask] = useState(false);
@@ -223,6 +225,7 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
       // Use server response — it includes derived fields like `assignee`
       // that don't come from the patch payload (only assignee_id does).
       setTask(res.data ? { ...task, ...res.data } : { ...task, ...updates });
+      setLogReload((n) => n + 1);
       onUpdate();
     } catch (err: any) {
       console.error("Failed to update task", err);
@@ -490,11 +493,14 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
             </div>
           </div>
 
-          {/* Activity / Comments */}
+          {/* Activity Log (audit trail) */}
+          <TaskActivityLog taskId={taskId} reloadKey={logReload} />
+
+          {/* Comments */}
           <div className="space-y-6 pt-6 border-t border-border">
             <div className="flex items-center gap-2 text-sm font-bold text-muted-foreground uppercase tracking-widest">
               <MessageSquare className="w-4 h-4" />
-              Aktivitas & Komentar
+              Komentar
             </div>
 
             {/* Comment Form */}
