@@ -116,3 +116,38 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
 }
+
+/* @mention dropdown for the rich text editor (Tiptap) */
+.mention-dropdown {
+  position: fixed;
+  z-index: 9999;
+  min-width: 200px;
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  padding: 4px;
+}
+.mention-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--foreground);
+  background: transparent;
+  cursor: pointer;
+}
+.mention-item.is-selected,
+.mention-item:hover {
+  background: var(--secondary);
+}
+/* The inserted mention chip inside the editor / rendered content */
+.mention {
+  color: #4f46e5;
+  font-weight: 600;
+}

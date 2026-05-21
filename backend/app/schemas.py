@@ -327,6 +327,7 @@ class EventCreate(BaseModel):
     start_at: datetime
     end_at: Optional[datetime] = None
     attendee_ids: List[UUID] = []
+    mention_ids: List[UUID] = []
 
 
 class EventResponse(BaseModel):
@@ -436,6 +437,7 @@ class DocumentResponse(BaseModel):
 class AnnouncementCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     content: str
+    mention_ids: List[UUID] = []
 
 class AnnouncementUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=255)

@@ -43,6 +43,29 @@ async def create_event(
                 )
                 db.add(attendee)
 
+        # Notify tagged people ("kamu di-tag di jadwal")
+        mention_ids = {str(u) for u in (data.mention_ids or [])}
+        if mention_ids:
+            from app.models.project import Project
+            from app.services.notification import notify_user
+            proj_res = await db.execute(select(Project).where(Project.id == project_id))
+            proj = proj_res.scalar_one_or_none()
+            proj_name = proj.name if proj else "proyek"
+            org_id = str(proj.org_id) if proj else None
+            for uid in mention_ids:
+                if uid == str(current_user.id):
+                    continue
+                await notify_user(
+                    db,
+                    user_id=uid,
+                    type="event",
+                    title=f"Kamu di-tag di jadwal: {data.title}",
+                    content=f"{current_user.name} menandai kamu di jadwal {proj_name}",
+                    ref_id=str(event.id),
+                    org_id=org_id,
+                    url=f"/org/{org_id}/project/{project_id}/calendar",
+                )
+
         await db.commit()
         await db.refresh(event)
         

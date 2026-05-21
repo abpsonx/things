@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
+import { extractMentionIds } from "@/components/ui/mentionSuggestion";
 import { useAuthStore } from "@/store/useAuthStore";
 
 interface Announcement {
@@ -36,12 +37,21 @@ export default function AnnouncementsPage() {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [members, setMembers] = useState<any[]>([]);
+
+  const memberOptions = members
+    .filter((m: any) => m.user)
+    .map((m: any) => ({ id: m.user_id || m.user.id, name: m.user.name, avatar_url: m.user.avatar_url }));
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await api.get(`/projects/${projectId}/announcements`);
-        setAnnouncements(res.data);
+        const [annRes, memRes] = await Promise.all([
+          api.get(`/projects/${projectId}/announcements`),
+          api.get(`/organizations/${orgId}/projects/${projectId}/members`),
+        ]);
+        setAnnouncements(annRes.data);
+        setMembers(memRes.data || []);
       } catch (err) {
         console.error("Failed to fetch announcements", err);
       } finally {
@@ -49,7 +59,7 @@ export default function AnnouncementsPage() {
       }
     };
     if (projectId) fetchData();
-  }, [projectId]);
+  }, [projectId, orgId]);
 
   const handleSubmit = async () => {
     if (!title || !content) return;
@@ -59,7 +69,7 @@ export default function AnnouncementsPage() {
         const res = await api.put(`/projects/${projectId}/announcements/${isEditing}`, { title, content });
         setAnnouncements(prev => prev.map(a => a.id === isEditing ? res.data : a));
       } else {
-        const res = await api.post(`/projects/${projectId}/announcements`, { title, content });
+        const res = await api.post(`/projects/${projectId}/announcements`, { title, content, mention_ids: extractMentionIds(content) });
         setAnnouncements(prev => [res.data, ...prev]);
       }
       resetForm();
@@ -147,7 +157,8 @@ export default function AnnouncementsPage() {
               <RichTextEditor
                 content={content}
                 onChange={setContent}
-                placeholder="Tulis isi pengumuman di sini..."
+                placeholder="Tulis isi pengumuman di sini... ketik @ untuk tag orang"
+                members={memberOptions}
               />
             </div>
             <div className="flex justify-end gap-3 pt-4">

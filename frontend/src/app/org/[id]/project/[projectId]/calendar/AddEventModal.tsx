@@ -14,6 +14,7 @@ import {
   X
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import MentionTextarea from "@/components/ui/MentionTextarea";
 
 interface AddEventModalProps {
   isOpen: boolean;
@@ -28,6 +29,7 @@ export default function AddEventModal({ isOpen, onClose, projectId, onSuccess }:
   const [startAt, setStartAt] = useState("");
   const [endAt, setEndAt] = useState("");
   const [attendeeIds, setAttendeeIds] = useState<string[]>([]);
+  const [mentionIds, setMentionIds] = useState<string[]>([]);
   const [members, setMembers] = useState<any[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -67,7 +69,8 @@ export default function AddEventModal({ isOpen, onClose, projectId, onSuccess }:
         description,
         start_at: new Date(startAt).toISOString(),
         end_at: endAt ? new Date(endAt).toISOString() : null,
-        attendee_ids: attendeeIds
+        attendee_ids: attendeeIds,
+        mention_ids: mentionIds
       });
       onSuccess();
       onClose();
@@ -76,6 +79,8 @@ export default function AddEventModal({ isOpen, onClose, projectId, onSuccess }:
       setDescription("");
       setStartAt("");
       setEndAt("");
+      setAttendeeIds([]);
+      setMentionIds([]);
     } catch (err: any) {
       setError(err.response?.data?.detail || "Gagal membuat event.");
     } finally {
@@ -217,10 +222,12 @@ export default function AddEventModal({ isOpen, onClose, projectId, onSuccess }:
             <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1">
               <AlignLeft className="w-3 h-3" /> Deskripsi
             </label>
-            <textarea
+            <MentionTextarea
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Tambahkan detail event..."
+              onChange={setDescription}
+              members={members.filter((m: any) => m.user).map((m: any) => ({ id: m.user.id, name: m.user.name, avatar_url: m.user.avatar_url }))}
+              onMentionsChange={setMentionIds}
+              placeholder="Tambahkan detail event... ketik @ untuk tag orang"
               className="w-full bg-secondary/20 border border-border rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all min-h-[100px] resize-none"
             />
           </div>

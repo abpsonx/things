@@ -19,6 +19,7 @@ import {
 import { cn } from "@/lib/utils";
 import TeamNav from "@/components/team/TeamNav";
 import MemberMultiSelect from "@/components/ui/MemberMultiSelect";
+import MentionTextarea from "@/components/ui/MentionTextarea";
 
 export default function TeamCalendarPage() {
   const params = useParams();
@@ -331,24 +332,13 @@ export default function TeamCalendarPage() {
                 />
               </div>
 
-              {/* Tag orang */}
-              <div className="space-y-2">
-                <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
-                  Tag orang
-                </label>
-                <MemberMultiSelect
-                  members={memberOptions}
-                  selectedIds={form.mentionIds}
-                  onChange={(ids) => setForm((f) => ({ ...f, mentionIds: ids }))}
-                  emptyLabel="Tidak ada yang di-tag"
-                />
-                <p className="text-[10px] text-muted-foreground italic">Orang yang di-tag akan dapat notifikasi khusus.</p>
-              </div>
-
-              <textarea
+              {/* Deskripsi — ketik @ untuk tag orang (dapat notifikasi khusus) */}
+              <MentionTextarea
                 value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                placeholder="Deskripsi (opsional)..."
+                onChange={(v) => setForm((f) => ({ ...f, description: v }))}
+                members={memberOptions}
+                onMentionsChange={(ids) => setForm((f) => ({ ...f, mentionIds: ids }))}
+                placeholder="Deskripsi (opsional)... ketik @ untuk tag orang"
                 className="w-full px-3 py-2.5 rounded-2xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm min-h-[70px] resize-none"
               />
             </div>

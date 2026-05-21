@@ -1,13 +1,16 @@
 "use client";
 
+import { useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import Link from '@tiptap/extension-link';
-import { 
-  Bold, Italic, Strikethrough, Code, Heading1, Heading2, 
+import Mention from '@tiptap/extension-mention';
+import { createMentionSuggestion, MentionMember } from './mentionSuggestion';
+import {
+  Bold, Italic, Strikethrough, Code, Heading1, Heading2,
   List, ListOrdered, CheckSquare, Quote, Undo, Redo, Link as LinkIcon
 } from 'lucide-react';
 
@@ -16,9 +19,16 @@ interface RichTextEditorProps {
   onChange: (content: string) => void;
   placeholder?: string;
   readOnly?: boolean;
+  /** When provided, typing "@" opens a member picker to tag people. */
+  members?: MentionMember[];
 }
 
-export function RichTextEditor({ content, onChange, placeholder = "Mulai menulis...", readOnly = false }: RichTextEditorProps) {
+export function RichTextEditor({ content, onChange, placeholder = "Mulai menulis...", readOnly = false, members }: RichTextEditorProps) {
+  // Keep the latest members in a ref so the (once-created) suggestion closure
+  // always sees freshly fetched members.
+  const membersRef = useRef<MentionMember[]>(members || []);
+  membersRef.current = members || [];
+
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -26,6 +36,10 @@ export function RichTextEditor({ content, onChange, placeholder = "Mulai menulis
       TaskList,
       TaskItem.configure({ nested: true }),
       Link.configure({ openOnClick: false }),
+      Mention.configure({
+        HTMLAttributes: { class: "mention" },
+        suggestion: createMentionSuggestion(() => membersRef.current),
+      }),
     ],
     content,
     editable: !readOnly,

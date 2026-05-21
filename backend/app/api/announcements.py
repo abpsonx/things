@@ -71,10 +71,27 @@ async def create_announcement(
         project_id=proj_id, metadata={"title": data.title}
     )
 
-    # Broadcast to all project members except the creator
     from app.services.notification import notify_user
+
+    # Tagged people get a distinct "kamu di-tag" ping (and skip the generic one).
+    mentioned = {str(u) for u in (data.mention_ids or [])}
+    for uid in mentioned:
+        if uid == str(current_user.id):
+            continue
+        await notify_user(
+            db,
+            user_id=uid,
+            type="announcement",
+            title=f"Kamu di-tag di pengumuman: {data.title}",
+            content=f"{current_user.name} menandai kamu di pengumuman {project.name}",
+            ref_id=str(announcement.id),
+            org_id=str(project.org_id),
+            url=f"/org/{project.org_id}/project/{proj_id}",
+        )
+
+    # Broadcast to all project members except the creator (and the tagged ones).
     for m in project.members:
-        if m.user_id == current_user.id:
+        if m.user_id == current_user.id or str(m.user_id) in mentioned:
             continue
         await notify_user(
             db,
