@@ -85,7 +85,9 @@ export default function TeamTaskCard({
         ) : <span />}
         <button
           type="button"
-          onClick={(e) => e.stopPropagation()}
+          title="Buka detail"
+          onClick={(e) => { e.stopPropagation(); onClick?.(); }}
+          onPointerDown={(e) => e.stopPropagation()}
           className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
         >
           <MoreHorizontal className="w-4 h-4" />

@@ -88,7 +88,7 @@ export default function MentionTextarea({
   return (
     <div className="relative">
       {query !== null && matches.length > 0 && (
-        <div className="absolute bottom-full left-0 mb-2 min-w-[200px] bg-card border border-border rounded-2xl shadow-xl overflow-hidden z-30 max-h-[220px] overflow-y-auto">
+        <div className="absolute top-full left-0 mt-1 min-w-[220px] bg-card border border-border rounded-2xl shadow-xl overflow-hidden z-50 max-h-[220px] overflow-y-auto">
           <div className="px-3 py-1.5 border-b border-border text-[10px] font-bold text-muted-foreground uppercase tracking-wide bg-secondary/30">Tag orang</div>
           {matches.map((m, i) => (
             <button
