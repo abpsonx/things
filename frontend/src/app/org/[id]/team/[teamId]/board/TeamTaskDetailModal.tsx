@@ -5,6 +5,7 @@ import Modal from "@/components/ui/Modal";
 import CustomSelect from "@/components/ui/Select";
 import Popover from "@/components/ui/Popover";
 import api from "@/lib/api";
+import MentionTextarea from "@/components/ui/MentionTextarea";
 import { 
   Clock, 
   MessageSquare, 
@@ -45,6 +46,7 @@ interface TeamTaskDetailProps {
 export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, onUpdate }: TeamTaskDetailProps) {
   const { id: orgId } = useParams();
   const [task, setTask] = useState<any>(null);
+  const [description, setDescription] = useState("");
   const [comments, setComments] = useState<any[]>([]);
   const [newComment, setNewComment] = useState("");
   const [loading, setLoading] = useState(true);
@@ -92,6 +94,7 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
         api.get(`/tasks/${taskId}/attachments`)
       ]);
       setTask(taskRes.data);
+      setDescription(taskRes.data.description || "");
       setComments(commentsRes.data);
       setSubtasks(taskRes.data.subtasks || []);
       setAttachments(attachmentsRes.data);
@@ -285,11 +288,13 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
               <AlignLeft className="w-4 h-4" />
               Deskripsi
             </div>
-            <textarea
-              defaultValue={task?.description}
-              onBlur={(e) => updateTask({ description: e.target.value })}
-              placeholder="Tambahkan deskripsi tugas..."
-              className="w-full text-sm text-foreground leading-relaxed bg-secondary/20 border border-transparent hover:border-border focus:bg-background focus:border-primary p-3 rounded-xl transition-all min-h-[100px] resize-none"
+            <MentionTextarea
+              value={description}
+              onChange={setDescription}
+              onBlur={() => { if (description !== (task?.description || "")) updateTask({ description }); }}
+              members={(members || []).filter((m: any) => m.user).map((m: any) => ({ id: m.user_id || m.user.id, name: m.user.name, avatar_url: m.user.avatar_url }))}
+              placeholder="Tambahkan deskripsi tugas... ketik @ untuk tag orang"
+              className="w-full text-sm text-foreground leading-relaxed bg-secondary/20 border border-transparent hover:border-border focus:bg-background focus:border-primary p-3 rounded-xl transition-all min-h-[100px] resize-none focus:outline-none"
             />
           </div>
 
