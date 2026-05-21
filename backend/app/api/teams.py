@@ -1181,8 +1181,25 @@ async def create_team_event(
     else:
         notify_targets = []
 
-    for uid in notify_targets:
+    # Tagged people get a distinct "kamu di-tag" ping (and skip the generic one).
+    mention_ids = [str(u) for u in (data.get("mention_ids") or [])]
+    mentioned = set(mention_ids)
+    for uid in mention_ids:
         if uid == str(current_user.id):
+            continue
+        await notify_user(
+            db,
+            user_id=uid,
+            type="event",
+            title=f"Kamu di-tag di jadwal: {title}",
+            content=f"{current_user.name} menandai kamu di jadwal tim {team_name}",
+            ref_id=str(ev.id),
+            org_id=str(org_id),
+            url=f"/org/{org_id}/team/{team_id}/calendar",
+        )
+
+    for uid in notify_targets:
+        if uid == str(current_user.id) or uid in mentioned:
             continue
         await notify_user(
             db,
@@ -1350,8 +1367,25 @@ async def create_team_announcement(
         members_res = await db.execute(select(TeamMember).where(TeamMember.team_id == team_id))
         notify_targets = [str(m.user_id) for m in members_res.scalars().all()]
 
-    for uid in notify_targets:
+    # Tagged people get a distinct "kamu di-tag" ping (and skip the generic one).
+    mention_ids = [str(u) for u in (data.get("mention_ids") or [])]
+    mentioned = set(mention_ids)
+    for uid in mention_ids:
         if uid == str(current_user.id):
+            continue
+        await notify_user(
+            db,
+            user_id=uid,
+            type="announcement",
+            title=f"Kamu di-tag di pengumuman: {title}",
+            content=f"{current_user.name} menandai kamu di pengumuman tim {team_name}",
+            ref_id=str(ann.id),
+            org_id=str(org_id),
+            url=f"/org/{org_id}/team/{team_id}/announcements",
+        )
+
+    for uid in notify_targets:
+        if uid == str(current_user.id) or uid in mentioned:
             continue
         await notify_user(
             db,

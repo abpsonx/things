@@ -59,6 +59,7 @@ export default function TeamAnnouncementsPage() {
   const [content, setContent] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
   const [recipientIds, setRecipientIds] = useState<string[]>([]); // empty = semua
+  const [mentionIds, setMentionIds] = useState<string[]>([]); // tagged → dapat notif
   const [submitting, setSubmitting] = useState(false);
 
   // Comments
@@ -105,6 +106,7 @@ export default function TeamAnnouncementsPage() {
         content,
         expires_at: expiresAt ? `${expiresAt}:00` : null,
         recipient_ids: recipientIds,
+        mention_ids: mentionIds,
       };
       if (isEditing) {
         await api.put(`/organizations/${orgId}/teams/${teamId}/announcements/${isEditing}`, payload);
@@ -136,6 +138,7 @@ export default function TeamAnnouncementsPage() {
     setContent("");
     setExpiresAt("");
     setRecipientIds([]);
+    setMentionIds([]);
     setIsCreating(false);
     setIsEditing(null);
   };
@@ -145,6 +148,7 @@ export default function TeamAnnouncementsPage() {
     setContent(a.content);
     setExpiresAt(a.expires_at ? a.expires_at.slice(0, 16) : "");
     setRecipientIds((a.recipients || []).map((r) => r.id));
+    setMentionIds([]);
     setIsEditing(a.id);
     setIsCreating(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -273,6 +277,20 @@ export default function TeamAnnouncementsPage() {
                     {recipientIds.length === 0 && (
                       <p className="text-[10px] text-muted-foreground italic">Kosongkan = dikirim ke semua anggota tim.</p>
                     )}
+                  </div>
+
+                  {/* Tag orang */}
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                      <Users className="w-3.5 h-3.5" /> Tag orang
+                    </label>
+                    <MemberMultiSelect
+                      members={memberOptions}
+                      selectedIds={mentionIds}
+                      onChange={setMentionIds}
+                      emptyLabel="Tidak ada yang di-tag"
+                    />
+                    <p className="text-[10px] text-muted-foreground italic">Orang yang di-tag akan dapat notifikasi khusus.</p>
                   </div>
 
                   <div className="flex justify-end gap-3 pt-2">

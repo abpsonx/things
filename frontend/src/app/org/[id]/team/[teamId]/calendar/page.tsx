@@ -37,6 +37,7 @@ export default function TeamCalendarPage() {
   const [form, setForm] = useState({
     title: "", description: "", date: "", time: "",
     visibility: "public", category: "meeting", attendeeIds: [] as string[],
+    mentionIds: [] as string[],
   });
   const [saving, setSaving] = useState(false);
 
@@ -104,6 +105,7 @@ export default function TeamCalendarPage() {
       visibility: "public",
       category: "meeting",
       attendeeIds: [],
+      mentionIds: [],
     });
     setIsAdding(true);
   };
@@ -128,6 +130,7 @@ export default function TeamCalendarPage() {
         visibility: form.visibility,
         category: form.category,
         attendee_ids: form.attendeeIds,
+        mention_ids: form.mentionIds,
       });
       setIsAdding(false);
       await fetchData();
@@ -326,6 +329,20 @@ export default function TeamCalendarPage() {
                   onChange={(ids) => setForm((f) => ({ ...f, attendeeIds: ids }))}
                   emptyLabel={form.visibility === "public" ? "Semua anggota tim" : "Pilih peserta"}
                 />
+              </div>
+
+              {/* Tag orang */}
+              <div className="space-y-2">
+                <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+                  Tag orang
+                </label>
+                <MemberMultiSelect
+                  members={memberOptions}
+                  selectedIds={form.mentionIds}
+                  onChange={(ids) => setForm((f) => ({ ...f, mentionIds: ids }))}
+                  emptyLabel="Tidak ada yang di-tag"
+                />
+                <p className="text-[10px] text-muted-foreground italic">Orang yang di-tag akan dapat notifikasi khusus.</p>
               </div>
 
               <textarea
