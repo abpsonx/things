@@ -1,7 +1,7 @@
 """Connected social media accounts (brand accounts) and their metric snapshots."""
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Text, DateTime, Date, Integer, ForeignKey
+from sqlalchemy import Column, String, Text, DateTime, Date, Integer, ForeignKey, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -26,6 +26,7 @@ class SocialAccount(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     metrics = relationship("SocialMetric", back_populates="account", cascade="all, delete-orphan")
+    posts = relationship("SocialPost", back_populates="account", cascade="all, delete-orphan")
 
 
 class SocialMetric(Base):
@@ -43,3 +44,29 @@ class SocialMetric(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     account = relationship("SocialAccount", back_populates="metrics")
+
+
+class SocialPost(Base):
+    """A published post pulled from the platform, with engagement counts.
+
+    Powers the posting calendar and per-post engagement view. Synced from
+    the Instagram media edge; refreshed so counts stay reasonably current.
+    """
+    __tablename__ = "social_posts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    account_id = Column(UUID(as_uuid=True), ForeignKey("social_accounts.id", ondelete="CASCADE"), nullable=False)
+    external_id = Column(String(255), nullable=False)  # platform media id
+    media_type = Column(String(30), nullable=True)  # IMAGE | VIDEO | CAROUSEL_ALBUM
+    caption = Column(Text, nullable=True)
+    permalink = Column(Text, nullable=True)
+    media_url = Column(Text, nullable=True)
+    thumbnail_url = Column(Text, nullable=True)
+    posted_at = Column(DateTime(timezone=True), nullable=True)  # when it was published
+    like_count = Column(Integer, nullable=True)
+    comments_count = Column(Integer, nullable=True)
+    fetched_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (UniqueConstraint("account_id", "external_id", name="uq_social_post_account_external"),)
+
+    account = relationship("SocialAccount", back_populates="posts")

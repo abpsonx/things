@@ -8,7 +8,7 @@ import hashlib
 import hmac
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlencode
 
 import httpx
@@ -22,7 +22,7 @@ from app.core.config import get_settings
 from app.core.security import create_access_token, decode_token
 from app.models.user import User
 from app.models.organization import OrgMember
-from app.models.social_account import SocialAccount, SocialMetric
+from app.models.social_account import SocialAccount, SocialMetric, SocialPost
 from app.dependencies import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -275,6 +275,66 @@ async def _ig_snapshot(db: AsyncSession, acc: SocialAccount) -> bool:
     return True
 
 
+def _parse_ig_time(value: str | None):
+    """IG timestamps look like 2024-05-22T10:30:00+0000 (no colon in offset)."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        try:
+            return datetime.strptime(value, "%Y-%m-%dT%H:%M:%S%z")
+        except ValueError:
+            return None
+
+
+async def _ig_sync_posts(db: AsyncSession, acc: SocialAccount, limit: int = 50) -> int:
+    """Pull recent media for `acc` and upsert into social_posts. Returns count.
+
+    Failures are swallowed (logged); the caller still serves cached posts.
+    """
+    if acc.platform != "instagram" or not acc.access_token:
+        return 0
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.get(f"{INSTAGRAM_GRAPH}/me/media", params={
+                "fields": "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count",
+                "limit": limit,
+                "access_token": acc.access_token,
+            })
+            data = r.json()
+    except httpx.HTTPError as exc:
+        logger.warning("IG posts sync HTTP error for %s: %s", acc.id, exc)
+        return 0
+    if not isinstance(data, dict) or "data" not in data:
+        logger.warning("IG posts sync API error for %s: %s", acc.id, data)
+        return 0
+
+    existing = await db.execute(select(SocialPost).where(SocialPost.account_id == acc.id))
+    by_external = {p.external_id: p for p in existing.scalars().all()}
+    now = datetime.now(timezone.utc)
+    count = 0
+    for item in data["data"]:
+        ext = str(item.get("id"))
+        if not ext:
+            continue
+        p = by_external.get(ext)
+        if not p:
+            p = SocialPost(account_id=acc.id, external_id=ext)
+            db.add(p)
+        p.media_type = item.get("media_type")
+        p.caption = item.get("caption")
+        p.permalink = item.get("permalink")
+        p.media_url = item.get("media_url")
+        p.thumbnail_url = item.get("thumbnail_url")
+        p.posted_at = _parse_ig_time(item.get("timestamp"))
+        p.like_count = item.get("like_count")
+        p.comments_count = item.get("comments_count")
+        p.fetched_at = now
+        count += 1
+    return count
+
+
 @router.get("/config", response_model=Any)
 async def sosmed_config(
     org_id: str,
@@ -391,4 +451,79 @@ async def account_metrics(
         }
         for m in rows.scalars().all()
     ]
-    return {"account": _account_out(acc), "latest": history[-1] if history else None, "history": history}
+    return {
+        "account": _account_out(acc),
+        "latest": history[-1] if history else None,
+        "history": history,
+        "deltas": _follower_deltas(history),
+    }
+
+
+def _follower_deltas(history: list[dict]) -> dict:
+    """Follower change vs the previous snapshot and vs ~7/30 days ago."""
+    pts = [(date.fromisoformat(h["date"]), h["followers"]) for h in history if h.get("followers") is not None]
+    if not pts:
+        return {"prev": None, "d7": None, "d30": None}
+    latest_date, latest_val = pts[-1]
+
+    def since(days: int):
+        cutoff = latest_date - timedelta(days=days)
+        in_window = [v for (d, v) in pts if d >= cutoff]
+        base = in_window[0] if in_window else pts[0][1]
+        return latest_val - base
+
+    return {
+        "prev": (latest_val - pts[-2][1]) if len(pts) >= 2 else None,
+        "d7": since(7),
+        "d30": since(30),
+    }
+
+
+@router.get("/accounts/{account_id}/posts", response_model=Any)
+async def account_posts(
+    org_id: str, account_id: str,
+    refresh: bool = False,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Posts for the calendar + per-post engagement view.
+
+    Syncs from Instagram when stale (>6h), missing, or `refresh=true`, then
+    returns stored posts newest-first.
+    """
+    await _require_member(db, org_id, current_user.id)
+    res = await db.execute(
+        select(SocialAccount).where(SocialAccount.id == account_id, SocialAccount.org_id == org_id)
+    )
+    acc = res.scalar_one_or_none()
+    if not acc:
+        raise HTTPException(status_code=404, detail="Akun tidak ditemukan")
+
+    newest = await db.execute(
+        select(SocialPost.fetched_at).where(SocialPost.account_id == acc.id)
+        .order_by(SocialPost.fetched_at.desc()).limit(1)
+    )
+    last_fetch = newest.scalar_one_or_none()
+    stale = last_fetch is None or (datetime.now(timezone.utc) - last_fetch) > timedelta(hours=6)
+    if refresh or stale:
+        await _ig_sync_posts(db, acc)
+        await db.commit()
+
+    rows = await db.execute(
+        select(SocialPost).where(SocialPost.account_id == acc.id).order_by(SocialPost.posted_at.desc().nullslast())
+    )
+    posts = [
+        {
+            "id": str(p.id),
+            "media_type": p.media_type,
+            "caption": p.caption,
+            "permalink": p.permalink,
+            "thumbnail_url": p.thumbnail_url or p.media_url,
+            "posted_at": p.posted_at.isoformat() if p.posted_at else None,
+            "like_count": p.like_count,
+            "comments_count": p.comments_count,
+            "engagement": (p.like_count or 0) + (p.comments_count or 0),
+        }
+        for p in rows.scalars().all()
+    ]
+    return {"posts": posts}

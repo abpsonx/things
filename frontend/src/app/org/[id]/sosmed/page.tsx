@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useParams } from "next/navigation";
 import api from "@/lib/api";
-import { Share2, Camera, Loader2, CalendarClock, Plus, Trash2, RefreshCw, Users, UserPlus, Image as ImageIcon, ChevronDown } from "lucide-react";
+import { Share2, Camera, Loader2, CalendarClock, Plus, Trash2, RefreshCw, Users, UserPlus, Image as ImageIcon, ChevronDown, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Minus, Heart, MessageCircle, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip } from "recharts";
 
@@ -22,11 +22,32 @@ interface MetricPoint {
   posts_count: number | null;
 }
 
+interface Deltas {
+  prev: number | null;
+  d7: number | null;
+  d30: number | null;
+}
+
 interface AccountMetrics {
   account: SocialAccount;
   latest: MetricPoint | null;
   history: MetricPoint[];
+  deltas: Deltas;
 }
+
+interface Post {
+  id: string;
+  media_type?: string | null;
+  caption?: string | null;
+  permalink?: string | null;
+  thumbnail_url?: string | null;
+  posted_at?: string | null;
+  like_count?: number | null;
+  comments_count?: number | null;
+  engagement: number;
+}
+
+type SubTab = "growth" | "calendar" | "posts";
 
 export default function SosmedPage() {
   const { id: orgId } = useParams();
@@ -34,8 +55,11 @@ export default function SosmedPage() {
   const [config, setConfig] = useState<{ instagram_ready: boolean; tiktok_ready: boolean } | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [subTab, setSubTab] = useState<SubTab>("growth");
   const [metrics, setMetrics] = useState<Record<string, AccountMetrics>>({});
   const [metricsLoading, setMetricsLoading] = useState<string | null>(null);
+  const [posts, setPosts] = useState<Record<string, Post[]>>({});
+  const [postsLoading, setPostsLoading] = useState<string | null>(null);
 
   const loadMetrics = async (accountId: string, refresh = false) => {
     setMetricsLoading(accountId);
@@ -52,13 +76,34 @@ export default function SosmedPage() {
     }
   };
 
+  const loadPosts = async (accountId: string, refresh = false) => {
+    setPostsLoading(accountId);
+    try {
+      const res = await api.get(
+        `/organizations/${orgId}/sosmed/accounts/${accountId}/posts`,
+        { params: refresh ? { refresh: true } : {} }
+      );
+      setPosts((prev) => ({ ...prev, [accountId]: res.data.posts || [] }));
+    } catch (err) {
+      console.error("Failed to load posts", err);
+    } finally {
+      setPostsLoading(null);
+    }
+  };
+
   const toggleExpand = (accountId: string) => {
     if (expandedId === accountId) {
       setExpandedId(null);
       return;
     }
     setExpandedId(accountId);
+    setSubTab("growth");
     if (!metrics[accountId]) loadMetrics(accountId);
+  };
+
+  const selectSubTab = (accountId: string, tab: SubTab) => {
+    setSubTab(tab);
+    if ((tab === "calendar" || tab === "posts") && !posts[accountId]) loadPosts(accountId);
   };
 
   const refresh = async () => {
@@ -205,54 +250,57 @@ export default function SosmedPage() {
                   </div>
 
                   {expanded && (
-                    <div className="border-t border-border p-4 space-y-4 bg-secondary/10">
-                      {metricsLoading === a.id && !m ? (
-                        <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
-                      ) : (
-                        <>
-                          {/* Stat tiles */}
-                          <div className="grid grid-cols-3 gap-2">
-                            <Stat icon={<Users className="w-3.5 h-3.5" />} label="Follower" value={m?.latest?.followers} />
-                            <Stat icon={<UserPlus className="w-3.5 h-3.5" />} label="Following" value={m?.latest?.following} />
-                            <Stat icon={<ImageIcon className="w-3.5 h-3.5" />} label="Postingan" value={m?.latest?.posts_count} />
-                          </div>
+                    <div className="border-t border-border bg-secondary/10">
+                      {/* Sub-tabs */}
+                      <div className="flex items-center gap-1 px-3 pt-3">
+                        {([
+                          { key: "growth", label: "Pertumbuhan" },
+                          { key: "calendar", label: "Kalender" },
+                          { key: "posts", label: "Postingan" },
+                        ] as { key: SubTab; label: string }[]).map((t) => (
+                          <button
+                            key={t.key}
+                            onClick={() => selectSubTab(a.id, t.key)}
+                            className={cn(
+                              "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all",
+                              subTab === t.key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary"
+                            )}
+                          >
+                            {t.label}
+                          </button>
+                        ))}
+                        <button
+                          onClick={() => (subTab === "growth" ? loadMetrics(a.id, true) : loadPosts(a.id, true))}
+                          disabled={metricsLoading === a.id || postsLoading === a.id}
+                          className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border text-xs font-semibold hover:bg-secondary transition-all disabled:opacity-50"
+                        >
+                          <RefreshCw className={cn("w-3.5 h-3.5", (metricsLoading === a.id || postsLoading === a.id) && "animate-spin")} /> Refresh
+                        </button>
+                      </div>
 
-                          {/* Follower growth chart */}
-                          {m && m.history.length > 1 ? (
-                            <div className="h-44 w-full">
-                              <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={m.history} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-                                  <defs>
-                                    <linearGradient id={`g-${a.id}`} x1="0" y1="0" x2="0" y2="1">
-                                      <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.4} />
-                                      <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
-                                    </linearGradient>
-                                  </defs>
-                                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                                  <XAxis dataKey="date" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(d) => d.slice(5)} />
-                                  <YAxis fontSize={10} tickLine={false} axisLine={false} width={40} allowDecimals={false} />
-                                  <RechartsTooltip />
-                                  <Area type="monotone" dataKey="followers" name="Follower" stroke="#8b5cf6" strokeWidth={2} fill={`url(#g-${a.id})`} />
-                                </AreaChart>
-                              </ResponsiveContainer>
-                            </div>
+                      <div className="p-4">
+                        {subTab === "growth" && (
+                          metricsLoading === a.id && !m ? (
+                            <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
                           ) : (
-                            <p className="text-xs text-muted-foreground text-center py-4">
-                              Grafik pertumbuhan muncul setelah ada minimal 2 hari data. Snapshot diambil otomatis tiap hari.
-                            </p>
-                          )}
-
-                          <div className="flex justify-end">
-                            <button
-                              onClick={() => loadMetrics(a.id, true)}
-                              disabled={metricsLoading === a.id}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-semibold hover:bg-secondary transition-all disabled:opacity-50"
-                            >
-                              <RefreshCw className={cn("w-3.5 h-3.5", metricsLoading === a.id && "animate-spin")} /> Refresh
-                            </button>
-                          </div>
-                        </>
-                      )}
+                            <GrowthTab accountId={a.id} m={m} />
+                          )
+                        )}
+                        {subTab === "calendar" && (
+                          postsLoading === a.id && !posts[a.id] ? (
+                            <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+                          ) : (
+                            <CalendarTab posts={posts[a.id] || []} />
+                          )
+                        )}
+                        {subTab === "posts" && (
+                          postsLoading === a.id && !posts[a.id] ? (
+                            <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+                          ) : (
+                            <PostsTab posts={posts[a.id] || []} followers={m?.latest?.followers ?? null} />
+                          )
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -282,6 +330,158 @@ function Stat({ icon, label, value }: { icon: React.ReactNode; label: string; va
       <p className="text-lg font-bold tabular-nums">
         {value != null ? value.toLocaleString("id-ID") : "—"}
       </p>
+    </div>
+  );
+}
+
+function DeltaBadge({ label, value }: { label: string; value?: number | null }) {
+  const has = value != null;
+  const up = (value ?? 0) > 0;
+  const down = (value ?? 0) < 0;
+  return (
+    <div className="rounded-xl border border-border bg-card p-2.5 text-center">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">{label}</p>
+      <div className={cn(
+        "flex items-center justify-center gap-1 text-sm font-bold tabular-nums",
+        !has && "text-muted-foreground", up && "text-emerald-600", down && "text-red-500"
+      )}>
+        {has && (up ? <ArrowUp className="w-3.5 h-3.5" /> : down ? <ArrowDown className="w-3.5 h-3.5" /> : <Minus className="w-3.5 h-3.5" />)}
+        {has ? `${up ? "+" : ""}${value!.toLocaleString("id-ID")}` : "—"}
+      </div>
+    </div>
+  );
+}
+
+function GrowthTab({ accountId, m }: { accountId: string; m?: AccountMetrics }) {
+  if (!m) return <p className="text-xs text-muted-foreground text-center py-4">Belum ada data.</p>;
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-3 gap-2">
+        <Stat icon={<Users className="w-3.5 h-3.5" />} label="Follower" value={m.latest?.followers} />
+        <Stat icon={<UserPlus className="w-3.5 h-3.5" />} label="Following" value={m.latest?.following} />
+        <Stat icon={<ImageIcon className="w-3.5 h-3.5" />} label="Postingan" value={m.latest?.posts_count} />
+      </div>
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Pertumbuhan Follower</p>
+        <div className="grid grid-cols-3 gap-2">
+          <DeltaBadge label="vs kemarin" value={m.deltas?.prev} />
+          <DeltaBadge label="7 hari" value={m.deltas?.d7} />
+          <DeltaBadge label="30 hari" value={m.deltas?.d30} />
+        </div>
+      </div>
+      {m.history.length > 1 ? (
+        <div className="h-44 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={m.history} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+              <defs>
+                <linearGradient id={`g-${accountId}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.4} />
+                  <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+              <XAxis dataKey="date" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(d) => d.slice(5)} />
+              <YAxis fontSize={10} tickLine={false} axisLine={false} width={40} allowDecimals={false} />
+              <RechartsTooltip />
+              <Area type="monotone" dataKey="followers" name="Follower" stroke="#8b5cf6" strokeWidth={2} fill={`url(#g-${accountId})`} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground text-center py-4">
+          Grafik pertumbuhan muncul setelah ada minimal 2 hari data. Snapshot diambil otomatis tiap hari halaman dibuka.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function CalendarTab({ posts }: { posts: Post[] }) {
+  const [month, setMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
+
+  const byDay = useMemo(() => {
+    const map: Record<string, Post[]> = {};
+    for (const p of posts) {
+      if (!p.posted_at) continue;
+      const d = new Date(p.posted_at);
+      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      (map[key] ||= []).push(p);
+    }
+    return map;
+  }, [posts]);
+
+  const year = month.getFullYear();
+  const mIdx = month.getMonth();
+  const firstWeekday = new Date(year, mIdx, 1).getDay();
+  const daysInMonth = new Date(year, mIdx + 1, 0).getDate();
+  const cells: (number | null)[] = [...Array(firstWeekday).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
+  const monthLabel = month.toLocaleDateString("id-ID", { month: "long", year: "numeric" });
+  const postsThisMonth = cells.reduce((s: number, day) => s + (day ? (byDay[`${year}-${mIdx}-${day}`]?.length || 0) : 0), 0);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <button onClick={() => setMonth(new Date(year, mIdx - 1, 1))} className="p-1.5 rounded-lg hover:bg-secondary"><ChevronLeft className="w-4 h-4" /></button>
+        <div className="text-center">
+          <p className="text-sm font-bold capitalize">{monthLabel}</p>
+          <p className="text-[11px] text-muted-foreground">{postsThisMonth} postingan bulan ini</p>
+        </div>
+        <button onClick={() => setMonth(new Date(year, mIdx + 1, 1))} className="p-1.5 rounded-lg hover:bg-secondary"><ChevronRight className="w-4 h-4" /></button>
+      </div>
+      <div className="grid grid-cols-7 gap-1 text-center">
+        {["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"].map((d, i) => (
+          <div key={i} className="text-[10px] font-semibold text-muted-foreground py-1">{d}</div>
+        ))}
+        {cells.map((day, i) => {
+          if (day == null) return <div key={i} />;
+          const dayPosts = byDay[`${year}-${mIdx}-${day}`] || [];
+          const has = dayPosts.length > 0;
+          const thumb = dayPosts.find((p) => p.thumbnail_url)?.thumbnail_url;
+          return (
+            <div key={i} className={cn(
+              "aspect-square rounded-lg border text-[11px] flex flex-col items-center justify-center relative overflow-hidden",
+              has ? "border-primary/40 font-bold" : "border-border text-muted-foreground"
+            )}>
+              {has && thumb && <img src={thumb} alt="" className="absolute inset-0 w-full h-full object-cover opacity-30" />}
+              <span className="relative">{day}</span>
+              {has && <span className="relative mt-0.5 px-1.5 rounded-full bg-primary text-primary-foreground text-[9px] leading-tight">{dayPosts.length}</span>}
+            </div>
+          );
+        })}
+      </div>
+      {posts.length === 0 && <p className="text-xs text-muted-foreground text-center py-2">Belum ada postingan terambil. Klik Refresh.</p>}
+    </div>
+  );
+}
+
+function PostsTab({ posts, followers }: { posts: Post[]; followers: number | null }) {
+  if (posts.length === 0) return <p className="text-xs text-muted-foreground text-center py-6">Belum ada postingan terambil. Klik Refresh.</p>;
+  return (
+    <div className="space-y-2">
+      {posts.map((p) => {
+        const rate = followers && followers > 0 ? (p.engagement / followers) * 100 : null;
+        return (
+          <a key={p.id} href={p.permalink || "#"} target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-3 rounded-xl border border-border bg-card p-2.5 hover:bg-secondary/40 transition-all">
+            <div className="w-12 h-12 rounded-lg bg-secondary overflow-hidden shrink-0 flex items-center justify-center">
+              {p.thumbnail_url ? <img src={p.thumbnail_url} alt="" className="w-full h-full object-cover" /> : <ImageIcon className="w-5 h-5 text-muted-foreground" />}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium truncate">{p.caption || "(tanpa caption)"}</p>
+              <p className="text-[11px] text-muted-foreground">
+                {p.posted_at ? new Date(p.posted_at).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : "—"}
+                {p.media_type ? ` · ${p.media_type.toLowerCase().replace("_", " ")}` : ""}
+              </p>
+            </div>
+            <div className="flex items-center gap-2.5 text-[11px] shrink-0">
+              <span className="flex items-center gap-1 text-rose-500"><Heart className="w-3.5 h-3.5" /> {(p.like_count ?? 0).toLocaleString("id-ID")}</span>
+              <span className="flex items-center gap-1 text-sky-500"><MessageCircle className="w-3.5 h-3.5" /> {(p.comments_count ?? 0).toLocaleString("id-ID")}</span>
+              {rate != null && <span className="text-muted-foreground tabular-nums" title="Engagement rate">{rate.toFixed(1)}%</span>}
+              <ExternalLink className="w-3 h-3 text-muted-foreground" />
+            </div>
+          </a>
+        );
+      })}
     </div>
   );
 }
