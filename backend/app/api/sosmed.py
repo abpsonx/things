@@ -470,6 +470,10 @@ async def connect_instagram(
         "response_type": "code",
         "scope": INSTAGRAM_SCOPES,
         "state": state,
+        # Force the consent screen so newly-added scopes (comments, messages)
+        # are actually granted on re-connect — avoids the flaky "remove app"
+        # step when Instagram caches an older grant.
+        "force_reauth": "true",
     }
     return {"auth_url": f"{INSTAGRAM_AUTH_URL}?{urlencode(params)}"}
 
