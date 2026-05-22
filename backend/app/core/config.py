@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     # Meta (Instagram / Facebook)
     META_CLIENT_ID: str = ""
     META_CLIENT_SECRET: str = ""
+    META_WEBHOOK_VERIFY_TOKEN: str = ""
 
     # TikTok
     TIKTOK_CLIENT_KEY: str = ""

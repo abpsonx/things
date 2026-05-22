@@ -368,6 +368,7 @@ app.include_router(file_index.router, prefix="/api")
 app.include_router(task_activities.router, prefix="/api")
 app.include_router(task_edit_requests.router, prefix="/api")
 app.include_router(sosmed.router, prefix="/api")
+app.include_router(sosmed.webhook_router, prefix="/api")
 
 
 # Static Files
