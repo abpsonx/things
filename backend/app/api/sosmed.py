@@ -666,7 +666,12 @@ async def list_comments(
         raise HTTPException(status_code=502, detail="Gagal mengambil komentar dari Instagram")
     if not isinstance(data, dict) or "data" not in data:
         msg = (data.get("error") or {}).get("message") if isinstance(data, dict) else None
+        logger.warning("IG comments error for media %s: %s", post.external_id, data)
         return {"comments": [], "error": msg or "Komentar tidak tersedia"}
+    if not data["data"] and (post.comments_count or 0) > 0:
+        # Empty edge despite a non-zero count usually means the token lacks
+        # the manage_comments permission (re-auth needed).
+        logger.info("IG comments empty for media %s (count=%s) — likely missing scope", post.external_id, post.comments_count)
     return {"comments": [_comment_out(c) for c in data["data"]]}
 
 

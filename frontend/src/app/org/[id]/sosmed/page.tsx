@@ -632,7 +632,15 @@ function PostRow({ post, followers, orgId, accountId }: { post: Post; followers:
           ) : (
             <>
               {err && <p className="text-[11px] text-amber-600">{err}</p>}
-              {comments && comments.length === 0 && !err && <p className="text-[11px] text-muted-foreground text-center py-2">Belum ada komentar.</p>}
+              {comments && comments.length === 0 && !err && (
+                (post.comments_count ?? 0) > 0 ? (
+                  <p className="text-[11px] text-amber-600 text-center py-2">
+                    Ada {post.comments_count} komentar tapi tidak bisa diambil — Hubungkan ulang akun dengan izin <b>kelola komentar</b>, lalu buka lagi.
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground text-center py-2">Belum ada komentar.</p>
+                )
+              )}
               {comments?.map((c) => (
                 <CommentItem key={c.id} c={c} orgId={orgId} accountId={accountId} onChange={loadComments} />
               ))}
