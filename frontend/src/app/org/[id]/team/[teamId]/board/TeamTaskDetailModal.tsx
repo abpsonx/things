@@ -527,8 +527,12 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
               align="right"
               trigger={
                 <div className="flex items-center gap-2 p-2 bg-background border border-border rounded-md hover:border-primary/30 transition-colors">
-                  <div className="w-5 h-5 rounded-full bg-secondary border border-border flex items-center justify-center text-[8px] font-bold text-muted-foreground">
-                    {task?.assignee?.name?.charAt(0) || "U"}
+                  <div className="w-5 h-5 rounded-full bg-secondary border border-border flex items-center justify-center text-[8px] font-bold text-muted-foreground overflow-hidden">
+                    {task?.assignee?.avatar_url ? (
+                      <img src={task.assignee.avatar_url} alt={task.assignee.name} className="w-full h-full object-cover" />
+                    ) : (
+                      task?.assignee?.name?.charAt(0) || "U"
+                    )}
                   </div>
                   <span className="text-xs font-medium">{task?.assignee?.name || "Unassigned"}</span>
                 </div>
@@ -550,8 +554,12 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
                       className="w-full flex items-center justify-between p-2 hover:bg-secondary rounded-md text-xs group"
                     >
                       <div className="flex items-center gap-2">
-                        <div className="w-5 h-5 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-[8px] font-bold text-primary">
-                          {m.user?.name?.charAt(0)}
+                        <div className="w-5 h-5 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-[8px] font-bold text-primary overflow-hidden">
+                          {m.user?.avatar_url ? (
+                            <img src={m.user.avatar_url} alt={m.user?.name} className="w-full h-full object-cover" />
+                          ) : (
+                            m.user?.name?.charAt(0)
+                          )}
                         </div>
                         {m.user?.name}
                       </div>
