@@ -39,13 +39,36 @@ export default function SosmedPage() {
     if (orgId) refresh();
   }, [orgId]);
 
-  const connect = (platform: string, ready: boolean) => {
+  // Surface the Instagram OAuth callback result, then strip the query params.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("ig_connected")) {
+      alert("Instagram berhasil terhubung! 🎉");
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (params.get("ig_error")) {
+      alert(`Gagal menghubungkan Instagram: ${params.get("ig_error")}`);
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+
+  const connect = async (platform: string, ready: boolean) => {
     if (!ready) {
       alert("Integrasi belum dikonfigurasi. Selesaikan dulu setup developer app (Meta / TikTok) — lihat checklist dari Claude.");
       return;
     }
-    // OAuth connect flow wired in the next step (once dev-app creds exist).
-    alert("Koneksi OAuth sedang disiapkan untuk tahap berikutnya.");
+    if (platform === "instagram") {
+      try {
+        const res = await api.get(`/organizations/${orgId}/sosmed/connect/instagram`);
+        window.location.href = res.data.auth_url; // hop to instagram.com to authorize
+      } catch (err) {
+        console.error("Failed to start Instagram connect", err);
+        alert("Gagal memulai koneksi Instagram. Coba lagi.");
+      }
+      return;
+    }
+    // TikTok OAuth wired in a later step.
+    alert("Koneksi TikTok sedang disiapkan untuk tahap berikutnya.");
   };
 
   const disconnect = async (id: string) => {
