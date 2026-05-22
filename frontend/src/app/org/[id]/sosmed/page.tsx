@@ -3,8 +3,9 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import api from "@/lib/api";
-import { Share2, Camera, Loader2, TrendingUp, CalendarClock, Plus, Trash2 } from "lucide-react";
+import { Share2, Camera, Loader2, CalendarClock, Plus, Trash2, RefreshCw, Users, UserPlus, Image as ImageIcon, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip } from "recharts";
 
 interface SocialAccount {
   id: string;
@@ -14,11 +15,51 @@ interface SocialAccount {
   avatar_url?: string | null;
 }
 
+interface MetricPoint {
+  date: string;
+  followers: number | null;
+  following: number | null;
+  posts_count: number | null;
+}
+
+interface AccountMetrics {
+  account: SocialAccount;
+  latest: MetricPoint | null;
+  history: MetricPoint[];
+}
+
 export default function SosmedPage() {
   const { id: orgId } = useParams();
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
   const [config, setConfig] = useState<{ instagram_ready: boolean; tiktok_ready: boolean } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [metrics, setMetrics] = useState<Record<string, AccountMetrics>>({});
+  const [metricsLoading, setMetricsLoading] = useState<string | null>(null);
+
+  const loadMetrics = async (accountId: string, refresh = false) => {
+    setMetricsLoading(accountId);
+    try {
+      const res = await api.get(
+        `/organizations/${orgId}/sosmed/accounts/${accountId}/metrics`,
+        { params: refresh ? { refresh: true } : {} }
+      );
+      setMetrics((prev) => ({ ...prev, [accountId]: res.data }));
+    } catch (err) {
+      console.error("Failed to load metrics", err);
+    } finally {
+      setMetricsLoading(null);
+    }
+  };
+
+  const toggleExpand = (accountId: string) => {
+    if (expandedId === accountId) {
+      setExpandedId(null);
+      return;
+    }
+    setExpandedId(accountId);
+    if (!metrics[accountId]) loadMetrics(accountId);
+  };
 
   const refresh = async () => {
     try {
@@ -105,7 +146,7 @@ export default function SosmedPage() {
       </div>
 
       <div className="rounded-2xl border border-dashed border-border bg-secondary/20 p-4 text-xs text-muted-foreground">
-        🚧 <span className="font-semibold text-foreground">Tahap 1 (fondasi).</span> Tombol hubungkan akan aktif begitu developer app Instagram &amp; TikTok selesai disiapkan. Pantau pertumbuhan &amp; jadwal post menyusul.
+        📊 <span className="font-semibold text-foreground">Instagram aktif.</span> Hubungkan akun brand, klik akun untuk lihat pertumbuhan follower. Snapshot diambil otomatis tiap hari. TikTok &amp; penjadwalan post menyusul.
       </div>
 
       {/* Connect platforms */}
@@ -142,37 +183,105 @@ export default function SosmedPage() {
           </div>
         ) : (
           <div className="space-y-2">
-            {accounts.map((a) => (
-              <div key={a.id} className="flex items-center justify-between rounded-2xl border border-border bg-card p-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-secondary border border-border flex items-center justify-center overflow-hidden text-xs font-bold">
-                    {a.avatar_url ? <img src={a.avatar_url} alt="" className="w-full h-full object-cover" /> : (a.display_name || a.username || "?").charAt(0).toUpperCase()}
+            {accounts.map((a) => {
+              const expanded = expandedId === a.id;
+              const m = metrics[a.id];
+              return (
+                <div key={a.id} className="rounded-2xl border border-border bg-card overflow-hidden">
+                  <div className="flex items-center justify-between p-3">
+                    <button onClick={() => toggleExpand(a.id)} className="flex items-center gap-3 flex-1 text-left min-w-0">
+                      <div className="w-9 h-9 rounded-full bg-secondary border border-border flex items-center justify-center overflow-hidden text-xs font-bold shrink-0">
+                        {a.avatar_url ? <img src={a.avatar_url} alt="" className="w-full h-full object-cover" /> : (a.display_name || a.username || "?").charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold truncate">{a.display_name || a.username}</p>
+                        <p className="text-[11px] text-muted-foreground capitalize">{a.platform} · @{a.username}</p>
+                      </div>
+                      <ChevronDown className={cn("w-4 h-4 text-muted-foreground transition-transform shrink-0", expanded && "rotate-180")} />
+                    </button>
+                    <button onClick={() => disconnect(a.id)} className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all shrink-0">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
-                  <div>
-                    <p className="text-sm font-bold">{a.display_name || a.username}</p>
-                    <p className="text-[11px] text-muted-foreground capitalize">{a.platform} · @{a.username}</p>
-                  </div>
+
+                  {expanded && (
+                    <div className="border-t border-border p-4 space-y-4 bg-secondary/10">
+                      {metricsLoading === a.id && !m ? (
+                        <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+                      ) : (
+                        <>
+                          {/* Stat tiles */}
+                          <div className="grid grid-cols-3 gap-2">
+                            <Stat icon={<Users className="w-3.5 h-3.5" />} label="Follower" value={m?.latest?.followers} />
+                            <Stat icon={<UserPlus className="w-3.5 h-3.5" />} label="Following" value={m?.latest?.following} />
+                            <Stat icon={<ImageIcon className="w-3.5 h-3.5" />} label="Postingan" value={m?.latest?.posts_count} />
+                          </div>
+
+                          {/* Follower growth chart */}
+                          {m && m.history.length > 1 ? (
+                            <div className="h-44 w-full">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <AreaChart data={m.history} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                                  <defs>
+                                    <linearGradient id={`g-${a.id}`} x1="0" y1="0" x2="0" y2="1">
+                                      <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.4} />
+                                      <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                                    </linearGradient>
+                                  </defs>
+                                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                                  <XAxis dataKey="date" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(d) => d.slice(5)} />
+                                  <YAxis fontSize={10} tickLine={false} axisLine={false} width={40} allowDecimals={false} />
+                                  <RechartsTooltip />
+                                  <Area type="monotone" dataKey="followers" name="Follower" stroke="#8b5cf6" strokeWidth={2} fill={`url(#g-${a.id})`} />
+                                </AreaChart>
+                              </ResponsiveContainer>
+                            </div>
+                          ) : (
+                            <p className="text-xs text-muted-foreground text-center py-4">
+                              Grafik pertumbuhan muncul setelah ada minimal 2 hari data. Snapshot diambil otomatis tiap hari.
+                            </p>
+                          )}
+
+                          <div className="flex justify-end">
+                            <button
+                              onClick={() => loadMetrics(a.id, true)}
+                              disabled={metricsLoading === a.id}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-semibold hover:bg-secondary transition-all disabled:opacity-50"
+                            >
+                              <RefreshCw className={cn("w-3.5 h-3.5", metricsLoading === a.id && "animate-spin")} /> Refresh
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <button onClick={() => disconnect(a.id)} className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all">
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
 
       {/* Coming soon */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="rounded-2xl border border-border bg-card p-5 opacity-70">
-          <div className="flex items-center gap-2 font-bold mb-1"><TrendingUp className="w-4 h-4 text-primary" /> Pertumbuhan Akun</div>
-          <p className="text-xs text-muted-foreground">Grafik follower &amp; engagement harian. Segera.</p>
-        </div>
+      <div className="grid grid-cols-1 gap-4">
         <div className="rounded-2xl border border-border bg-card p-5 opacity-70">
           <div className="flex items-center gap-2 font-bold mb-1"><CalendarClock className="w-4 h-4 text-primary" /> Jadwal Post</div>
           <p className="text-xs text-muted-foreground">Bikin &amp; jadwalkan postingan ke IG/TikTok. Segera.</p>
         </div>
       </div>
+    </div>
+  );
+}
+
+function Stat({ icon, label, value }: { icon: React.ReactNode; label: string; value?: number | null }) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-3 text-center">
+      <div className="flex items-center justify-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+        {icon} {label}
+      </div>
+      <p className="text-lg font-bold tabular-nums">
+        {value != null ? value.toLocaleString("id-ID") : "—"}
+      </p>
     </div>
   );
 }

@@ -232,6 +232,49 @@ def _account_out(a: SocialAccount) -> dict:
     }
 
 
+async def _ig_snapshot(db: AsyncSession, acc: SocialAccount) -> bool:
+    """Pull live IG numbers for `acc`, refresh its profile, upsert today's metric.
+
+    Returns True on success. Network/API failures are swallowed (logged) so a
+    flaky Instagram call never breaks the page that triggered it.
+    """
+    if acc.platform != "instagram" or not acc.access_token:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.get(f"{INSTAGRAM_GRAPH}/me", params={
+                "fields": "user_id,username,name,profile_picture_url,followers_count,follows_count,media_count",
+                "access_token": acc.access_token,
+            })
+            data = r.json()
+    except httpx.HTTPError as exc:
+        logger.warning("IG snapshot HTTP error for %s: %s", acc.id, exc)
+        return False
+    if not isinstance(data, dict) or "error" in data:
+        logger.warning("IG snapshot API error for %s: %s", acc.id, data)
+        return False
+
+    if data.get("username"):
+        acc.username = data["username"]
+    if data.get("name") or data.get("username"):
+        acc.display_name = data.get("name") or data.get("username")
+    if data.get("profile_picture_url"):
+        acc.avatar_url = data["profile_picture_url"]
+
+    today = datetime.now(timezone.utc).date()
+    res = await db.execute(
+        select(SocialMetric).where(SocialMetric.account_id == acc.id, SocialMetric.date == today)
+    )
+    m = res.scalar_one_or_none()
+    if not m:
+        m = SocialMetric(account_id=acc.id, date=today)
+        db.add(m)
+    m.followers = data.get("followers_count")
+    m.following = data.get("follows_count")
+    m.posts_count = data.get("media_count")
+    return True
+
+
 @router.get("/config", response_model=Any)
 async def sosmed_config(
     org_id: str,
@@ -306,3 +349,46 @@ async def connect_instagram(
         "state": state,
     }
     return {"auth_url": f"{INSTAGRAM_AUTH_URL}?{urlencode(params)}"}
+
+
+@router.get("/accounts/{account_id}/metrics", response_model=Any)
+async def account_metrics(
+    org_id: str, account_id: str,
+    refresh: bool = False,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Growth history for a connected account.
+
+    Snapshots once per day automatically when this is opened (or now, if
+    `refresh=true`), so history accumulates without a background worker.
+    """
+    await _require_member(db, org_id, current_user.id)
+    res = await db.execute(
+        select(SocialAccount).where(SocialAccount.id == account_id, SocialAccount.org_id == org_id)
+    )
+    acc = res.scalar_one_or_none()
+    if not acc:
+        raise HTTPException(status_code=404, detail="Akun tidak ditemukan")
+
+    today = datetime.now(timezone.utc).date()
+    has_today = await db.execute(
+        select(SocialMetric.id).where(SocialMetric.account_id == acc.id, SocialMetric.date == today)
+    )
+    if refresh or has_today.scalar_one_or_none() is None:
+        await _ig_snapshot(db, acc)
+        await db.commit()
+
+    rows = await db.execute(
+        select(SocialMetric).where(SocialMetric.account_id == acc.id).order_by(SocialMetric.date.asc())
+    )
+    history = [
+        {
+            "date": m.date.isoformat(),
+            "followers": m.followers,
+            "following": m.following,
+            "posts_count": m.posts_count,
+        }
+        for m in rows.scalars().all()
+    ]
+    return {"account": _account_out(acc), "latest": history[-1] if history else None, "history": history}
