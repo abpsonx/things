@@ -692,11 +692,21 @@ async def list_comments(
     if found:
         return {"comments": [_comment_out(c) for c in found]}
 
-    # Nothing came back — surface the raw responses so we can see why.
+    # comments_count > 0 but the list is empty with paging cursors present:
+    # the classic Development-mode signature — Meta filters out comments from
+    # people without a role on the app. Needs App Review (Advanced Access) +
+    # Live mode to read comments from real users.
     if (post.comments_count or 0) > 0:
-        logger.warning("IG comments empty media %s count=%s. edge=%s node=%s scopes=%s",
-                       post.external_id, post.comments_count, edge, node, acc.scopes)
-        return {"comments": [], "error": f"IG balikin kosong. edge={edge} | node={node}"}
+        logger.warning("IG comments empty media %s count=%s (likely dev-mode filtering). edge=%s node=%s",
+                       post.external_id, post.comments_count, edge, node)
+        return {
+            "comments": [],
+            "error": (
+                f"Ada {post.comments_count} komentar tapi disembunyikan Instagram karena app masih mode "
+                "Development (hanya komentar dari admin/tester app yang tampil). Perlu App Review "
+                "(Advanced Access) + mode Live untuk baca komentar customer."
+            ),
+        }
     return {"comments": []}
 
 
