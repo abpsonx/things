@@ -663,33 +663,41 @@ async def list_comments(
     if not post:
         raise HTTPException(status_code=404, detail="Postingan tidak ditemukan")
 
+    fields = "id,text,username,timestamp,like_count,hidden,replies{id,text,username,timestamp}"
     try:
         async with httpx.AsyncClient(timeout=20) as client:
-            r = await client.get(f"{INSTAGRAM_GRAPH}/{post.external_id}/comments", params={
-                "fields": "id,text,username,timestamp,like_count,hidden,replies{id,text,username,timestamp}",
-                "access_token": acc.access_token,
+            # Strategy A: the comments edge.
+            ra = await client.get(f"{INSTAGRAM_GRAPH}/{post.external_id}/comments", params={
+                "fields": fields, "access_token": acc.access_token,
             })
-            data = r.json()
+            edge = ra.json()
+            edge_list = edge.get("data") if isinstance(edge, dict) else None
+
+            # Strategy B (fallback): comments expanded on the media node.
+            node = None
+            node_list = None
+            if not edge_list:
+                rb = await client.get(f"{INSTAGRAM_GRAPH}/{post.external_id}", params={
+                    "fields": f"comments_count,comments{{{fields}}}",
+                    "access_token": acc.access_token,
+                })
+                node = rb.json()
+                node_list = ((node.get("comments") or {}).get("data")
+                             if isinstance(node, dict) else None)
     except httpx.HTTPError as exc:
         logger.warning("IG comments fetch error for %s: %s", post.external_id, exc)
         raise HTTPException(status_code=502, detail="Gagal mengambil komentar dari Instagram")
-    if not isinstance(data, dict) or "data" not in data:
-        msg = (data.get("error") or {}).get("message") if isinstance(data, dict) else None
-        logger.warning("IG comments error for media %s: %s", post.external_id, data)
-        return {"comments": [], "error": msg or "Komentar tidak tersedia"}
-    if not data["data"] and (post.comments_count or 0) > 0:
-        # Empty edge despite a non-zero count usually means the token lacks
-        # the manage_comments permission. Show what was actually granted.
-        granted = acc.scopes or "(belum tercatat — hubungkan ulang akun)"
-        has_comments = acc.scopes and "manage_comments" in acc.scopes
-        logger.warning("IG comments empty media %s count=%s. Granted: %s", post.external_id, post.comments_count, acc.scopes)
-        hint = (
-            "Izin kelola komentar SUDAH ada tapi IG tetap balikin kosong — kemungkinan keterbatasan API."
-            if has_comments else
-            "Izin kelola komentar BELUM ada di token — hubungkan ulang akun."
-        )
-        return {"comments": [], "error": f"{hint} (izin: {granted})"}
-    return {"comments": [_comment_out(c) for c in data["data"]]}
+
+    found = edge_list or node_list or []
+    if found:
+        return {"comments": [_comment_out(c) for c in found]}
+
+    # Nothing came back — surface the raw responses so we can see why.
+    if (post.comments_count or 0) > 0:
+        logger.warning("IG comments empty media %s count=%s. edge=%s node=%s scopes=%s",
+                       post.external_id, post.comments_count, edge, node, acc.scopes)
+        return {"comments": [], "error": f"IG balikin kosong. edge={edge} | node={node}"}
+    return {"comments": []}
 
 
 @router.post("/accounts/{account_id}/comments/{comment_id}/reply", response_model=Any)
