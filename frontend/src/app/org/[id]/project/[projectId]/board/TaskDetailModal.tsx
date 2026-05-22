@@ -7,6 +7,8 @@ import Popover from "@/components/ui/Popover";
 import Reactions, { ReactionBucket } from "@/components/reactions/Reactions";
 import MentionTextarea from "@/components/ui/MentionTextarea";
 import TaskActivityLog from "@/components/board/TaskActivityLog";
+import TaskEditBanner from "@/components/board/TaskEditBanner";
+import { useTaskEditAccess } from "@/lib/useTaskEditAccess";
 import api from "@/lib/api";
 import { 
   Clock, 
@@ -53,6 +55,7 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
   const [submitting, setSubmitting] = useState(false);
   const [description, setDescription] = useState("");
   const [logReload, setLogReload] = useState(0);
+  const { access, canEdit, requestEdit, resolve } = useTaskEditAccess(taskId, isOpen);
   
   const [subtasks, setSubtasks] = useState<any[]>([]);
   const [isAddingSubtask, setIsAddingSubtask] = useState(false);
@@ -220,6 +223,12 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
   };
 
   const updateTask = async (updates: any) => {
+    // Status/position changes are free; other edits need permission.
+    const onlyStatus = Object.keys(updates).every((k) => k === "status" || k === "position");
+    if (!onlyStatus && !canEdit) {
+      alert("Kamu belum punya izin mengedit task ini. Minta izin ke pembuat task lewat tombol di atas.");
+      return;
+    }
     try {
       const res = await api.put(`/projects/${projectId}/tasks/${taskId}`, updates);
       // Use server response — it includes derived fields like `assignee`
@@ -357,11 +366,14 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
             </div>
           </div>
         )}
+      <div className="mb-6">
+        <TaskEditBanner access={access} onRequest={requestEdit} onResolve={resolve} />
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-10 gap-8">
         {/* Main Content */}
         <div className="md:col-span-7 space-y-8">
           {/* Description */}
-          <div className="space-y-3">
+          <div className={cn("space-y-3", !canEdit && "pointer-events-none opacity-60")}>
             <div className="flex items-center gap-2 text-sm font-bold text-muted-foreground uppercase tracking-widest">
               <AlignLeft className="w-4 h-4" />
               Deskripsi
@@ -566,6 +578,7 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
             />
           </div>
 
+          <div className={cn("space-y-6", !canEdit && "pointer-events-none opacity-60")}>
           <div className="space-y-2">
             <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1">
               <AlertCircle className="w-3 h-3" /> Priority
@@ -677,6 +690,7 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
                 </div>
               </div>
             </Popover>
+          </div>
           </div>
 
           <div className="space-y-2">

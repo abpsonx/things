@@ -7,6 +7,8 @@ import Popover from "@/components/ui/Popover";
 import api from "@/lib/api";
 import MentionTextarea from "@/components/ui/MentionTextarea";
 import TaskActivityLog from "@/components/board/TaskActivityLog";
+import TaskEditBanner from "@/components/board/TaskEditBanner";
+import { useTaskEditAccess } from "@/lib/useTaskEditAccess";
 import { 
   Clock, 
   MessageSquare, 
@@ -53,6 +55,7 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [logReload, setLogReload] = useState(0);
+  const { access, canEdit, requestEdit, resolve } = useTaskEditAccess(taskId, isOpen);
 
   const [subtasks, setSubtasks] = useState<any[]>([]);
   const [isAddingSubtask, setIsAddingSubtask] = useState(false);
@@ -171,6 +174,11 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
   };
 
   const updateTask = async (updates: any) => {
+    const onlyStatus = Object.keys(updates).every((k) => k === "status" || k === "position");
+    if (!onlyStatus && !canEdit) {
+      alert("Kamu belum punya izin mengedit task ini. Minta izin ke pembuat task lewat tombol di atas.");
+      return;
+    }
     try {
       await api.put(`/organizations/${orgId}/teams/${teamId}/tasks/${taskId}`, updates);
       // Re-fetch full detail to get populated relationships (like assignee name)
@@ -282,11 +290,14 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
         />
       }
     >
+      <div className="mb-4">
+        <TaskEditBanner access={access} onRequest={requestEdit} onResolve={resolve} />
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-10 gap-8 max-h-[80vh] overflow-y-auto pr-2 scrollbar-thin">
         {/* Main Content */}
         <div className="md:col-span-7 space-y-8">
           {/* Description */}
-          <div className="space-y-3">
+          <div className={cn("space-y-3", !canEdit && "pointer-events-none opacity-60")}>
             <div className="flex items-center gap-2 text-sm font-bold text-muted-foreground uppercase tracking-widest">
               <AlignLeft className="w-4 h-4" />
               Deskripsi
@@ -483,6 +494,7 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
             />
           </div>
 
+          <div className={cn("space-y-6", !canEdit && "pointer-events-none opacity-60")}>
           <div className="space-y-2">
             <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1">
               <AlertCircle className="w-3 h-3" /> Priority
@@ -569,6 +581,7 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
                 </div>
               </div>
             </Popover>
+          </div>
           </div>
 
           <div className="pt-6 border-t border-border mt-4 space-y-2">

@@ -20,6 +20,7 @@ from app.models.board_column import BoardColumn
 from app.models.poll import Poll, PollVote
 from app.models.reaction import Reaction
 from app.models.team_file import TeamFile
+from app.models.task_edit_request import TaskEditRequest
 
 __all__ = [
     "User",
@@ -43,4 +44,5 @@ __all__ = [
     "Reaction",
     "TeamFile",
     "AnnouncementRecipient", "AnnouncementComment",
+    "TaskEditRequest",
 ]

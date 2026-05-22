@@ -396,6 +396,15 @@ async def update_task(
         raise HTTPException(status_code=404, detail="Task tidak ditemukan")
 
     update_data = data.model_dump(exclude_unset=True)
+
+    # Edit permission: status/position changes are free for everyone; any other
+    # field change requires being the creator, a manager/owner, or having an
+    # approved edit grant.
+    if not set(update_data.keys()) <= {"status", "position"}:
+        from app.services.task_permissions import user_can_edit_task
+        if not await user_can_edit_task(db, task, current_user):
+            raise HTTPException(status_code=403, detail="Kamu belum punya izin mengedit task ini. Minta izin ke pembuat task.")
+
     old_status = task.status
     old_values = {
         "title": task.title, "description": task.description, "priority": task.priority,

@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 
 from app.core.config import get_settings
 from app.core.database import engine, Base
-from app.api import auth, projects, teams, organizations, channels, tasks, attachments, events, comments, subtasks, labels, notifications, search, stats, settings as settings_api, dm, google, documents, reports, announcements, board_columns, polls, reactions, file_index, task_activities
+from app.api import auth, projects, teams, organizations, channels, tasks, attachments, events, comments, subtasks, labels, notifications, search, stats, settings as settings_api, dm, google, documents, reports, announcements, board_columns, polls, reactions, file_index, task_activities, task_edit_requests
 
 
 settings = get_settings()
@@ -113,6 +113,22 @@ async def lifespan(app: FastAPI):
             ))
         except Exception as e:
             print(f"[boot] tasks.archived_at add skipped: {e}")
+
+        # task_edit_requests — request/approve edit access to a task
+        try:
+            await conn.execute(text(
+                "CREATE TABLE IF NOT EXISTS task_edit_requests ("
+                " id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+                " task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,"
+                " requester_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,"
+                " status VARCHAR(10) NOT NULL DEFAULT 'pending',"
+                " created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),"
+                " resolved_at TIMESTAMP WITH TIME ZONE,"
+                " resolved_by UUID REFERENCES users(id) ON DELETE SET NULL"
+                ")"
+            ))
+        except Exception as e:
+            print(f"[boot] task_edit_requests create skipped: {e}")
 
         # last_reminded_on on tasks — the date (UTC) we last sent a deadline
         # reminder, so the scheduler only notifies once per day per task.
@@ -350,6 +366,7 @@ app.include_router(polls.router, prefix="/api")
 app.include_router(reactions.router, prefix="/api")
 app.include_router(file_index.router, prefix="/api")
 app.include_router(task_activities.router, prefix="/api")
+app.include_router(task_edit_requests.router, prefix="/api")
 
 
 # Static Files
