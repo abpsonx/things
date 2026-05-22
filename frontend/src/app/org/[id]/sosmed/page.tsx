@@ -415,10 +415,17 @@ function GrowthTab({ accountId, m }: { accountId: string; m?: AccountMetrics }) 
       </div>
 
       {/* Deltas for the selected metric */}
-      <div className="grid grid-cols-3 gap-2">
-        <DeltaBadge label="vs kemarin" value={d?.prev} />
-        <DeltaBadge label="7 hari" value={d?.d7} />
-        <DeltaBadge label="30 hari" value={d?.d30} />
+      <div>
+        <div className="grid grid-cols-3 gap-2">
+          <DeltaBadge label="vs kemarin" value={d?.prev} />
+          <DeltaBadge label="7 hari" value={d?.d7} />
+          <DeltaBadge label="30 hari" value={d?.d30} />
+        </div>
+        {m.history.length < 2 && (
+          <p className="text-[10px] text-muted-foreground mt-1.5 text-center">
+            Data baru 1 hari — pertumbuhan mulai keisi besok (butuh ≥2 hari snapshot).
+          </p>
+        )}
       </div>
 
       {/* Trend chart for the selected metric */}

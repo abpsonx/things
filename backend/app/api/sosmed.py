@@ -527,9 +527,13 @@ async def account_metrics(
 
 
 def _series_deltas(history: list[dict], key: str) -> dict:
-    """Change in `key` vs the previous snapshot and vs ~7/30 days ago."""
+    """Change in `key` vs the previous snapshot and vs ~7/30 days ago.
+
+    Needs at least two data points — a single snapshot has nothing to compare
+    against, so everything is null (shown as "—") until day two.
+    """
     pts = [(date.fromisoformat(h["date"]), h[key]) for h in history if h.get(key) is not None]
-    if not pts:
+    if len(pts) < 2:
         return {"prev": None, "d7": None, "d30": None}
     latest_date, latest_val = pts[-1]
 
