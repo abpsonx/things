@@ -190,7 +190,7 @@ export default function SosmedPage() {
   ];
 
   return (
-    <div className="max-w-5xl mx-auto space-y-8 pb-24 p-6">
+    <div className="w-full space-y-8 pb-24 p-6">
       {/* Header */}
       <div className="space-y-1">
         <h2 className="text-3xl font-bold tracking-tight flex items-center gap-2">
@@ -369,8 +369,26 @@ const GROWTH_META: Record<GrowthMetric, { label: string; color: string }> = {
   saves: { label: "Save", color: "#f59e0b" },
 };
 
+const PERIODS: { label: string; days: number }[] = [
+  { label: "7 hari", days: 7 },
+  { label: "30 hari", days: 30 },
+  { label: "90 hari", days: 90 },
+  { label: "Semua", days: 0 },
+];
+
 function GrowthTab({ accountId, m }: { accountId: string; m?: AccountMetrics }) {
   const [metric, setMetric] = useState<GrowthMetric>("followers");
+  const [periodDays, setPeriodDays] = useState<number>(30);
+
+  const chartData = useMemo(() => {
+    const hist = m?.history ?? [];
+    if (!periodDays) return hist;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - periodDays);
+    cutoff.setHours(0, 0, 0, 0);
+    return hist.filter((h) => new Date(h.date) >= cutoff);
+  }, [m, periodDays]);
+
   if (!m) return <p className="text-xs text-muted-foreground text-center py-4">Belum ada data.</p>;
   const meta = GROWTH_META[metric];
   const d = m.deltas?.[metric];
@@ -428,11 +446,27 @@ function GrowthTab({ accountId, m }: { accountId: string; m?: AccountMetrics }) 
         )}
       </div>
 
+      {/* Period filter */}
+      <div className="flex items-center justify-end gap-1">
+        {PERIODS.map((p) => (
+          <button
+            key={p.days}
+            onClick={() => setPeriodDays(p.days)}
+            className={cn(
+              "px-2 py-1 rounded-md text-[10px] font-semibold transition-all",
+              periodDays === p.days ? "bg-secondary text-foreground ring-1 ring-border" : "text-muted-foreground hover:bg-secondary/60"
+            )}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+
       {/* Trend chart for the selected metric */}
-      {m.history.length > 1 ? (
+      {chartData.length > 1 ? (
         <div className="h-44 w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={m.history} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+            <AreaChart data={chartData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
               <defs>
                 <linearGradient id={`g-${accountId}`} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor={meta.color} stopOpacity={0.4} />
