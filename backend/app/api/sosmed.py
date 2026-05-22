@@ -4,6 +4,7 @@ Foundation only for now: list/disconnect accounts and report whether the
 platform OAuth apps are configured. The OAuth connect flow and metric/post
 sync are wired in once the Meta + TikTok developer apps exist.
 """
+import asyncio
 import hashlib
 import hmac
 import logging
@@ -31,8 +32,9 @@ logger = logging.getLogger(__name__)
 INSTAGRAM_AUTH_URL = "https://www.instagram.com/oauth/authorize"
 INSTAGRAM_TOKEN_URL = "https://api.instagram.com/oauth/access_token"
 INSTAGRAM_GRAPH = "https://graph.instagram.com"
-# Minimal scope to read profile + media; posting/messaging scopes added later.
-INSTAGRAM_SCOPES = "instagram_business_basic"
+# Read profile + media + insights (reach/saved/shares). Posting/messaging
+# scopes added later. Adding a scope here requires users to re-authorize.
+INSTAGRAM_SCOPES = "instagram_business_basic,instagram_business_manage_insights"
 
 router = APIRouter(prefix="/organizations/{org_id}/sosmed", tags=["Social Media"])
 
@@ -278,12 +280,18 @@ async def _ig_snapshot(db: AsyncSession, acc: SocialAccount) -> bool:
     await _ig_sync_posts(db, acc)
     await db.flush()
     agg = await db.execute(
-        select(func.sum(SocialPost.like_count), func.sum(SocialPost.comments_count))
-        .where(SocialPost.account_id == acc.id)
+        select(
+            func.sum(SocialPost.like_count),
+            func.sum(SocialPost.comments_count),
+            func.sum(SocialPost.shares),
+            func.sum(SocialPost.saved),
+        ).where(SocialPost.account_id == acc.id)
     )
-    total_likes, total_comments = agg.one()
+    total_likes, total_comments, total_shares, total_saves = agg.one()
     m.likes = int(total_likes) if total_likes is not None else None
     m.comments = int(total_comments) if total_comments is not None else None
+    m.shares = int(total_shares) if total_shares is not None else None
+    m.saves = int(total_saves) if total_saves is not None else None
     return True
 
 
@@ -300,10 +308,34 @@ def _parse_ig_time(value: str | None):
             return None
 
 
+async def _ig_media_insights(client: httpx.AsyncClient, media_id: str, token: str) -> dict:
+    """Fetch reach/saved/shares for one media. Returns {} if unavailable.
+
+    Metric availability varies by media type, so we degrade the requested set
+    on error rather than failing the whole sync.
+    """
+    for metrics in ("reach,saved,shares", "reach,saved", "reach"):
+        try:
+            r = await client.get(f"{INSTAGRAM_GRAPH}/{media_id}/insights", params={
+                "metric": metrics, "access_token": token,
+            })
+            data = r.json()
+        except httpx.HTTPError:
+            return {}
+        if isinstance(data, dict) and "data" in data:
+            out = {}
+            for row in data["data"]:
+                vals = row.get("values") or [{}]
+                out[row.get("name")] = vals[0].get("value")
+            return out
+    return {}
+
+
 async def _ig_sync_posts(db: AsyncSession, acc: SocialAccount, limit: int = 50) -> int:
-    """Pull recent media for `acc` and upsert into social_posts. Returns count.
+    """Pull recent media (+ per-post insights) for `acc` into social_posts.
 
     Failures are swallowed (logged); the caller still serves cached posts.
+    Insights need the insights scope — left null when the token lacks it.
     """
     if acc.platform != "instagram" or not acc.access_token:
         return 0
@@ -315,18 +347,31 @@ async def _ig_sync_posts(db: AsyncSession, acc: SocialAccount, limit: int = 50) 
                 "access_token": acc.access_token,
             })
             data = r.json()
+            if not isinstance(data, dict) or "data" not in data:
+                logger.warning("IG posts sync API error for %s: %s", acc.id, data)
+                return 0
+            items = data["data"]
+            # Probe insights on the first media; if unavailable (scope not
+            # granted), skip the rest instead of firing N failing requests.
+            insights = [{} for _ in items]
+            if items:
+                probe = await _ig_media_insights(client, str(items[0].get("id")), acc.access_token)
+                if probe:
+                    insights[0] = probe
+                    rest = await asyncio.gather(
+                        *[_ig_media_insights(client, str(it.get("id")), acc.access_token) for it in items[1:]]
+                    )
+                    for i, ins in enumerate(rest, start=1):
+                        insights[i] = ins
     except httpx.HTTPError as exc:
         logger.warning("IG posts sync HTTP error for %s: %s", acc.id, exc)
-        return 0
-    if not isinstance(data, dict) or "data" not in data:
-        logger.warning("IG posts sync API error for %s: %s", acc.id, data)
         return 0
 
     existing = await db.execute(select(SocialPost).where(SocialPost.account_id == acc.id))
     by_external = {p.external_id: p for p in existing.scalars().all()}
     now = datetime.now(timezone.utc)
     count = 0
-    for item in data["data"]:
+    for item, ins in zip(items, insights):
         ext = str(item.get("id"))
         if not ext:
             continue
@@ -342,6 +387,9 @@ async def _ig_sync_posts(db: AsyncSession, acc: SocialAccount, limit: int = 50) 
         p.posted_at = _parse_ig_time(item.get("timestamp"))
         p.like_count = item.get("like_count")
         p.comments_count = item.get("comments_count")
+        p.reach = ins.get("reach")
+        p.saved = ins.get("saved")
+        p.shares = ins.get("shares")
         p.fetched_at = now
         count += 1
     return count
@@ -462,6 +510,8 @@ async def account_metrics(
             "posts_count": m.posts_count,
             "likes": m.likes,
             "comments": m.comments,
+            "shares": m.shares,
+            "saves": m.saves,
         }
         for m in rows.scalars().all()
     ]
@@ -470,9 +520,8 @@ async def account_metrics(
         "latest": history[-1] if history else None,
         "history": history,
         "deltas": {
-            "followers": _series_deltas(history, "followers"),
-            "likes": _series_deltas(history, "likes"),
-            "comments": _series_deltas(history, "comments"),
+            key: _series_deltas(history, key)
+            for key in ("followers", "likes", "comments", "shares", "saves")
         },
     }
 
@@ -540,7 +589,10 @@ async def account_posts(
             "posted_at": p.posted_at.isoformat() if p.posted_at else None,
             "like_count": p.like_count,
             "comments_count": p.comments_count,
-            "engagement": (p.like_count or 0) + (p.comments_count or 0),
+            "reach": p.reach,
+            "saved": p.saved,
+            "shares": p.shares,
+            "engagement": (p.like_count or 0) + (p.comments_count or 0) + (p.shares or 0) + (p.saved or 0),
         }
         for p in rows.scalars().all()
     ]

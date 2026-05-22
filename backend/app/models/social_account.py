@@ -69,6 +69,11 @@ class SocialPost(Base):
     posted_at = Column(DateTime(timezone=True), nullable=True)  # when it was published
     like_count = Column(Integer, nullable=True)
     comments_count = Column(Integer, nullable=True)
+    # Media insights (need the insights scope; null until granted/available).
+    reach = Column(Integer, nullable=True)
+    saved = Column(Integer, nullable=True)
+    shares = Column(Integer, nullable=True)
+    views = Column(Integer, nullable=True)
     fetched_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (UniqueConstraint("account_id", "external_id", name="uq_social_post_account_external"),)

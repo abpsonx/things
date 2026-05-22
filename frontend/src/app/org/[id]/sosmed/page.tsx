@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { useParams } from "next/navigation";
 import api from "@/lib/api";
-import { Share2, Camera, Loader2, CalendarClock, Plus, Trash2, RefreshCw, Users, UserPlus, Image as ImageIcon, ChevronDown, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Minus, Heart, MessageCircle, ExternalLink, Bookmark } from "lucide-react";
+import { Share2, Camera, Loader2, CalendarClock, Plus, Trash2, RefreshCw, Users, UserPlus, Image as ImageIcon, ChevronDown, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Minus, Heart, MessageCircle, ExternalLink, Bookmark, Send, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip } from "recharts";
 
@@ -22,6 +22,8 @@ interface MetricPoint {
   posts_count: number | null;
   likes: number | null;
   comments: number | null;
+  shares: number | null;
+  saves: number | null;
 }
 
 interface Delta {
@@ -30,7 +32,7 @@ interface Delta {
   d30: number | null;
 }
 
-type GrowthMetric = "followers" | "likes" | "comments";
+type GrowthMetric = "followers" | "likes" | "comments" | "shares" | "saves";
 
 interface AccountMetrics {
   account: SocialAccount;
@@ -48,6 +50,9 @@ interface Post {
   posted_at?: string | null;
   like_count?: number | null;
   comments_count?: number | null;
+  reach?: number | null;
+  saved?: number | null;
+  shares?: number | null;
   engagement: number;
 }
 
@@ -360,6 +365,8 @@ const GROWTH_META: Record<GrowthMetric, { label: string; color: string }> = {
   followers: { label: "Follower", color: "#8b5cf6" },
   likes: { label: "Like", color: "#f43f5e" },
   comments: { label: "Komentar", color: "#0ea5e9" },
+  shares: { label: "Share", color: "#22c55e" },
+  saves: { label: "Save", color: "#f59e0b" },
 };
 
 function GrowthTab({ accountId, m }: { accountId: string; m?: AccountMetrics }) {
@@ -383,10 +390,12 @@ function GrowthTab({ accountId, m }: { accountId: string; m?: AccountMetrics }) 
         <div className="grid grid-cols-4 gap-2">
           <Stat icon={<Heart className="w-3.5 h-3.5" />} label="Like" value={m.latest?.likes} />
           <Stat icon={<MessageCircle className="w-3.5 h-3.5" />} label="Komentar" value={m.latest?.comments} />
-          <Stat icon={<Share2 className="w-3.5 h-3.5" />} label="Share" value={undefined} />
-          <Stat icon={<Bookmark className="w-3.5 h-3.5" />} label="Save" value={undefined} />
+          <Stat icon={<Share2 className="w-3.5 h-3.5" />} label="Share" value={m.latest?.shares} />
+          <Stat icon={<Bookmark className="w-3.5 h-3.5" />} label="Save" value={m.latest?.saves} />
         </div>
-        <p className="text-[10px] text-muted-foreground mt-1">Share &amp; Save butuh izin insights Instagram (menyusul).</p>
+        {(m.latest?.shares == null && m.latest?.saves == null) && (
+          <p className="text-[10px] text-muted-foreground mt-1">Share &amp; Save kosong? Hubungkan ulang akun untuk memberi izin insights, lalu Refresh.</p>
+        )}
       </div>
 
       {/* Metric switcher */}
@@ -506,22 +515,27 @@ function PostsTab({ posts, followers }: { posts: Post[]; followers: number | nul
         const rate = followers && followers > 0 ? (p.engagement / followers) * 100 : null;
         return (
           <a key={p.id} href={p.permalink || "#"} target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-3 rounded-xl border border-border bg-card p-2.5 hover:bg-secondary/40 transition-all">
-            <div className="w-12 h-12 rounded-lg bg-secondary overflow-hidden shrink-0 flex items-center justify-center">
+            className="flex items-start gap-3 rounded-xl border border-border bg-card p-2.5 hover:bg-secondary/40 transition-all">
+            <div className="w-14 h-14 rounded-lg bg-secondary overflow-hidden shrink-0 flex items-center justify-center">
               {p.thumbnail_url ? <img src={p.thumbnail_url} alt="" className="w-full h-full object-cover" /> : <ImageIcon className="w-5 h-5 text-muted-foreground" />}
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium truncate">{p.caption || "(tanpa caption)"}</p>
+            <div className="flex-1 min-w-0 space-y-1">
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-xs font-medium truncate">{p.caption || "(tanpa caption)"}</p>
+                <ExternalLink className="w-3 h-3 text-muted-foreground shrink-0 mt-0.5" />
+              </div>
               <p className="text-[11px] text-muted-foreground">
                 {p.posted_at ? new Date(p.posted_at).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : "—"}
                 {p.media_type ? ` · ${p.media_type.toLowerCase().replace("_", " ")}` : ""}
+                {rate != null ? ` · ${rate.toFixed(1)}% eng.` : ""}
               </p>
-            </div>
-            <div className="flex items-center gap-2.5 text-[11px] shrink-0">
-              <span className="flex items-center gap-1 text-rose-500"><Heart className="w-3.5 h-3.5" /> {(p.like_count ?? 0).toLocaleString("id-ID")}</span>
-              <span className="flex items-center gap-1 text-sky-500"><MessageCircle className="w-3.5 h-3.5" /> {(p.comments_count ?? 0).toLocaleString("id-ID")}</span>
-              {rate != null && <span className="text-muted-foreground tabular-nums" title="Engagement rate">{rate.toFixed(1)}%</span>}
-              <ExternalLink className="w-3 h-3 text-muted-foreground" />
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+                <span className="flex items-center gap-1 text-rose-500"><Heart className="w-3.5 h-3.5" /> {(p.like_count ?? 0).toLocaleString("id-ID")}</span>
+                <span className="flex items-center gap-1 text-sky-500"><MessageCircle className="w-3.5 h-3.5" /> {(p.comments_count ?? 0).toLocaleString("id-ID")}</span>
+                {p.shares != null && <span className="flex items-center gap-1 text-emerald-500"><Send className="w-3.5 h-3.5" /> {p.shares.toLocaleString("id-ID")}</span>}
+                {p.saved != null && <span className="flex items-center gap-1 text-amber-500"><Bookmark className="w-3.5 h-3.5" /> {p.saved.toLocaleString("id-ID")}</span>}
+                {p.reach != null && <span className="flex items-center gap-1 text-muted-foreground"><Eye className="w-3.5 h-3.5" /> {p.reach.toLocaleString("id-ID")}</span>}
+              </div>
             </div>
           </a>
         );

@@ -61,6 +61,13 @@ async def lifespan(app: FastAPI):
             except Exception:
                 pass
 
+        # per-post insights on social_posts (need the insights scope)
+        for col in ("reach", "saved", "shares", "views"):
+            try:
+                await conn.execute(text(f"ALTER TABLE social_posts ADD COLUMN IF NOT EXISTS {col} INTEGER"))
+            except Exception:
+                pass
+
         # parent_id on dm_messages + team_messages so replies work in DM and team chat
         try:
             await conn.execute(text(
