@@ -590,6 +590,11 @@ async def delete_team_task(
     if not task:
         raise HTTPException(status_code=404, detail="Task tidak ditemukan")
 
+    # Delete is restricted to the task creator (and workspace owner/manager).
+    from app.services.task_permissions import is_manager_or_creator
+    if not await is_manager_or_creator(db, task, current_user):
+        raise HTTPException(status_code=403, detail="Hanya pembuat task (atau manager) yang bisa menghapus task ini.")
+
     await db.delete(task)
     await db.commit()
     return None

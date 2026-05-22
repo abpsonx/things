@@ -2,8 +2,16 @@
 
 import React, { useEffect, useState } from "react";
 import api from "@/lib/api";
-import { formatDate } from "@/lib/utils";
 import { History, Plus, Pencil, ArrowRightLeft, Archive, RotateCcw, Loader2 } from "lucide-react";
+
+// "22 Mei 2026, 14.30"
+const fmtDateTime = (iso: string) => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("id-ID", {
+    day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+};
 
 interface Activity {
   id: string;
@@ -80,7 +88,7 @@ export default function TaskActivityLog({ taskId, reloadKey }: { taskId: string;
                       ))}
                     </ul>
                   )}
-                  <p className="text-[10px] text-muted-foreground">{formatDate(a.created_at)}</p>
+                  <p className="text-[10px] text-muted-foreground">{fmtDateTime(a.created_at)}</p>
                 </div>
               </li>
             );

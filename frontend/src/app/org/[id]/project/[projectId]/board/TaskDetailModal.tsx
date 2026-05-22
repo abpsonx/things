@@ -789,13 +789,15 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
                 </>
               )}
             </button>
-            <button
-              onClick={deleteTask}
-              className="w-full flex items-center justify-center gap-2 py-2 text-xs font-bold text-destructive hover:bg-destructive/10 rounded-xl border border-transparent hover:border-destructive/20 transition-all"
-            >
-              <Trash2 className="w-3 h-3" />
-              Hapus Permanen
-            </button>
+            {access?.can_approve && (
+              <button
+                onClick={deleteTask}
+                className="w-full flex items-center justify-center gap-2 py-2 text-xs font-bold text-destructive hover:bg-destructive/10 rounded-xl border border-transparent hover:border-destructive/20 transition-all"
+              >
+                <Trash2 className="w-3 h-3" />
+                Hapus Permanen
+              </button>
+            )}
           </div>
         </div>
       </div>
