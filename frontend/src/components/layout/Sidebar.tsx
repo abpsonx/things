@@ -20,6 +20,7 @@ import {
   Folder,
   Users,
   CheckSquare,
+  Share2,
   X
 } from "lucide-react";
 import CreateTeamModal from "@/components/team/CreateTeamModal";
@@ -109,6 +110,11 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       icon: Activity,
       label: "Aktivitas",
       href: activeOrgId ? `/org/${activeOrgId}/activity` : "#"
+    },
+    {
+      icon: Share2,
+      label: "Sosmed",
+      href: activeOrgId ? `/org/${activeOrgId}/sosmed` : "#"
     }
   ];
 
@@ -175,8 +181,10 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
               isActive = pathname.includes("/activity");
             } else if (item.label === "Files") {
               isActive = pathname.includes("/files");
+            } else if (item.label === "Sosmed") {
+              isActive = pathname.includes("/sosmed");
             } else if (item.label === "Dashboard") {
-              isActive = pathname === "/dashboard" || (pathname.startsWith("/org/") && !pathname.includes("/project/") && !pathname.includes("/team/") && !pathname.includes("/activity") && !pathname.includes("/files") && !pathname.includes("/members"));
+              isActive = pathname === "/dashboard" || (pathname.startsWith("/org/") && !pathname.includes("/project/") && !pathname.includes("/team/") && !pathname.includes("/activity") && !pathname.includes("/files") && !pathname.includes("/members") && !pathname.includes("/sosmed"));
             }
 
             return (

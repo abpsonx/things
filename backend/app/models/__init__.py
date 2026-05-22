@@ -21,6 +21,7 @@ from app.models.poll import Poll, PollVote
 from app.models.reaction import Reaction
 from app.models.team_file import TeamFile
 from app.models.task_edit_request import TaskEditRequest
+from app.models.social_account import SocialAccount, SocialMetric
 
 __all__ = [
     "User",
@@ -45,4 +46,5 @@ __all__ = [
     "TeamFile",
     "AnnouncementRecipient", "AnnouncementComment",
     "TaskEditRequest",
+    "SocialAccount", "SocialMetric",
 ]

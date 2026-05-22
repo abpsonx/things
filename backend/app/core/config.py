@@ -47,6 +47,14 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
 
+    # Meta (Instagram / Facebook)
+    META_CLIENT_ID: str = ""
+    META_CLIENT_SECRET: str = ""
+
+    # TikTok
+    TIKTOK_CLIENT_KEY: str = ""
+    TIKTOK_CLIENT_SECRET: str = ""
+
     class Config:
         env_file = str(ENV_PATH)
         env_file_encoding = "utf-8"
