@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { useParams } from "next/navigation";
 import api from "@/lib/api";
-import { Share2, Camera, Loader2, CalendarClock, Plus, Trash2, RefreshCw, Users, UserPlus, Image as ImageIcon, ChevronDown, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Minus, Heart, MessageCircle, ExternalLink, Bookmark, Send, Eye } from "lucide-react";
+import { Share2, Camera, Loader2, CalendarClock, Plus, Trash2, RefreshCw, Users, UserPlus, Image as ImageIcon, ChevronDown, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Minus, Heart, MessageCircle, ExternalLink, Bookmark, Send, Eye, EyeOff, Reply } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip } from "recharts";
 
@@ -306,7 +306,7 @@ export default function SosmedPage() {
                           postsLoading === a.id && !posts[a.id] ? (
                             <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
                           ) : (
-                            <PostsTab posts={posts[a.id] || []} followers={m?.latest?.followers ?? null} />
+                            <PostsTab posts={posts[a.id] || []} followers={m?.latest?.followers ?? null} orgId={String(orgId)} accountId={a.id} />
                           )
                         )}
                       </div>
@@ -548,39 +548,176 @@ function CalendarTab({ posts }: { posts: Post[] }) {
   );
 }
 
-function PostsTab({ posts, followers }: { posts: Post[]; followers: number | null }) {
+interface Reply { id: string; text?: string | null; username?: string | null; timestamp?: string | null; }
+interface Comment {
+  id: string;
+  text?: string | null;
+  username?: string | null;
+  timestamp?: string | null;
+  like_count?: number | null;
+  hidden?: boolean | null;
+  replies: Reply[];
+}
+
+function PostsTab({ posts, followers, orgId, accountId }: { posts: Post[]; followers: number | null; orgId: string; accountId: string }) {
   if (posts.length === 0) return <p className="text-xs text-muted-foreground text-center py-6">Belum ada postingan terambil. Klik Refresh.</p>;
   return (
     <div className="space-y-2">
-      {posts.map((p) => {
-        const rate = followers && followers > 0 ? (p.engagement / followers) * 100 : null;
-        return (
-          <a key={p.id} href={p.permalink || "#"} target="_blank" rel="noopener noreferrer"
-            className="flex items-start gap-3 rounded-xl border border-border bg-card p-2.5 hover:bg-secondary/40 transition-all">
-            <div className="w-14 h-14 rounded-lg bg-secondary overflow-hidden shrink-0 flex items-center justify-center">
-              {p.thumbnail_url ? <img src={p.thumbnail_url} alt="" className="w-full h-full object-cover" /> : <ImageIcon className="w-5 h-5 text-muted-foreground" />}
-            </div>
-            <div className="flex-1 min-w-0 space-y-1">
-              <div className="flex items-start justify-between gap-2">
-                <p className="text-xs font-medium truncate">{p.caption || "(tanpa caption)"}</p>
-                <ExternalLink className="w-3 h-3 text-muted-foreground shrink-0 mt-0.5" />
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                {p.posted_at ? new Date(p.posted_at).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : "—"}
-                {p.media_type ? ` · ${p.media_type.toLowerCase().replace("_", " ")}` : ""}
-                {rate != null ? ` · ${rate.toFixed(1)}% eng.` : ""}
-              </p>
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
-                <span className="flex items-center gap-1 text-rose-500"><Heart className="w-3.5 h-3.5" /> {(p.like_count ?? 0).toLocaleString("id-ID")}</span>
-                <span className="flex items-center gap-1 text-sky-500"><MessageCircle className="w-3.5 h-3.5" /> {(p.comments_count ?? 0).toLocaleString("id-ID")}</span>
-                {p.shares != null && <span className="flex items-center gap-1 text-emerald-500"><Send className="w-3.5 h-3.5" /> {p.shares.toLocaleString("id-ID")}</span>}
-                {p.saved != null && <span className="flex items-center gap-1 text-amber-500"><Bookmark className="w-3.5 h-3.5" /> {p.saved.toLocaleString("id-ID")}</span>}
-                {p.reach != null && <span className="flex items-center gap-1 text-muted-foreground"><Eye className="w-3.5 h-3.5" /> {p.reach.toLocaleString("id-ID")}</span>}
-              </div>
-            </div>
-          </a>
-        );
-      })}
+      {posts.map((p) => (
+        <PostRow key={p.id} post={p} followers={followers} orgId={orgId} accountId={accountId} />
+      ))}
+    </div>
+  );
+}
+
+function PostRow({ post, followers, orgId, accountId }: { post: Post; followers: number | null; orgId: string; accountId: string }) {
+  const [open, setOpen] = useState(false);
+  const [comments, setComments] = useState<Comment[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const rate = followers && followers > 0 ? (post.engagement / followers) * 100 : null;
+
+  const loadComments = async () => {
+    setLoading(true); setErr(null);
+    try {
+      const res = await api.get(`/organizations/${orgId}/sosmed/accounts/${accountId}/posts/${post.id}/comments`);
+      setComments(res.data.comments || []);
+      if (res.data.error) setErr(res.data.error);
+    } catch (e: any) {
+      setErr(e?.response?.data?.detail || "Gagal memuat komentar");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next && comments === null) loadComments();
+  };
+
+  return (
+    <div className="rounded-xl border border-border bg-card">
+      <div className="flex items-start gap-3 p-2.5">
+        <a href={post.permalink || "#"} target="_blank" rel="noopener noreferrer" className="w-14 h-14 rounded-lg bg-secondary overflow-hidden shrink-0 flex items-center justify-center">
+          {post.thumbnail_url ? <img src={post.thumbnail_url} alt="" className="w-full h-full object-cover" /> : <ImageIcon className="w-5 h-5 text-muted-foreground" />}
+        </a>
+        <div className="flex-1 min-w-0 space-y-1">
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-xs font-medium truncate">{post.caption || "(tanpa caption)"}</p>
+            <a href={post.permalink || "#"} target="_blank" rel="noopener noreferrer"><ExternalLink className="w-3 h-3 text-muted-foreground shrink-0 mt-0.5" /></a>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            {post.posted_at ? new Date(post.posted_at).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : "—"}
+            {post.media_type ? ` · ${post.media_type.toLowerCase().replace("_", " ")}` : ""}
+            {rate != null ? ` · ${rate.toFixed(1)}% eng.` : ""}
+          </p>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+            <span className="flex items-center gap-1 text-rose-500"><Heart className="w-3.5 h-3.5" /> {(post.like_count ?? 0).toLocaleString("id-ID")}</span>
+            <span className="flex items-center gap-1 text-sky-500"><MessageCircle className="w-3.5 h-3.5" /> {(post.comments_count ?? 0).toLocaleString("id-ID")}</span>
+            {post.shares != null && <span className="flex items-center gap-1 text-emerald-500"><Send className="w-3.5 h-3.5" /> {post.shares.toLocaleString("id-ID")}</span>}
+            {post.saved != null && <span className="flex items-center gap-1 text-amber-500"><Bookmark className="w-3.5 h-3.5" /> {post.saved.toLocaleString("id-ID")}</span>}
+            {post.reach != null && <span className="flex items-center gap-1 text-muted-foreground"><Eye className="w-3.5 h-3.5" /> {post.reach.toLocaleString("id-ID")}</span>}
+          </div>
+          <button onClick={toggle} className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline mt-0.5">
+            <MessageCircle className="w-3.5 h-3.5" /> {open ? "Tutup komentar" : `Kelola komentar (${post.comments_count ?? 0})`}
+          </button>
+        </div>
+      </div>
+
+      {open && (
+        <div className="border-t border-border p-3 space-y-2 bg-secondary/10">
+          {loading ? (
+            <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
+          ) : (
+            <>
+              {err && <p className="text-[11px] text-amber-600">{err}</p>}
+              {comments && comments.length === 0 && !err && <p className="text-[11px] text-muted-foreground text-center py-2">Belum ada komentar.</p>}
+              {comments?.map((c) => (
+                <CommentItem key={c.id} c={c} orgId={orgId} accountId={accountId} onChange={loadComments} />
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CommentItem({ c, orgId, accountId, onChange }: { c: Comment; orgId: string; accountId: string; onChange: () => void }) {
+  const [reply, setReply] = useState("");
+  const [showReply, setShowReply] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const base = `/organizations/${orgId}/sosmed/accounts/${accountId}/comments/${c.id}`;
+
+  const sendReply = async () => {
+    if (!reply.trim()) return;
+    setBusy(true);
+    try {
+      await api.post(`${base}/reply`, { message: reply.trim() });
+      setReply(""); setShowReply(false);
+      onChange();
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || "Gagal membalas");
+    } finally { setBusy(false); }
+  };
+
+  const toggleHide = async () => {
+    setBusy(true);
+    try { await api.post(`${base}/hide`, { hidden: !c.hidden }); onChange(); }
+    catch (e: any) { alert(e?.response?.data?.detail || "Gagal"); }
+    finally { setBusy(false); }
+  };
+
+  const del = async () => {
+    if (!confirm("Hapus komentar ini?")) return;
+    setBusy(true);
+    try { await api.delete(base); onChange(); }
+    catch (e: any) { alert(e?.response?.data?.detail || "Gagal menghapus"); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className={cn("rounded-lg p-2 space-y-1", c.hidden ? "bg-secondary/20 opacity-60" : "bg-secondary/40")}>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-[11px] leading-snug">
+          <span className="font-bold">@{c.username || "?"}</span> {c.text}
+        </p>
+        <div className="flex items-center gap-0.5 shrink-0">
+          <button disabled={busy} onClick={() => setShowReply((v) => !v)} title="Balas" className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground"><Reply className="w-3.5 h-3.5" /></button>
+          <button disabled={busy} onClick={toggleHide} title={c.hidden ? "Tampilkan" : "Sembunyikan"} className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground">{c.hidden ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}</button>
+          <button disabled={busy} onClick={del} title="Hapus" className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"><Trash2 className="w-3.5 h-3.5" /></button>
+        </div>
+      </div>
+      <p className="text-[10px] text-muted-foreground">
+        {c.timestamp ? new Date(c.timestamp).toLocaleDateString("id-ID", { day: "numeric", month: "short" }) : ""}
+        {c.like_count != null ? ` · ${c.like_count} suka` : ""}
+        {c.hidden ? " · disembunyikan" : ""}
+      </p>
+
+      {c.replies?.length > 0 && (
+        <div className="pl-3 border-l-2 border-border space-y-1 mt-1">
+          {c.replies.map((r) => (
+            <p key={r.id} className="text-[11px] leading-snug"><span className="font-bold">@{r.username || "?"}</span> {r.text}</p>
+          ))}
+        </div>
+      )}
+
+      {showReply && (
+        <div className="flex items-center gap-1.5 mt-1">
+          <input
+            value={reply}
+            onChange={(e) => setReply(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && sendReply()}
+            placeholder="Tulis balasan…"
+            disabled={busy}
+            className="flex-1 text-[11px] rounded-lg border border-border bg-background px-2 py-1.5 outline-none focus:ring-1 focus:ring-primary"
+          />
+          <button disabled={busy || !reply.trim()} onClick={sendReply} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-primary text-primary-foreground text-[11px] font-semibold disabled:opacity-50">
+            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

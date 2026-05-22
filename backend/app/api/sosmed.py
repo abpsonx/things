@@ -13,7 +13,7 @@ from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -32,9 +32,12 @@ logger = logging.getLogger(__name__)
 INSTAGRAM_AUTH_URL = "https://www.instagram.com/oauth/authorize"
 INSTAGRAM_TOKEN_URL = "https://api.instagram.com/oauth/access_token"
 INSTAGRAM_GRAPH = "https://graph.instagram.com"
-# Read profile + media + insights (reach/saved/shares). Posting/messaging
-# scopes added later. Adding a scope here requires users to re-authorize.
-INSTAGRAM_SCOPES = "instagram_business_basic,instagram_business_manage_insights"
+# Read profile/media/insights + manage comments & messages (DM). Adding a
+# scope here requires users to re-authorize (re-click Hubungkan).
+INSTAGRAM_SCOPES = (
+    "instagram_business_basic,instagram_business_manage_insights,"
+    "instagram_business_manage_comments,instagram_business_manage_messages"
+)
 
 router = APIRouter(prefix="/organizations/{org_id}/sosmed", tags=["Social Media"])
 
@@ -601,3 +604,141 @@ async def account_posts(
         for p in rows.scalars().all()
     ]
     return {"posts": posts}
+
+
+async def _account_or_404(db: AsyncSession, org_id: str, account_id: str) -> SocialAccount:
+    res = await db.execute(
+        select(SocialAccount).where(SocialAccount.id == account_id, SocialAccount.org_id == org_id)
+    )
+    acc = res.scalar_one_or_none()
+    if not acc:
+        raise HTTPException(status_code=404, detail="Akun tidak ditemukan")
+    if not acc.access_token:
+        raise HTTPException(status_code=400, detail="Akun belum punya token akses")
+    return acc
+
+
+def _comment_out(c: dict) -> dict:
+    return {
+        "id": c.get("id"),
+        "text": c.get("text"),
+        "username": c.get("username"),
+        "timestamp": c.get("timestamp"),
+        "like_count": c.get("like_count"),
+        "hidden": c.get("hidden"),
+        "replies": [
+            {
+                "id": r.get("id"),
+                "text": r.get("text"),
+                "username": r.get("username"),
+                "timestamp": r.get("timestamp"),
+            }
+            for r in (c.get("replies", {}).get("data", []) if isinstance(c.get("replies"), dict) else [])
+        ],
+    }
+
+
+@router.get("/accounts/{account_id}/posts/{post_id}/comments", response_model=Any)
+async def list_comments(
+    org_id: str, account_id: str, post_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Comments on one post (with their replies), fetched live from Instagram."""
+    await _require_member(db, org_id, current_user.id)
+    acc = await _account_or_404(db, org_id, account_id)
+    pres = await db.execute(
+        select(SocialPost).where(SocialPost.id == post_id, SocialPost.account_id == account_id)
+    )
+    post = pres.scalar_one_or_none()
+    if not post:
+        raise HTTPException(status_code=404, detail="Postingan tidak ditemukan")
+
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.get(f"{INSTAGRAM_GRAPH}/{post.external_id}/comments", params={
+                "fields": "id,text,username,timestamp,like_count,hidden,replies{id,text,username,timestamp}",
+                "access_token": acc.access_token,
+            })
+            data = r.json()
+    except httpx.HTTPError as exc:
+        logger.warning("IG comments fetch error for %s: %s", post.external_id, exc)
+        raise HTTPException(status_code=502, detail="Gagal mengambil komentar dari Instagram")
+    if not isinstance(data, dict) or "data" not in data:
+        msg = (data.get("error") or {}).get("message") if isinstance(data, dict) else None
+        return {"comments": [], "error": msg or "Komentar tidak tersedia"}
+    return {"comments": [_comment_out(c) for c in data["data"]]}
+
+
+@router.post("/accounts/{account_id}/comments/{comment_id}/reply", response_model=Any)
+async def reply_comment(
+    org_id: str, account_id: str, comment_id: str,
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Reply to a comment (posts under the comment thread)."""
+    await _require_member(db, org_id, current_user.id)
+    acc = await _account_or_404(db, org_id, account_id)
+    message = (payload.get("message") or "").strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Pesan balasan kosong")
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.post(
+                f"{INSTAGRAM_GRAPH}/{comment_id}/replies",
+                params={"access_token": acc.access_token},
+                data={"message": message},
+            )
+            data = r.json()
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="Gagal mengirim balasan")
+    if not isinstance(data, dict) or "id" not in data:
+        msg = (data.get("error") or {}).get("message") if isinstance(data, dict) else None
+        raise HTTPException(status_code=400, detail=msg or "Gagal membalas komentar")
+    return {"id": data["id"]}
+
+
+@router.post("/accounts/{account_id}/comments/{comment_id}/hide", response_model=Any)
+async def hide_comment(
+    org_id: str, account_id: str, comment_id: str,
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Hide or unhide a comment."""
+    await _require_member(db, org_id, current_user.id)
+    acc = await _account_or_404(db, org_id, account_id)
+    hidden = bool(payload.get("hidden", True))
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.post(
+                f"{INSTAGRAM_GRAPH}/{comment_id}",
+                params={"access_token": acc.access_token},
+                data={"hide": "true" if hidden else "false"},
+            )
+            data = r.json()
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="Gagal menyembunyikan komentar")
+    if isinstance(data, dict) and data.get("error"):
+        raise HTTPException(status_code=400, detail=data["error"].get("message", "Gagal"))
+    return {"hidden": hidden}
+
+
+@router.delete("/accounts/{account_id}/comments/{comment_id}", status_code=204)
+async def delete_comment(
+    org_id: str, account_id: str, comment_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a comment (only comments on your own media can be deleted)."""
+    await _require_member(db, org_id, current_user.id)
+    acc = await _account_or_404(db, org_id, account_id)
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            await client.delete(
+                f"{INSTAGRAM_GRAPH}/{comment_id}", params={"access_token": acc.access_token}
+            )
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="Gagal menghapus komentar")
+    return None
