@@ -674,8 +674,23 @@ async def list_comments(
         return {"comments": [], "error": msg or "Komentar tidak tersedia"}
     if not data["data"] and (post.comments_count or 0) > 0:
         # Empty edge despite a non-zero count usually means the token lacks
-        # the manage_comments permission (re-auth needed).
-        logger.info("IG comments empty for media %s (count=%s) — likely missing scope", post.external_id, post.comments_count)
+        # the manage_comments permission. Inspect the token's granted scopes
+        # so we can tell "missing scope" from "real API quirk".
+        scopes_info = ""
+        s = get_settings()
+        try:
+            async with httpx.AsyncClient(timeout=15) as c2:
+                dbg = await c2.get("https://graph.facebook.com/v21.0/debug_token", params={
+                    "input_token": acc.access_token,
+                    "access_token": f"{s.META_CLIENT_ID}|{s.META_CLIENT_SECRET}",
+                })
+                dbg_json = dbg.json()
+            scopes = (dbg_json.get("data") or {}).get("scopes")
+            scopes_info = f" Izin token: {scopes}" if scopes else f" Debug: {dbg_json}"
+        except Exception as exc:  # noqa: BLE001
+            scopes_info = f" (cek izin gagal: {exc})"
+        logger.warning("IG comments empty media %s count=%s.%s", post.external_id, post.comments_count, scopes_info)
+        return {"comments": [], "error": f"IG balikin 0 komentar padahal count={post.comments_count}.{scopes_info}"}
     return {"comments": [_comment_out(c) for c in data["data"]]}
 
 
