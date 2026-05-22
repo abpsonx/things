@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { useParams } from "next/navigation";
 import api from "@/lib/api";
-import { Share2, Camera, Loader2, CalendarClock, Plus, Trash2, RefreshCw, Users, UserPlus, Image as ImageIcon, ChevronDown, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Minus, Heart, MessageCircle, ExternalLink } from "lucide-react";
+import { Share2, Camera, Loader2, CalendarClock, Plus, Trash2, RefreshCw, Users, UserPlus, Image as ImageIcon, ChevronDown, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Minus, Heart, MessageCircle, ExternalLink, Bookmark } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip } from "recharts";
 
@@ -20,19 +20,23 @@ interface MetricPoint {
   followers: number | null;
   following: number | null;
   posts_count: number | null;
+  likes: number | null;
+  comments: number | null;
 }
 
-interface Deltas {
+interface Delta {
   prev: number | null;
   d7: number | null;
   d30: number | null;
 }
 
+type GrowthMetric = "followers" | "likes" | "comments";
+
 interface AccountMetrics {
   account: SocialAccount;
   latest: MetricPoint | null;
   history: MetricPoint[];
-  deltas: Deltas;
+  deltas: Record<GrowthMetric, Delta>;
 }
 
 interface Post {
@@ -352,38 +356,78 @@ function DeltaBadge({ label, value }: { label: string; value?: number | null }) 
   );
 }
 
+const GROWTH_META: Record<GrowthMetric, { label: string; color: string }> = {
+  followers: { label: "Follower", color: "#8b5cf6" },
+  likes: { label: "Like", color: "#f43f5e" },
+  comments: { label: "Komentar", color: "#0ea5e9" },
+};
+
 function GrowthTab({ accountId, m }: { accountId: string; m?: AccountMetrics }) {
+  const [metric, setMetric] = useState<GrowthMetric>("followers");
   if (!m) return <p className="text-xs text-muted-foreground text-center py-4">Belum ada data.</p>;
+  const meta = GROWTH_META[metric];
+  const d = m.deltas?.[metric];
+
   return (
     <div className="space-y-4">
+      {/* Profile stats */}
       <div className="grid grid-cols-3 gap-2">
         <Stat icon={<Users className="w-3.5 h-3.5" />} label="Follower" value={m.latest?.followers} />
         <Stat icon={<UserPlus className="w-3.5 h-3.5" />} label="Following" value={m.latest?.following} />
         <Stat icon={<ImageIcon className="w-3.5 h-3.5" />} label="Postingan" value={m.latest?.posts_count} />
       </div>
+
+      {/* Engagement totals */}
       <div>
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Pertumbuhan Follower</p>
-        <div className="grid grid-cols-3 gap-2">
-          <DeltaBadge label="vs kemarin" value={m.deltas?.prev} />
-          <DeltaBadge label="7 hari" value={m.deltas?.d7} />
-          <DeltaBadge label="30 hari" value={m.deltas?.d30} />
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Total Engagement</p>
+        <div className="grid grid-cols-4 gap-2">
+          <Stat icon={<Heart className="w-3.5 h-3.5" />} label="Like" value={m.latest?.likes} />
+          <Stat icon={<MessageCircle className="w-3.5 h-3.5" />} label="Komentar" value={m.latest?.comments} />
+          <Stat icon={<Share2 className="w-3.5 h-3.5" />} label="Share" value={undefined} />
+          <Stat icon={<Bookmark className="w-3.5 h-3.5" />} label="Save" value={undefined} />
         </div>
+        <p className="text-[10px] text-muted-foreground mt-1">Share &amp; Save butuh izin insights Instagram (menyusul).</p>
       </div>
+
+      {/* Metric switcher */}
+      <div className="flex items-center gap-1">
+        {(Object.keys(GROWTH_META) as GrowthMetric[]).map((k) => (
+          <button
+            key={k}
+            onClick={() => setMetric(k)}
+            className={cn(
+              "px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all",
+              metric === k ? "bg-secondary text-foreground ring-1 ring-border" : "text-muted-foreground hover:bg-secondary/60"
+            )}
+          >
+            {GROWTH_META[k].label}
+          </button>
+        ))}
+      </div>
+
+      {/* Deltas for the selected metric */}
+      <div className="grid grid-cols-3 gap-2">
+        <DeltaBadge label="vs kemarin" value={d?.prev} />
+        <DeltaBadge label="7 hari" value={d?.d7} />
+        <DeltaBadge label="30 hari" value={d?.d30} />
+      </div>
+
+      {/* Trend chart for the selected metric */}
       {m.history.length > 1 ? (
         <div className="h-44 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={m.history} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
               <defs>
                 <linearGradient id={`g-${accountId}`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.4} />
-                  <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                  <stop offset="5%" stopColor={meta.color} stopOpacity={0.4} />
+                  <stop offset="95%" stopColor={meta.color} stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-              <XAxis dataKey="date" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(d) => d.slice(5)} />
+              <XAxis dataKey="date" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v) => v.slice(5)} />
               <YAxis fontSize={10} tickLine={false} axisLine={false} width={40} allowDecimals={false} />
               <RechartsTooltip />
-              <Area type="monotone" dataKey="followers" name="Follower" stroke="#8b5cf6" strokeWidth={2} fill={`url(#g-${accountId})`} />
+              <Area type="monotone" dataKey={metric} name={meta.label} stroke={meta.color} strokeWidth={2} fill={`url(#g-${accountId})`} />
             </AreaChart>
           </ResponsiveContainer>
         </div>

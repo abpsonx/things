@@ -15,7 +15,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from typing import Any
 from app.core.database import get_db
 from app.core.config import get_settings
@@ -272,6 +272,18 @@ async def _ig_snapshot(db: AsyncSession, acc: SocialAccount) -> bool:
     m.followers = data.get("followers_count")
     m.following = data.get("follows_count")
     m.posts_count = data.get("media_count")
+
+    # Engagement totals: refresh posts, then sum likes/comments across them.
+    # (shares/saves need the insights scope — left null until that's granted.)
+    await _ig_sync_posts(db, acc)
+    await db.flush()
+    agg = await db.execute(
+        select(func.sum(SocialPost.like_count), func.sum(SocialPost.comments_count))
+        .where(SocialPost.account_id == acc.id)
+    )
+    total_likes, total_comments = agg.one()
+    m.likes = int(total_likes) if total_likes is not None else None
+    m.comments = int(total_comments) if total_comments is not None else None
     return True
 
 
@@ -448,6 +460,8 @@ async def account_metrics(
             "followers": m.followers,
             "following": m.following,
             "posts_count": m.posts_count,
+            "likes": m.likes,
+            "comments": m.comments,
         }
         for m in rows.scalars().all()
     ]
@@ -455,13 +469,17 @@ async def account_metrics(
         "account": _account_out(acc),
         "latest": history[-1] if history else None,
         "history": history,
-        "deltas": _follower_deltas(history),
+        "deltas": {
+            "followers": _series_deltas(history, "followers"),
+            "likes": _series_deltas(history, "likes"),
+            "comments": _series_deltas(history, "comments"),
+        },
     }
 
 
-def _follower_deltas(history: list[dict]) -> dict:
-    """Follower change vs the previous snapshot and vs ~7/30 days ago."""
-    pts = [(date.fromisoformat(h["date"]), h["followers"]) for h in history if h.get("followers") is not None]
+def _series_deltas(history: list[dict], key: str) -> dict:
+    """Change in `key` vs the previous snapshot and vs ~7/30 days ago."""
+    pts = [(date.fromisoformat(h["date"]), h[key]) for h in history if h.get(key) is not None]
     if not pts:
         return {"prev": None, "d7": None, "d30": None}
     latest_date, latest_val = pts[-1]

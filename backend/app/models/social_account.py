@@ -39,7 +39,11 @@ class SocialMetric(Base):
     followers = Column(Integer, nullable=True)
     following = Column(Integer, nullable=True)
     posts_count = Column(Integer, nullable=True)
-    likes = Column(Integer, nullable=True)
+    # Engagement totals (summed across the account's posts on snapshot day).
+    likes = Column(Integer, nullable=True)       # total likes
+    comments = Column(Integer, nullable=True)    # total comments
+    shares = Column(Integer, nullable=True)      # needs insights scope (else null)
+    saves = Column(Integer, nullable=True)       # needs insights scope (else null)
     views = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
