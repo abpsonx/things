@@ -193,11 +193,16 @@ async def instagram_oauth_callback(
             external_id=external_id, connected_by=uuid.UUID(uid),
         )
         db.add(acc)
+    granted = tok_data.get("permissions")
+    if isinstance(granted, list):
+        granted = ",".join(granted)
     acc.username = prof_data.get("username")
     acc.display_name = prof_data.get("name") or prof_data.get("username")
     acc.avatar_url = prof_data.get("profile_picture_url")
     acc.access_token = access_token
     acc.token_expires_at = expires_at
+    acc.scopes = granted
+    logger.info("IG connected %s — granted permissions: %s", external_id, granted)
     await db.flush()
 
     # Seed today's metric snapshot so the growth chart has a first datapoint.
@@ -674,23 +679,16 @@ async def list_comments(
         return {"comments": [], "error": msg or "Komentar tidak tersedia"}
     if not data["data"] and (post.comments_count or 0) > 0:
         # Empty edge despite a non-zero count usually means the token lacks
-        # the manage_comments permission. Inspect the token's granted scopes
-        # so we can tell "missing scope" from "real API quirk".
-        scopes_info = ""
-        s = get_settings()
-        try:
-            async with httpx.AsyncClient(timeout=15) as c2:
-                dbg = await c2.get("https://graph.facebook.com/v21.0/debug_token", params={
-                    "input_token": acc.access_token,
-                    "access_token": f"{s.META_CLIENT_ID}|{s.META_CLIENT_SECRET}",
-                })
-                dbg_json = dbg.json()
-            scopes = (dbg_json.get("data") or {}).get("scopes")
-            scopes_info = f" Izin token: {scopes}" if scopes else f" Debug: {dbg_json}"
-        except Exception as exc:  # noqa: BLE001
-            scopes_info = f" (cek izin gagal: {exc})"
-        logger.warning("IG comments empty media %s count=%s.%s", post.external_id, post.comments_count, scopes_info)
-        return {"comments": [], "error": f"IG balikin 0 komentar padahal count={post.comments_count}.{scopes_info}"}
+        # the manage_comments permission. Show what was actually granted.
+        granted = acc.scopes or "(belum tercatat — hubungkan ulang akun)"
+        has_comments = acc.scopes and "manage_comments" in acc.scopes
+        logger.warning("IG comments empty media %s count=%s. Granted: %s", post.external_id, post.comments_count, acc.scopes)
+        hint = (
+            "Izin kelola komentar SUDAH ada tapi IG tetap balikin kosong — kemungkinan keterbatasan API."
+            if has_comments else
+            "Izin kelola komentar BELUM ada di token — hubungkan ulang akun."
+        )
+        return {"comments": [], "error": f"{hint} (izin: {granted})"}
     return {"comments": [_comment_out(c) for c in data["data"]]}
 
 

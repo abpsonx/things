@@ -22,6 +22,7 @@ class SocialAccount(Base):
     access_token = Column(Text, nullable=True)
     refresh_token = Column(Text, nullable=True)
     token_expires_at = Column(DateTime(timezone=True), nullable=True)
+    scopes = Column(Text, nullable=True)  # permissions granted at connect time
     connected_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 

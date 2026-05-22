@@ -68,6 +68,12 @@ async def lifespan(app: FastAPI):
             except Exception:
                 pass
 
+        # granted permissions captured at connect time
+        try:
+            await conn.execute(text("ALTER TABLE social_accounts ADD COLUMN IF NOT EXISTS scopes TEXT"))
+        except Exception:
+            pass
+
         # parent_id on dm_messages + team_messages so replies work in DM and team chat
         try:
             await conn.execute(text(
