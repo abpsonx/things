@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { usePathname, useParams } from "next/navigation";
 import { useAuthStore } from "@/store/useAuthStore";
 import { usePresenceStore } from "@/store/usePresenceStore";
+import { useNotificationsStore } from "@/store/useNotificationsStore";
 import { cn } from "@/lib/utils";
 import api from "@/lib/api";
 import {
@@ -41,6 +42,12 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   // Subscribe to the Set so the dots re-render on presence_update.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const _online = usePresenceStore((s) => s.online);
+  // Unread DM badges, shared with the bell + floating chat via the same store
+  // so opening a DM anywhere clears the badge here in sync.
+  const notifItems = useNotificationsStore((s) => s.items);
+  const dmSummaryBySender = useNotificationsStore((s) => s.dmSummaryBySender);
+  const markDMsFromSenderRead = useNotificationsStore((s) => s.markDMsFromSenderRead);
+  const dmBySender = useMemo(() => dmSummaryBySender(), [notifItems, dmSummaryBySender]);
   const [members, setMembers] = useState<any[]>([]);
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
@@ -245,32 +252,42 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             <Plus className="w-3 h-3 cursor-pointer hover:text-primary transition-colors" />
           </h4>
           <div className="space-y-1">
-            {members.map((member) => (
-              <Link
-                key={member.id}
-                href={`/org/${activeOrgId}/dm/${member.user_id}`}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
-                  pathname.includes(member.user_id)
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:text-foreground hover:bg-secondary"
-                )}
-              >
-                <div className="relative">
-                  <div className="w-6 h-6 rounded-full bg-secondary border border-border flex items-center justify-center overflow-hidden text-[8px] font-bold">
-                    {member.user.avatar_url ? (
-                      <img src={member.user.avatar_url} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      member.user.name.charAt(0)
+            {members.map((member) => {
+              const summary = dmBySender[member.user_id];
+              const hasUnread = !!summary;
+              return (
+                <Link
+                  key={member.id}
+                  href={`/org/${activeOrgId}/dm/${member.user_id}`}
+                  onClick={() => markDMsFromSenderRead(member.user_id)}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+                    pathname.includes(member.user_id)
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                  )}
+                >
+                  <div className="relative">
+                    <div className="w-6 h-6 rounded-full bg-secondary border border-border flex items-center justify-center overflow-hidden text-[8px] font-bold">
+                      {member.user.avatar_url ? (
+                        <img src={member.user.avatar_url} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        member.user.name.charAt(0)
+                      )}
+                    </div>
+                    {isOnline(member.user_id) && (
+                      <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 border-2 border-card" />
                     )}
                   </div>
-                  {isOnline(member.user_id) && (
-                    <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 border-2 border-card" />
+                  <span className={cn("truncate flex-1", hasUnread && "font-bold text-foreground")}>{member.user.name}</span>
+                  {hasUnread && (
+                    <span className="shrink-0 min-w-[18px] h-[18px] px-1 bg-destructive text-destructive-foreground text-[10px] font-extrabold rounded-full flex items-center justify-center">
+                      {summary.count > 9 ? "9+" : summary.count}
+                    </span>
                   )}
-                </div>
-                <span className="truncate">{member.user.name}</span>
-              </Link>
-            ))}
+                </Link>
+              );
+            })}
           </div>
         </div>
       </nav>

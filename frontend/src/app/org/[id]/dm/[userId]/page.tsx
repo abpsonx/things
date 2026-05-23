@@ -4,6 +4,7 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
 import api from "@/lib/api";
 import { useAuthStore } from "@/store/useAuthStore";
+import { useNotificationsStore } from "@/store/useNotificationsStore";
 import {
   Send, Loader2, User as UserIcon, ShieldCheck, Paperclip,
   Trash2, Edit2, X, Check, CheckCheck, Smile, Wifi, WifiOff, Reply, CornerDownRight,
@@ -70,6 +71,13 @@ export default function DMChatPage() {
   const p = useParams();
   const oid = p?.id as string, tid = p?.userId as string;
   const { user: cu } = useAuthStore(); const uid = cu?.id;
+  const markDMsFromSenderRead = useNotificationsStore((s) => s.markDMsFromSenderRead);
+
+  // Clear unread DM badges (bell + floating chat + sidebar) for this sender
+  // whenever the conversation is open, however it was reached.
+  useEffect(() => {
+    if (tid) markDMsFromSenderRead(tid);
+  }, [tid, markDMsFromSenderRead]);
 
   const [ch, setCh] = useState<any>(null);
   const [ms, setMs] = useState<any[]>([]);
