@@ -273,9 +273,9 @@ export default function TeamBoardPage() {
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-[#fafafa]">
+    <div className="flex-1 flex flex-col overflow-hidden bg-background">
       {/* Header */}
-      <div className="border-b border-border px-8 py-5 flex items-center justify-between bg-white/80 backdrop-blur-md sticky top-0 z-30">
+      <div className="border-b border-border px-8 py-5 flex items-center justify-between bg-card/80 backdrop-blur-md sticky top-0 z-30">
         <div className="flex items-center gap-4">
           <button
             onClick={() => router.back()}
