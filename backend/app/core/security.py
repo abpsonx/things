@@ -55,3 +55,23 @@ def verify_token(token: str) -> Optional[str]:
     if payload and payload.get("type") == "access":
         return payload.get("sub")
     return None
+
+
+def create_reset_token(user_id: str) -> str:
+    """Short-lived token for the password-reset email link (30 min)."""
+    expire = datetime.now(timezone.utc) + timedelta(minutes=30)
+    return jwt.encode(
+        {"sub": str(user_id), "purpose": "reset", "exp": expire},
+        settings.SECRET_KEY, algorithm=ALGORITHM,
+    )
+
+
+def verify_reset_token(token: str) -> Optional[str]:
+    """Return the user_id from a valid reset token, else None."""
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+    except JWTError:
+        return None
+    if payload.get("purpose") != "reset":
+        return None
+    return payload.get("sub")

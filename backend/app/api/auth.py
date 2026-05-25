@@ -3,11 +3,13 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.core.database import get_db
-from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token, decode_token
+from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token, decode_token, create_reset_token, verify_reset_token
+from app.core.config import get_settings
 from app.core.rate_limit import limiter
 from app.models.user import User
 from app.schemas import RegisterRequest, LoginRequest, AuthResponse, UserResponse, TokenResponse
 from app.dependencies import get_current_user
+from app.services.email import send_password_reset_email
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -139,6 +141,60 @@ async def update_me(
     await db.commit()
     await db.refresh(current_user)
     return UserResponse.model_validate(current_user)
+
+
+@router.post("/change-password")
+async def change_password(
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Change password for the logged-in user (needs the current password)."""
+    current = data.get("current_password") or ""
+    new = data.get("new_password") or ""
+    if not verify_password(current, current_user.password_hash):
+        raise HTTPException(status_code=400, detail="Password lama salah")
+    if len(new) < 6:
+        raise HTTPException(status_code=400, detail="Password baru minimal 6 karakter")
+    current_user.password_hash = hash_password(new)
+    await db.commit()
+    return {"message": "Password berhasil diubah"}
+
+
+@router.post("/forgot-password")
+@limiter.limit("5/minute")
+async def forgot_password(request: Request, data: dict, db: AsyncSession = Depends(get_db)):
+    """Email a password-reset link. Always returns success (no email enumeration)."""
+    email = (data.get("email") or "").strip().lower()
+    generic = {"message": "Jika email terdaftar, link reset sudah dikirim ke email tersebut."}
+    if not email:
+        return generic
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+    if user:
+        token = create_reset_token(str(user.id))
+        base = (get_settings().FRONTEND_URL or "").rstrip("/")
+        await send_password_reset_email(user.email, f"{base}/reset-password?token={token}")
+    return generic
+
+
+@router.post("/reset-password")
+async def reset_password(data: dict, db: AsyncSession = Depends(get_db)):
+    """Set a new password using the token from the reset email."""
+    token = data.get("token") or ""
+    new = data.get("new_password") or ""
+    user_id = verify_reset_token(token)
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Link reset tidak valid atau sudah kedaluwarsa")
+    if len(new) < 6:
+        raise HTTPException(status_code=400, detail="Password baru minimal 6 karakter")
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User tidak ditemukan")
+    user.password_hash = hash_password(new)
+    await db.commit()
+    return {"message": "Password berhasil direset. Silakan login dengan password baru."}
 
 
 @router.post("/refresh", response_model=TokenResponse)

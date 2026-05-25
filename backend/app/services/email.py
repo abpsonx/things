@@ -47,6 +47,45 @@ async def send_invitation_email(email: str, org_name: str, inviter_name: str, re
         return False
 
 
+async def send_password_reset_email(email: str, reset_link: str):
+    settings = get_settings()
+    if not settings.SMTP_HOST or not settings.SMTP_USER:
+        print("DEBUG: SMTP not configured. Skipping reset email.")
+        return False
+
+    message = EmailMessage()
+    message["From"] = settings.SMTP_USER
+    message["To"] = email
+    message["Subject"] = "Reset Password - Things App"
+    message.set_content(
+        f"""Halo,
+
+Kami menerima permintaan reset password untuk akun ini.
+Klik link berikut untuk membuat password baru (berlaku 30 menit):
+
+{reset_link}
+
+Jika kamu tidak meminta ini, abaikan email ini — password kamu tetap aman.
+
+Tim Things App
+"""
+    )
+    try:
+        await aiosmtplib.send(
+            message,
+            hostname=settings.SMTP_HOST,
+            port=settings.SMTP_PORT,
+            username=settings.SMTP_USER,
+            password=settings.SMTP_PASS,
+            use_tls=settings.SMTP_PORT == 465,
+            start_tls=settings.SMTP_PORT == 587,
+        )
+        return True
+    except Exception as e:
+        print(f"DEBUG: Failed to send reset email to {email}: {e}")
+        return False
+
+
 async def send_digest_email(email: str, user_name: str, due_today, overdue, due_week):
     """Send a daily digest of the user's open tasks. Lists overdue first, then today, then this-week."""
     settings = get_settings()

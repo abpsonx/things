@@ -26,6 +26,28 @@ export default function SettingsPage() {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
   const [googleConnected, setGoogleConnected] = useState(false);
+  const [pwCurrent, setPwCurrent] = useState("");
+  const [pwNew, setPwNew] = useState("");
+  const [pwConfirm, setPwConfirm] = useState("");
+  const [pwBusy, setPwBusy] = useState(false);
+  const [pwMsg, setPwMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const changePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPwMsg(null);
+    if (pwNew.length < 6) { setPwMsg({ ok: false, text: "Password baru minimal 6 karakter." }); return; }
+    if (pwNew !== pwConfirm) { setPwMsg({ ok: false, text: "Konfirmasi password tidak cocok." }); return; }
+    setPwBusy(true);
+    try {
+      await api.post("/auth/change-password", { current_password: pwCurrent, new_password: pwNew });
+      setPwMsg({ ok: true, text: "Password berhasil diubah." });
+      setPwCurrent(""); setPwNew(""); setPwConfirm("");
+    } catch (err: any) {
+      setPwMsg({ ok: false, text: err.response?.data?.detail || "Gagal mengubah password." });
+    } finally {
+      setPwBusy(false);
+    }
+  };
 
   const fetchSettings = async () => {
     try {
@@ -204,6 +226,36 @@ export default function SettingsPage() {
               </div>
             </div>
           </div>
+        </section>
+
+        {/* Change Password */}
+        <section className="p-6 border border-border rounded-2xl bg-card space-y-6 shadow-sm">
+          <div className="flex items-center gap-3 border-b border-border pb-4">
+            <div className="w-9 h-9 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
+              <ShieldCheck className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold">Ganti Password</h2>
+              <p className="text-xs text-muted-foreground">Ubah password akunmu (butuh password lama).</p>
+            </div>
+          </div>
+          <form onSubmit={changePassword} className="space-y-4 max-w-md">
+            {pwMsg && (
+              <div className={cn("text-sm rounded-xl px-4 py-3", pwMsg.ok ? "text-emerald-600 bg-emerald-500/10" : "text-destructive bg-destructive/10")}>
+                {pwMsg.text}
+              </div>
+            )}
+            <input type="password" placeholder="Password lama" required value={pwCurrent} onChange={(e) => setPwCurrent(e.target.value)}
+              className="w-full px-4 py-3 bg-secondary/30 border border-border rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all" />
+            <input type="password" placeholder="Password baru (min. 6 karakter)" required value={pwNew} onChange={(e) => setPwNew(e.target.value)}
+              className="w-full px-4 py-3 bg-secondary/30 border border-border rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all" />
+            <input type="password" placeholder="Ulangi password baru" required value={pwConfirm} onChange={(e) => setPwConfirm(e.target.value)}
+              className="w-full px-4 py-3 bg-secondary/30 border border-border rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all" />
+            <button type="submit" disabled={pwBusy}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-2xl text-sm font-bold hover:bg-primary/90 transition-all disabled:opacity-50">
+              {pwBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : "Simpan Password"}
+            </button>
+          </form>
         </section>
 
         {/* Security Section */}
