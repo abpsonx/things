@@ -88,15 +88,15 @@ export default function TeamSettingsPage() {
   };
 
   if (loading) return (
-    <div className="flex-1 flex justify-center items-center h-screen bg-[#fafafa]">
+    <div className="flex-1 flex justify-center items-center h-screen bg-background">
       <div className="animate-pulse text-muted-foreground font-medium">Loading settings...</div>
     </div>
   );
 
   return (
-    <div className="flex-1 flex flex-col min-h-screen bg-[#fafafa]">
+    <div className="flex-1 flex flex-col min-h-screen bg-background">
       {/* Header */}
-      <div className="border-b border-border px-8 py-5 flex items-center justify-between bg-white/80 backdrop-blur-md sticky top-0 z-30">
+      <div className="border-b border-border px-8 py-5 flex items-center justify-between bg-card/80 backdrop-blur-md sticky top-0 z-30">
         <div className="flex items-center gap-4">
           <button
             onClick={() => router.back()}
@@ -120,8 +120,8 @@ export default function TeamSettingsPage() {
 
       <div className="flex-1 p-8 max-w-4xl mx-auto w-full space-y-8">
         {/* General Settings */}
-        <div className="bg-white rounded-3xl border border-border shadow-sm overflow-hidden">
-          <div className="p-8 border-b border-border bg-slate-50/50">
+        <div className="bg-card rounded-3xl border border-border shadow-sm overflow-hidden">
+          <div className="p-8 border-b border-border bg-secondary/50/50">
             <h2 className="text-xl font-bold flex items-center gap-2">
               <Settings className="w-5 h-5 text-primary" />
               General Information
@@ -133,7 +133,7 @@ export default function TeamSettingsPage() {
               <label className="text-sm font-bold text-foreground ml-1">Team Name</label>
               <input 
                 type="text"
-                className="w-full px-4 py-3 rounded-2xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-slate-50/30"
+                className="w-full px-4 py-3 rounded-2xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-secondary/50/30"
                 value={name} 
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Growth Booster" 
@@ -142,7 +142,7 @@ export default function TeamSettingsPage() {
             <div className="space-y-2">
               <label className="text-sm font-bold text-foreground ml-1">Description</label>
               <textarea 
-                className="w-full px-4 py-3 rounded-2xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-slate-50/30 min-h-[100px]"
+                className="w-full px-4 py-3 rounded-2xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-secondary/50/30 min-h-[100px]"
                 value={description} 
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="What is this team working on?" 
@@ -152,8 +152,8 @@ export default function TeamSettingsPage() {
         </div>
 
         {/* Members */}
-        <div className="bg-white rounded-3xl border border-border shadow-sm overflow-hidden">
-          <div className="p-8 border-b border-border bg-slate-50/50 flex items-center justify-between">
+        <div className="bg-card rounded-3xl border border-border shadow-sm overflow-hidden">
+          <div className="p-8 border-b border-border bg-secondary/50/50 flex items-center justify-between">
             <div>
               <h2 className="text-xl font-bold flex items-center gap-2">
                 <Users className="w-5 h-5 text-violet-500" />
@@ -226,8 +226,8 @@ export default function TeamSettingsPage() {
         </div>
 
         {/* Member Permissions */}
-        <div className="bg-white rounded-3xl border border-border shadow-sm overflow-hidden">
-          <div className="p-8 border-b border-border bg-slate-50/50">
+        <div className="bg-card rounded-3xl border border-border shadow-sm overflow-hidden">
+          <div className="p-8 border-b border-border bg-secondary/50/50">
             <h2 className="text-xl font-bold flex items-center gap-2">
               <Users className="w-5 h-5 text-blue-500" />
               Permissions
@@ -244,7 +244,7 @@ export default function TeamSettingsPage() {
                 onClick={() => setAllowInvite(!allowInvite)}
                 className={`w-12 h-6 rounded-full relative transition-all ${allowInvite ? 'bg-primary' : 'bg-slate-200'}`}
               >
-                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${allowInvite ? 'right-1' : 'left-1'}`} />
+                <div className={`absolute top-1 w-4 h-4 bg-card rounded-full shadow-sm transition-all ${allowInvite ? 'right-1' : 'left-1'}`} />
               </button>
             </div>
             <div className="flex items-center justify-between py-4">
@@ -256,7 +256,7 @@ export default function TeamSettingsPage() {
                 onClick={() => setAllowDeleteTask(!allowDeleteTask)}
                 className={`w-12 h-6 rounded-full relative transition-all ${allowDeleteTask ? 'bg-primary' : 'bg-slate-200'}`}
               >
-                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${allowDeleteTask ? 'right-1' : 'left-1'}`} />
+                <div className={`absolute top-1 w-4 h-4 bg-card rounded-full shadow-sm transition-all ${allowDeleteTask ? 'right-1' : 'left-1'}`} />
               </button>
             </div>
           </div>
@@ -293,7 +293,7 @@ export default function TeamSettingsPage() {
             <p className="text-sm text-red-600/70 mt-1">Actions that cannot be undone.</p>
           </div>
           <div className="p-8 space-y-4">
-            <div className="flex items-center justify-between p-4 bg-white rounded-2xl border border-red-100">
+            <div className="flex items-center justify-between p-4 bg-card rounded-2xl border border-red-100">
               <div>
                 <h4 className="font-bold text-red-600">Delete Team</h4>
                 <p className="text-xs text-muted-foreground">Permanently remove this team and all associated data</p>

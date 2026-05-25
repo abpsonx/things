@@ -319,16 +319,16 @@ export default function TeamChatPage() {
             <div className="relative group/img rounded-xl overflow-hidden border border-black/5 shadow-sm max-w-sm">
               <img src={msg.file_url} alt={msg.file_name} className="w-full h-auto object-cover max-h-60" />
               <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/30 transition-all flex items-center justify-center gap-2 opacity-0 group-hover/img:opacity-100">
-                <a href={msg.file_url} target="_blank" rel="noopener noreferrer" className="p-2 bg-white/90 rounded-xl hover:bg-white transition-all hover:scale-105" title="Lihat gambar">
+                <a href={msg.file_url} target="_blank" rel="noopener noreferrer" className="p-2 bg-card/90 rounded-xl hover:bg-card transition-all hover:scale-105" title="Lihat gambar">
                   <ExternalLink className="w-4 h-4 text-gray-700" />
                 </a>
-                <a href={msg.file_url} download={msg.file_name} className="p-2 bg-white/90 rounded-xl hover:bg-white transition-all hover:scale-105" title="Download gambar">
+                <a href={msg.file_url} download={msg.file_name} className="p-2 bg-card/90 rounded-xl hover:bg-card transition-all hover:scale-105" title="Download gambar">
                   <Download className="w-4 h-4 text-gray-700" />
                 </a>
               </div>
             </div>
           ) : (
-            <div className={`flex items-center gap-3 p-3 rounded-2xl border ${isMe ? 'bg-white/10 border-white/20' : 'bg-white border-border shadow-sm'}`}>
+            <div className={`flex items-center gap-3 p-3 rounded-2xl border ${isMe ? 'bg-white/10 border-white/20' : 'bg-card border-border shadow-sm'}`}>
               <div className={`p-2.5 rounded-xl ${isMe ? 'bg-white/20' : 'bg-indigo-50'}`}>
                 <Paperclip className={`w-5 h-5 ${isMe ? 'text-white' : 'text-indigo-600'}`} />
               </div>
@@ -370,7 +370,7 @@ export default function TeamChatPage() {
 
   if (loading) {
     return (
-      <div className="flex-1 flex justify-center items-center h-screen bg-[#fafafa]">
+      <div className="flex-1 flex justify-center items-center h-screen bg-background">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
@@ -382,9 +382,9 @@ export default function TeamChatPage() {
   );
 
   return (
-    <div className="flex-1 flex flex-col h-[calc(100vh-64px)] -m-8 bg-[#fafafa] overflow-hidden relative">
+    <div className="flex-1 flex flex-col h-[calc(100vh-64px)] -m-8 bg-background overflow-hidden relative">
       {/* Sticky Header & Nav Container */}
-      <div className="shrink-0 bg-white/90 backdrop-blur-md flex flex-col border-b border-border shadow-sm">
+      <div className="shrink-0 bg-card/90 backdrop-blur-md flex flex-col border-b border-border shadow-sm">
         {/* Header */}
         <div className="px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -416,7 +416,7 @@ export default function TeamChatPage() {
                 placeholder="Cari pesan atau file..." 
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 pr-4 py-2 bg-secondary border border-transparent rounded-full text-[13px] outline-none focus:bg-white focus:border-indigo-500/30 focus:ring-4 focus:ring-indigo-500/10 w-[200px] transition-all focus:w-[280px]"
+                className="pl-9 pr-4 py-2 bg-secondary border border-transparent rounded-full text-[13px] outline-none focus:bg-card focus:border-indigo-500/30 focus:ring-4 focus:ring-indigo-500/10 w-[200px] transition-all focus:w-[280px]"
               />
             </div>
           </div>
@@ -509,7 +509,7 @@ export default function TeamChatPage() {
                                 }
                               }}
                               className={`mb-2 px-2 py-1 rounded-md border-l-2 cursor-pointer text-[11px] leading-tight ${
-                                isMe ? 'bg-white/15 border-white/60 text-white' : 'bg-white border-indigo-400/50 text-gray-700'
+                                isMe ? 'bg-white/15 border-white/60 text-white' : 'bg-card border-indigo-400/50 text-gray-700'
                               }`}
                             >
                               <p className={`font-bold flex items-center gap-1 text-[10px] ${isMe ? 'text-white/90' : 'text-gray-900'}`}>
@@ -600,7 +600,7 @@ export default function TeamChatPage() {
 
                   {/* Context Menu Popup */}
                   {activeMenuId === msg.id && (
-                    <div className={`absolute top-full ${isMe ? 'right-0' : 'left-0'} z-50 mt-1 bg-white border border-border rounded-xl shadow-xl p-1 min-w-[120px] animate-in zoom-in-95 duration-200`}>
+                    <div className={`absolute top-full ${isMe ? 'right-0' : 'left-0'} z-50 mt-1 bg-card border border-border rounded-xl shadow-xl p-1 min-w-[120px] animate-in zoom-in-95 duration-200`}>
                       <button 
                         onClick={() => startEdit(msg)}
                         className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-secondary rounded-lg transition-colors text-foreground"
@@ -687,7 +687,7 @@ export default function TeamChatPage() {
 
       {/* Emoji Picker Popover */}
       {showEmojiPicker && (
-        <div className="absolute bottom-28 right-8 z-50 bg-white border border-border rounded-2xl shadow-2xl p-4 grid grid-cols-4 gap-2 animate-in slide-in-from-bottom-4 duration-300">
+        <div className="absolute bottom-28 right-8 z-50 bg-card border border-border rounded-2xl shadow-2xl p-4 grid grid-cols-4 gap-2 animate-in slide-in-from-bottom-4 duration-300">
           {emojis.map(emoji => (
             <button 
               key={emoji} 
@@ -704,7 +704,7 @@ export default function TeamChatPage() {
       )}
 
       {/* Input Area */}
-      <div className="p-6 bg-white border-t border-border shrink-0 shadow-[0_-4px_20px_rgba(0,0,0,0.02)]">
+      <div className="p-6 bg-card border-t border-border shrink-0 shadow-[0_-4px_20px_rgba(0,0,0,0.02)]">
         {replyTo && (
           <div className="w-full mb-3 p-2.5 bg-indigo-50 border-l-2 border-indigo-500 rounded-xl flex items-center justify-between text-xs">
             <div className="min-w-0 flex-1">
@@ -727,7 +727,7 @@ export default function TeamChatPage() {
             <textarea
               rows={1}
               placeholder="Ketik pesan untuk tim..."
-              className="w-full pl-6 pr-24 py-4 bg-secondary/40 border border-transparent focus:border-primary/20 focus:bg-white rounded-2xl text-sm focus:ring-4 focus:ring-primary/5 transition-all outline-none resize-none overflow-hidden"
+              className="w-full pl-6 pr-24 py-4 bg-secondary/40 border border-transparent focus:border-primary/20 focus:bg-card rounded-2xl text-sm focus:ring-4 focus:ring-primary/5 transition-all outline-none resize-none overflow-hidden"
               value={newMessage}
               onChange={(e) => {
                 setNewMessage(e.target.value);

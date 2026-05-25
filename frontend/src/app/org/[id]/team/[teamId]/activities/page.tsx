@@ -36,9 +36,9 @@ export default function TeamActivitiesPage() {
   if (loading) return <div className="p-10 text-center">Loading aktivitas...</div>;
 
   return (
-    <div className="flex-1 flex flex-col min-h-screen bg-[#fafafa]">
+    <div className="flex-1 flex flex-col min-h-screen bg-background">
       {/* Simple Header */}
-      <div className="border-b bg-white p-5 flex items-center gap-4">
+      <div className="border-b bg-card p-5 flex items-center gap-4">
         <button onClick={() => router.back()} className="p-2 hover:bg-slate-100 rounded-full">
           <ArrowLeft className="w-5 h-5" />
         </button>
@@ -50,7 +50,7 @@ export default function TeamActivitiesPage() {
       <div className="p-8 max-w-3xl mx-auto w-full space-y-4">
         {activities.length > 0 ? (
           activities.map((log) => (
-            <div key={log.id} className="bg-white p-4 rounded-2xl border shadow-sm flex items-start gap-4">
+            <div key={log.id} className="bg-card p-4 rounded-2xl border shadow-sm flex items-start gap-4">
               <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center overflow-hidden">
                 {log.user?.avatar_url ? <img src={log.user.avatar_url} className="w-full h-full object-cover" /> : <UserIcon className="w-5 h-5 text-slate-400" />}
               </div>
@@ -67,7 +67,7 @@ export default function TeamActivitiesPage() {
             </div>
           ))
         ) : (
-          <div className="text-center py-20 bg-white rounded-3xl border border-dashed">
+          <div className="text-center py-20 bg-card rounded-3xl border border-dashed">
             <Activity className="w-12 h-12 mx-auto text-slate-200 mb-2" />
             <p className="text-slate-400">Belum ada aktivitas di tim ini</p>
           </div>

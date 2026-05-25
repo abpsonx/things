@@ -165,9 +165,9 @@ export default function TeamCalendarPage() {
   const dayLabels = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
 
   return (
-    <div className="flex-1 flex flex-col min-h-screen bg-[#fafafa] dark:bg-background">
+    <div className="flex-1 flex flex-col min-h-screen bg-background dark:bg-background">
       {/* Header */}
-      <div className="border-b border-border px-8 py-5 flex items-center justify-between bg-white/80 dark:bg-card/60 backdrop-blur-md sticky top-0 z-30">
+      <div className="border-b border-border px-8 py-5 flex items-center justify-between bg-card/80 dark:bg-card/60 backdrop-blur-md sticky top-0 z-30">
         <div className="flex items-center gap-4">
           <button onClick={() => router.back()} className="p-2 rounded-xl hover:bg-secondary text-muted-foreground hover:text-foreground transition-all">
             <ArrowLeft className="w-4 h-4" />

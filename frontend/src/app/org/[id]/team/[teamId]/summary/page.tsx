@@ -58,7 +58,7 @@ export default function TeamSummaryPage() {
 
   if (loading) {
     return (
-      <div className="flex-1 flex justify-center items-center h-screen bg-[#fafafa] dark:bg-background">
+      <div className="flex-1 flex justify-center items-center h-screen bg-background dark:bg-background">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
@@ -119,9 +119,9 @@ export default function TeamSummaryPage() {
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-screen bg-[#fafafa] dark:bg-background">
+    <div className="flex-1 flex flex-col min-h-screen bg-background dark:bg-background">
       {/* Header */}
-      <div className="border-b border-border px-8 py-5 flex items-center justify-between bg-white/80 dark:bg-card/60 backdrop-blur-md sticky top-0 z-30">
+      <div className="border-b border-border px-8 py-5 flex items-center justify-between bg-card/80 dark:bg-card/60 backdrop-blur-md sticky top-0 z-30">
         <div className="flex items-center gap-4">
           <button
             onClick={() => router.back()}
