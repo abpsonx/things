@@ -1,7 +1,7 @@
 """Organization (Workspace) endpoints."""
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import selectinload
 from typing import List
 from datetime import datetime, timezone
@@ -48,6 +48,67 @@ async def create_organization(
     await db.commit()
     await db.refresh(org)
     return OrgResponse.model_validate(org)
+
+
+async def _load_org_or_404(db: AsyncSession, org_id: str) -> Organization:
+    res = await db.execute(select(Organization).where(Organization.id == org_id))
+    org = res.scalar_one_or_none()
+    if not org:
+        raise HTTPException(status_code=404, detail="Workspace tidak ditemukan")
+    return org
+
+
+async def _is_org_owner(db: AsyncSession, org: Organization, user: User) -> bool:
+    if is_superuser(user) or str(org.owner_id) == str(user.id):
+        return True
+    res = await db.execute(
+        select(OrgMember).where(
+            OrgMember.org_id == org.id, OrgMember.user_id == user.id, OrgMember.role == "owner"
+        )
+    )
+    return res.scalar_one_or_none() is not None
+
+
+@router.patch("/{org_id}", response_model=OrgResponse)
+async def update_organization(
+    org_id: str,
+    data: OrgCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Rename a workspace (owner or developer only)."""
+    org = await _load_org_or_404(db, org_id)
+    if not await _is_org_owner(db, org, current_user):
+        raise HTTPException(status_code=403, detail="Hanya owner workspace yang bisa mengubah")
+    name = (data.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Nama workspace tidak boleh kosong")
+    org.name = name
+    await log_activity(
+        db, org_id=org.id, user_id=current_user.id,
+        action="org_updated", entity_type="organization", entity_id=org.id,
+        metadata={"name": name},
+    )
+    await db.commit()
+    await db.refresh(org)
+    return OrgResponse.model_validate(org)
+
+
+@router.delete("/{org_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_organization(
+    org_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a workspace and everything in it (owner or developer only)."""
+    org = await _load_org_or_404(db, org_id)
+    if not await _is_org_owner(db, org, current_user):
+        raise HTTPException(status_code=403, detail="Hanya owner workspace yang bisa menghapus")
+    # Raw delete so Postgres ON DELETE CASCADE clears all child rows
+    # (members, projects, tasks, channels, social accounts, …) in one go.
+    await db.execute(text("DELETE FROM organizations WHERE id = :id"), {"id": str(org_id)})
+    await db.commit()
+    return None
 
 
 @router.get("", response_model=List[OrgResponse])

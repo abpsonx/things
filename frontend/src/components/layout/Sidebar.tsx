@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
-import { usePathname, useParams } from "next/navigation";
+import { usePathname, useParams, useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/useAuthStore";
 import { usePresenceStore } from "@/store/usePresenceStore";
 import { useNotificationsStore } from "@/store/useNotificationsStore";
@@ -26,6 +26,8 @@ import {
   Hash,
   Building2,
   ChevronDown,
+  Pencil,
+  Trash2,
   X
 } from "lucide-react";
 import CreateTeamModal from "@/components/team/CreateTeamModal";
@@ -39,6 +41,7 @@ type SidebarProps = {
 export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const params = useParams();
+  const router = useRouter();
   const orgId = params?.id;
   const projectId = params?.projectId;
   const { user, logout } = useAuthStore();
@@ -101,6 +104,31 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   useEffect(() => {
     fetchContext();
   }, [orgId, projectId, user?.id]);
+
+  const canManageWs = (ws: any) =>
+    String(ws.owner_id) === String(user?.id) || (user as any)?.role === "developer";
+
+  const renameWorkspace = async (ws: any) => {
+    const name = window.prompt("Nama workspace baru:", ws.name)?.trim();
+    if (!name || name === ws.name) return;
+    try {
+      await api.patch(`/organizations/${ws.id}`, { name });
+      setOrgs((prev) => prev.map((o) => (o.id === ws.id ? { ...o, name } : o)));
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || "Gagal mengubah nama workspace");
+    }
+  };
+
+  const deleteWorkspace = async (ws: any) => {
+    if (!window.confirm(`Hapus workspace "${ws.name}"? Semua proyek, tugas, chat, dan data di dalamnya ikut terhapus permanen. Tindakan ini tidak bisa dibatalkan.`)) return;
+    try {
+      await api.delete(`/organizations/${ws.id}`);
+      setOrgs((prev) => prev.filter((o) => o.id !== ws.id));
+      if (String(activeOrgId) === String(ws.id)) router.push("/dashboard");
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || "Gagal menghapus workspace");
+    }
+  };
 
   // Per-workspace unread chat counts (refetch on navigation so badges clear
   // after a room is opened + marked read).
@@ -264,22 +292,34 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
               const unread = wsUnread[ws.id] || 0;
               return (
                 <div key={ws.id}>
-                  <button
-                    onClick={() => setExpandedWs((prev) => ({ ...prev, [ws.id]: !expanded }))}
-                    className={cn(
-                      "w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors",
-                      ws.id === activeOrgId ? "text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                  <div className={cn(
+                    "group flex items-center rounded-md transition-colors",
+                    ws.id === activeOrgId ? "text-foreground" : "text-muted-foreground hover:bg-secondary"
+                  )}>
+                    <button
+                      onClick={() => setExpandedWs((prev) => ({ ...prev, [ws.id]: !expanded }))}
+                      className="flex items-center gap-2 pl-2.5 py-1.5 text-xs font-semibold flex-1 min-w-0"
+                    >
+                      <Building2 className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate flex-1 text-left">{ws.name}</span>
+                      {unread > 0 && !expanded && (
+                        <span className="shrink-0 min-w-[16px] h-[16px] px-1 bg-destructive text-destructive-foreground text-[9px] font-extrabold rounded-full flex items-center justify-center">
+                          {unread > 9 ? "9+" : unread}
+                        </span>
+                      )}
+                      <ChevronDown className={cn("w-3 h-3 shrink-0 transition-transform", !expanded && "-rotate-90")} />
+                    </button>
+                    {canManageWs(ws) && (
+                      <div className="flex items-center gap-0.5 pr-1.5 pl-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => renameWorkspace(ws)} title="Ubah nama" className="p-1 rounded hover:bg-background/60 hover:text-foreground">
+                          <Pencil className="w-3 h-3" />
+                        </button>
+                        <button onClick={() => deleteWorkspace(ws)} title="Hapus workspace" className="p-1 rounded hover:bg-destructive/10 hover:text-destructive">
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
                     )}
-                  >
-                    <Building2 className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate flex-1 text-left">{ws.name}</span>
-                    {unread > 0 && !expanded && (
-                      <span className="shrink-0 min-w-[16px] h-[16px] px-1 bg-destructive text-destructive-foreground text-[9px] font-extrabold rounded-full flex items-center justify-center">
-                        {unread > 9 ? "9+" : unread}
-                      </span>
-                    )}
-                    <ChevronDown className={cn("w-3 h-3 shrink-0 transition-transform", !expanded && "-rotate-90")} />
-                  </button>
+                  </div>
                   {expanded && (
                     <div className="ml-4 pl-2 border-l border-border space-y-1 mt-1">
                       <Link
