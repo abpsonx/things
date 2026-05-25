@@ -6,6 +6,7 @@ import { usePathname, useParams } from "next/navigation";
 import { useAuthStore } from "@/store/useAuthStore";
 import { usePresenceStore } from "@/store/usePresenceStore";
 import { useNotificationsStore } from "@/store/useNotificationsStore";
+import { socket } from "@/lib/socket";
 import { cn } from "@/lib/utils";
 import api from "@/lib/api";
 import {
@@ -115,7 +116,19 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     // Refetch right after a workspace room is opened + marked read.
     const onRead = () => load();
     window.addEventListener("ws-chat-read", onRead);
-    return () => { active = false; window.removeEventListener("ws-chat-read", onRead); };
+    // Live badge: a new workspace message bumps the count instantly, unless
+    // we're already viewing that workspace's chat.
+    const onWsUnread = (d: any) => {
+      const oid = d?.org_id;
+      if (!oid || pathname === `/org/${oid}/chat`) return;
+      setWsUnread((prev) => ({ ...prev, [oid]: (prev[oid] || 0) + 1 }));
+    };
+    socket.on("workspace_chat_unread", onWsUnread);
+    return () => {
+      active = false;
+      window.removeEventListener("ws-chat-read", onRead);
+      socket.off("workspace_chat_unread", onWsUnread);
+    };
   }, [pathname, user?.id]);
 
   const navItems = [

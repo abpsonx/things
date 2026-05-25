@@ -135,6 +135,14 @@ async def create_workspace_message(
         },
     }, room=f"channel_{ch.id}")
 
+    # Live unread ping to every workspace member (badge updates instantly
+    # in the sidebar without needing to navigate). Lightweight: just org_id.
+    mem = await db.execute(select(OrgMember.user_id).where(OrgMember.org_id == uuid.UUID(org_id)))
+    for (member_id,) in mem.all():
+        if str(member_id) == str(current_user.id):
+            continue
+        await sio.emit("workspace_chat_unread", {"org_id": org_id}, room=f"user_{member_id}")
+
     # Notify @mentioned members.
     if data.content:
         mentioned_ids = {m for m in _MENTION_RE.findall(data.content) if m != str(current_user.id)}
