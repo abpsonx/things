@@ -172,7 +172,7 @@ export default function MyTasksPage() {
   };
 
   return (
-    <div className="space-y-8 max-w-3xl">
+    <div className="space-y-8 w-full">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">

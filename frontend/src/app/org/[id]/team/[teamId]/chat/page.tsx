@@ -701,7 +701,7 @@ export default function TeamChatPage() {
       {/* Input Area */}
       <div className="p-6 bg-white border-t border-border shrink-0 shadow-[0_-4px_20px_rgba(0,0,0,0.02)]">
         {replyTo && (
-          <div className="max-w-5xl mx-auto mb-3 p-2.5 bg-indigo-50 border-l-2 border-indigo-500 rounded-xl flex items-center justify-between text-xs">
+          <div className="w-full mb-3 p-2.5 bg-indigo-50 border-l-2 border-indigo-500 rounded-xl flex items-center justify-between text-xs">
             <div className="min-w-0 flex-1">
               <p className="flex items-center gap-1.5 text-[10px] font-bold text-indigo-600 mb-0.5">
                 <Reply className="w-3 h-3 shrink-0" />
@@ -714,10 +714,10 @@ export default function TeamChatPage() {
             </button>
           </div>
         )}
-        <div className="max-w-5xl mx-auto h-5">
+        <div className="w-full h-5">
           <TypingIndicator names={typingNames} />
         </div>
-        <form onSubmit={sendMessage} className="max-w-5xl mx-auto flex items-end gap-4">
+        <form onSubmit={sendMessage} className="w-full flex items-end gap-4">
           <div className="flex-1 relative group">
             <textarea
               rows={1}
