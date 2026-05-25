@@ -125,12 +125,12 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     {
       icon: MessageSquare,
       label: "Chat",
-      href: (activeOrgId && activeProjectId) ? `/org/${activeOrgId}/project/${activeProjectId}/chat` : "#"
+      href: (activeOrgId && activeProjectId) ? `/org/${activeOrgId}/project/${activeProjectId}/chat` : "/chat"
     },
-    { 
-      icon: Calendar, 
-      label: "Kalender", 
-      href: (activeOrgId && activeProjectId) ? `/org/${activeOrgId}/project/${activeProjectId}/calendar` : "#" 
+    {
+      icon: Calendar,
+      label: "Kalender",
+      href: (activeOrgId && activeProjectId) ? `/org/${activeOrgId}/project/${activeProjectId}/calendar` : "/calendar"
     },
     {
       icon: Folder,
