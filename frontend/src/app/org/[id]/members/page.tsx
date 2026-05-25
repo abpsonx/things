@@ -26,6 +26,7 @@ export default function MembersPage() {
   const router = useRouter();
   const { user: currentUser } = useAuthStore();
   const [members, setMembers] = useState<any[]>([]);
+  const [ownerId, setOwnerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isInviting, setIsInviting] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -34,6 +35,7 @@ export default function MembersPage() {
     try {
       const res = await api.get(`/organizations/${orgId}`);
       setMembers(res.data.members);
+      setOwnerId(res.data.owner_id);
     } catch (err) {
       console.error("Failed to fetch members", err);
       router.push("/dashboard");
@@ -82,6 +84,7 @@ export default function MembersPage() {
 
   const currentUserMember = members.find(m => m.user_id === currentUser?.id);
   const canManage = currentUserMember?.role === "owner" || currentUserMember?.role === "manager";
+  const isOwner = currentUserMember?.role === "owner";
 
   return (
     <div className="w-full space-y-8">
@@ -134,7 +137,11 @@ export default function MembersPage() {
               {members.map((member) => {
                 const isMe = member.user_id === currentUser?.id;
                 const isTargetOwner = member.role === "owner";
-                
+                const isCreator = !!ownerId && member.user_id === ownerId;
+                // Can act on this member: managers handle non-owners; owners
+                // handle anyone — but nobody can touch the workspace creator.
+                const canActOn = canManage && !isMe && !isCreator && (isOwner || !isTargetOwner);
+
                 return (
                   <tr key={member.id} className="hover:bg-secondary/10 transition-colors group">
                     <td className="px-6 py-4">
@@ -156,7 +163,7 @@ export default function MembersPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      {canManage && !isTargetOwner && !isMe ? (
+                      {canActOn ? (
                         <select
                           value={member.role}
                           disabled={actionLoading === member.id}
@@ -188,7 +195,7 @@ export default function MembersPage() {
                     </td>
                     {canManage && (
                       <td className="px-6 py-4 text-right">
-                        {!isTargetOwner && !isMe && (
+                        {canActOn && (
                           <button
                             onClick={() => handleRemoveMember(member.id, member.user.name)}
                             disabled={actionLoading === member.id}

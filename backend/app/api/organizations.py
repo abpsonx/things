@@ -100,10 +100,10 @@ async def delete_organization(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Delete a workspace and everything in it (owner or developer only)."""
+    """Delete a workspace and everything in it — only the creator (or a developer)."""
     org = await _load_org_or_404(db, org_id)
-    if not await _is_org_owner(db, org, current_user):
-        raise HTTPException(status_code=403, detail="Hanya owner workspace yang bisa menghapus")
+    if str(org.owner_id) != str(current_user.id) and not is_superuser(current_user):
+        raise HTTPException(status_code=403, detail="Hanya pembuat workspace yang bisa menghapusnya")
     # Raw delete so Postgres ON DELETE CASCADE clears all child rows
     # (members, projects, tasks, channels, social accounts, …) in one go.
     await db.execute(text("DELETE FROM organizations WHERE id = :id"), {"id": str(org_id)})
@@ -407,6 +407,11 @@ async def update_member_role(
     if member.role == "owner" and not dev_bypass and admin.role != "owner":
         raise HTTPException(status_code=403, detail="Hanya owner yang bisa edit owner lain")
 
+    # The workspace creator's role can't be changed (except by themselves/developer).
+    org = await _load_org_or_404(db, org_id)
+    if str(member.user_id) == str(org.owner_id) and str(current_user.id) != str(org.owner_id) and not dev_bypass:
+        raise HTTPException(status_code=403, detail="Role pembuat workspace tidak bisa diubah")
+
     member.role = data.get("role", member.role)
     await db.commit()
     return {"message": "Role berhasil diperbarui", "role": member.role}
@@ -446,6 +451,11 @@ async def remove_member(
 
     if member.role == "owner" and not dev_bypass and admin.role != "owner":
         raise HTTPException(status_code=403, detail="Hanya owner yang bisa hapus owner lain")
+
+    # The workspace creator can't be removed (except by a developer).
+    org = await _load_org_or_404(db, org_id)
+    if str(member.user_id) == str(org.owner_id) and not dev_bypass:
+        raise HTTPException(status_code=403, detail="Pembuat workspace tidak bisa dikeluarkan")
 
     await db.delete(member)
     await db.commit()
