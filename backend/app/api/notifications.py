@@ -45,6 +45,30 @@ async def set_team_color(
     await db.commit()
     return {"team_colors": colors}
 
+
+@presence_router.patch("/me/pin")
+async def toggle_pin(
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Pin/unpin a team or DM to the top of the sidebar (personal).
+    Body: {kind: "team"|"dm", id, pinned: bool}."""
+    kind = data.get("kind")
+    item_id = str(data.get("id") or "").strip()
+    pinned = bool(data.get("pinned"))
+    if kind not in ("team", "dm") or not item_id:
+        raise HTTPException(status_code=400, detail="kind/id tidak valid")
+    field = "pinned_teams" if kind == "team" else "pinned_dms"
+    current = list(getattr(current_user, field) or [])
+    if pinned and item_id not in current:
+        current.append(item_id)
+    elif not pinned:
+        current = [x for x in current if x != item_id]
+    setattr(current_user, field, current)  # reassign for change tracking
+    await db.commit()
+    return {"pinned_teams": current_user.pinned_teams or [], "pinned_dms": current_user.pinned_dms or []}
+
 @router.get("", response_model=List[NotificationResponse])
 async def get_notifications(
     db: AsyncSession = Depends(get_db),

@@ -28,6 +28,7 @@ import {
   ChevronDown,
   Pencil,
   Trash2,
+  Pin,
   X
 } from "lucide-react";
 import CreateTeamModal from "@/components/team/CreateTeamModal";
@@ -125,6 +126,30 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       alert(err?.response?.data?.detail || "Gagal mengubah nama workspace");
     }
   };
+
+  const togglePin = async (kind: "team" | "dm", id: string, pinned: boolean) => {
+    try {
+      const res = await api.patch("/users/me/pin", { kind, id, pinned });
+      if (user) {
+        setAuth(
+          { ...(user as any), pinned_teams: res.data.pinned_teams, pinned_dms: res.data.pinned_dms },
+          localStorage.getItem("access_token") || "",
+          localStorage.getItem("refresh_token") || "",
+        );
+      }
+    } catch (err) {
+      console.error("Failed to toggle pin", err);
+    }
+  };
+
+  const pinnedTeamIds: string[] = (user as any)?.pinned_teams || [];
+  const pinnedDmIds: string[] = (user as any)?.pinned_dms || [];
+  const sortedTeams = [...teams].sort(
+    (a, b) => (pinnedTeamIds.includes(a.id) ? 0 : 1) - (pinnedTeamIds.includes(b.id) ? 0 : 1)
+  );
+  const sortedMembers = [...members].sort(
+    (a, b) => (pinnedDmIds.includes(a.user_id) ? 0 : 1) - (pinnedDmIds.includes(b.user_id) ? 0 : 1)
+  );
 
   const setTeamColor = async (teamId: string, color: string | null) => {
     try {
@@ -383,12 +408,13 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             />
           </h4>
           <div className="space-y-1">
-            {teams.map((team) => {
+            {sortedTeams.map((team) => {
               const href = `/org/${activeOrgId}/team/${team.id}/board`;
               const isActive = pathname.includes(team.id);
               const color = (user as any)?.team_colors?.[team.id] as string | undefined;
+              const pinned = pinnedTeamIds.includes(team.id);
               return (
-                <div key={team.id} className="relative">
+                <div key={team.id} className="relative group">
                   <Link
                     href={href}
                     className={cn(
@@ -406,8 +432,18 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                     >
                       {!color && <span className="block w-2 h-2 m-auto rounded-full bg-primary/40" />}
                     </button>
-                    <span className="truncate">{team.name}</span>
+                    <span className="truncate flex-1">{team.name}</span>
                   </Link>
+                  <button
+                    onClick={() => togglePin("team", team.id, !pinned)}
+                    title={pinned ? "Lepas pin" : "Pin ke atas"}
+                    className={cn(
+                      "absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-background/70",
+                      pinned ? "text-primary opacity-100" : "text-muted-foreground opacity-0 group-hover:opacity-100"
+                    )}
+                  >
+                    <Pin className="w-3 h-3" fill={pinned ? "currentColor" : "none"} />
+                  </button>
 
                   {colorPickerTeam === team.id && (
                     <div className="absolute z-50 left-2 top-full mt-1 p-2 rounded-xl border border-border bg-card shadow-lg flex items-center gap-1.5 flex-wrap w-44">
@@ -442,40 +478,52 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             <Plus className="w-3 h-3 cursor-pointer hover:text-primary transition-colors" />
           </h4>
           <div className="space-y-1">
-            {members.map((member) => {
+            {sortedMembers.map((member) => {
               const summary = dmBySender[member.user_id];
               const hasUnread = !!summary;
+              const pinned = pinnedDmIds.includes(member.user_id);
               return (
-                <Link
-                  key={member.id}
-                  href={`/org/${activeOrgId}/dm/${member.user_id}`}
-                  onClick={() => markDMsFromSenderRead(member.user_id)}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
-                    pathname.includes(member.user_id)
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:text-foreground hover:bg-secondary"
-                  )}
-                >
-                  <div className="relative">
-                    <div className="w-6 h-6 rounded-full bg-secondary border border-border flex items-center justify-center overflow-hidden text-[8px] font-bold">
-                      {member.user.avatar_url ? (
-                        <img src={member.user.avatar_url} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        member.user.name.charAt(0)
+                <div key={member.id} className="relative group">
+                  <Link
+                    href={`/org/${activeOrgId}/dm/${member.user_id}`}
+                    onClick={() => markDMsFromSenderRead(member.user_id)}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+                      pathname.includes(member.user_id)
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                    )}
+                  >
+                    <div className="relative">
+                      <div className="w-6 h-6 rounded-full bg-secondary border border-border flex items-center justify-center overflow-hidden text-[8px] font-bold">
+                        {member.user.avatar_url ? (
+                          <img src={member.user.avatar_url} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          member.user.name.charAt(0)
+                        )}
+                      </div>
+                      {isOnline(member.user_id) && (
+                        <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 border-2 border-card" />
                       )}
                     </div>
-                    {isOnline(member.user_id) && (
-                      <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 border-2 border-card" />
+                    <span className={cn("truncate flex-1", hasUnread && "font-bold text-foreground")}>{member.user.name}</span>
+                    {hasUnread && (
+                      <span className="shrink-0 min-w-[18px] h-[18px] px-1 mr-4 bg-destructive text-destructive-foreground text-[10px] font-extrabold rounded-full flex items-center justify-center">
+                        {summary.count > 9 ? "9+" : summary.count}
+                      </span>
                     )}
-                  </div>
-                  <span className={cn("truncate flex-1", hasUnread && "font-bold text-foreground")}>{member.user.name}</span>
-                  {hasUnread && (
-                    <span className="shrink-0 min-w-[18px] h-[18px] px-1 bg-destructive text-destructive-foreground text-[10px] font-extrabold rounded-full flex items-center justify-center">
-                      {summary.count > 9 ? "9+" : summary.count}
-                    </span>
-                  )}
-                </Link>
+                  </Link>
+                  <button
+                    onClick={() => togglePin("dm", member.user_id, !pinned)}
+                    title={pinned ? "Lepas pin" : "Pin ke atas"}
+                    className={cn(
+                      "absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-background/70",
+                      pinned ? "text-primary opacity-100" : "text-muted-foreground opacity-0 group-hover:opacity-100"
+                    )}
+                  >
+                    <Pin className="w-3 h-3" fill={pinned ? "currentColor" : "none"} />
+                  </button>
+                </div>
               );
             })}
           </div>

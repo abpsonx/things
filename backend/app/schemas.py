@@ -35,6 +35,8 @@ class UserResponse(BaseModel):
     created_at: datetime
     daily_digest_enabled: bool = True
     team_colors: dict = {}
+    pinned_teams: list = []
+    pinned_dms: list = []
 
     class Config:
         from_attributes = True

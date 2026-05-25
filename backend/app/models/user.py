@@ -26,8 +26,10 @@ class User(Base):
     # Daily digest opt-in (1am UTC ≈ 8am Jakarta)
     daily_digest_enabled = Column(Boolean, default=True)
 
-    # Per-user UI prefs: team bullet colors { team_id: "#hex" } (personal).
-    team_colors = Column(JSONB, default=dict)
+    # Per-user UI prefs (personal, not global).
+    team_colors = Column(JSONB, default=dict)      # { team_id: "#hex" }
+    pinned_teams = Column(JSONB, default=list)     # [team_id, ...] shown on top
+    pinned_dms = Column(JSONB, default=list)       # [user_id, ...] shown on top
 
     # Relationships
     org_memberships = relationship("OrgMember", back_populates="user", cascade="all, delete-orphan")

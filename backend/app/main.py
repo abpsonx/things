@@ -74,11 +74,16 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
 
-        # per-user team bullet colors
+        # per-user team bullet colors + pinned teams/DMs
         try:
             await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS team_colors JSONB DEFAULT '{}'::jsonb"))
         except Exception:
             pass
+        for col in ("pinned_teams", "pinned_dms"):
+            try:
+                await conn.execute(text(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} JSONB DEFAULT '[]'::jsonb"))
+            except Exception:
+                pass
 
         # workspace (org-level) chat: channels can be org-scoped, not just project
         try:
