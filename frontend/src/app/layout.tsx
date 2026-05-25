@@ -15,6 +15,12 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Things - Project Management",
   description: "Kelola proyek tim kamu dengan elegan",
+  // Internal/company-only app — keep it out of search engines.
+  robots: {
+    index: false,
+    follow: false,
+    googleBot: { index: false, follow: false },
+  },
   manifest: "/manifest.json",
   icons: {
     icon: "/assets/logo.png",
