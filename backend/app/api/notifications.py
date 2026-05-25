@@ -94,8 +94,31 @@ async def get_unread_chat_counts(
     counts = {}
     for row in result:
         counts[str(row[0])] = row[1]
-        
+
     return counts
+
+
+@router.get("/workspace-chat-unread")
+async def get_unread_workspace_chat_counts(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Unread workspace-chat message counts grouped by org_id."""
+    from sqlalchemy import text
+    query = """
+    SELECT c.org_id, COUNT(m.id) as unread_count
+    FROM messages m
+    JOIN channels c ON m.channel_id = c.id
+    WHERE c.org_id IS NOT NULL
+    AND m.user_id != :user_id
+    AND NOT m.read_by @> cast(:search as jsonb)
+    GROUP BY c.org_id
+    """
+    result = await db.execute(text(query), {
+        "user_id": str(current_user.id),
+        "search": f'[{{"id": "{current_user.id}"}}]',
+    })
+    return {str(row[0]): row[1] for row in result}
 
 @router.get("/vapid-public-key")
 async def get_vapid_key():

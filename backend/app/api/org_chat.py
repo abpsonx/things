@@ -202,6 +202,32 @@ async def delete_workspace_message(
     return None
 
 
+@router.post("/read")
+async def mark_workspace_read(
+    org_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Mark all messages in the workspace channel as read by the current user."""
+    await _require_member(db, org_id, current_user.id)
+    ch = await _get_or_create_channel(db, org_id)
+    result = await db.execute(select(Message).where(Message.channel_id == ch.id))
+    now = datetime.now(timezone.utc).isoformat()
+    reader = {"id": str(current_user.id), "name": current_user.name, "read_at": now}
+    updated = 0
+    for msg in result.scalars().all():
+        if str(msg.user_id) == str(current_user.id):
+            continue
+        read_by = msg.read_by or []
+        if not any(r.get("id") == str(current_user.id) for r in read_by):
+            msg.read_by = [*read_by, reader]
+            msg.is_read = True
+            updated += 1
+    if updated:
+        await db.commit()
+    return {"status": "success", "updated_count": updated}
+
+
 @router.post("/messages/upload")
 async def upload_workspace_attachment(
     org_id: str,

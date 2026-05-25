@@ -57,6 +57,10 @@ export default function WorkspaceChatPage() {
         const msgs = await api.get(`/organizations/${orgId}/chat/messages`);
         setMessages(msgs.data || []);
         scrollDown();
+        // Mark everything read so the sidebar unread badge clears.
+        api.post(`/organizations/${orgId}/chat/read`)
+          .then(() => window.dispatchEvent(new Event("ws-chat-read")))
+          .catch(() => {});
       } catch (e) {
         console.error("Failed to load workspace chat", e);
       } finally {

@@ -54,6 +54,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const [members, setMembers] = useState<any[]>([]);
   const [orgs, setOrgs] = useState<any[]>([]);
   const [expandedWs, setExpandedWs] = useState<Record<string, boolean>>({});
+  const [wsUnread, setWsUnread] = useState<Record<string, number>>({});
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [teams, setTeams] = useState<any[]>([]);
@@ -99,6 +100,23 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   useEffect(() => {
     fetchContext();
   }, [orgId, projectId, user?.id]);
+
+  // Per-workspace unread chat counts (refetch on navigation so badges clear
+  // after a room is opened + marked read).
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        const res = await api.get("/users/me/notifications/workspace-chat-unread");
+        if (active) setWsUnread(res.data || {});
+      } catch { /* ignore */ }
+    };
+    load();
+    // Refetch right after a workspace room is opened + marked read.
+    const onRead = () => load();
+    window.addEventListener("ws-chat-read", onRead);
+    return () => { active = false; window.removeEventListener("ws-chat-read", onRead); };
+  }, [pathname, user?.id]);
 
   const navItems = [
     { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
@@ -230,6 +248,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             {orgs.map((ws) => {
               const expanded = expandedWs[ws.id] ?? (ws.id === activeOrgId);
               const chatActive = pathname === `/org/${ws.id}/chat`;
+              const unread = wsUnread[ws.id] || 0;
               return (
                 <div key={ws.id}>
                   <button
@@ -241,6 +260,11 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                   >
                     <Building2 className="w-3.5 h-3.5 shrink-0" />
                     <span className="truncate flex-1 text-left">{ws.name}</span>
+                    {unread > 0 && !expanded && (
+                      <span className="shrink-0 min-w-[16px] h-[16px] px-1 bg-destructive text-destructive-foreground text-[9px] font-extrabold rounded-full flex items-center justify-center">
+                        {unread > 9 ? "9+" : unread}
+                      </span>
+                    )}
                     <ChevronDown className={cn("w-3 h-3 shrink-0 transition-transform", !expanded && "-rotate-90")} />
                   </button>
                   {expanded && (
@@ -255,7 +279,12 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                         )}
                       >
                         <Hash className="w-3.5 h-3.5" />
-                        <span className="truncate">Chat</span>
+                        <span className="truncate flex-1">Chat</span>
+                        {unread > 0 && (
+                          <span className="shrink-0 min-w-[16px] h-[16px] px-1 bg-destructive text-destructive-foreground text-[9px] font-extrabold rounded-full flex items-center justify-center">
+                            {unread > 9 ? "9+" : unread}
+                          </span>
+                        )}
                       </Link>
                     </div>
                   )}
