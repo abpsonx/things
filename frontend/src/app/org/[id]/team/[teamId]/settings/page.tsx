@@ -166,7 +166,7 @@ export default function TeamSettingsPage() {
             </div>
             <button
               onClick={() => setIsInviteOpen(true)}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-primary text-white text-sm font-bold hover:bg-primary/90 shadow-md shadow-primary/20 transition-all"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 shadow-md shadow-primary/20 transition-all"
             >
               <UserPlus className="w-4 h-4" />
               Tambah
@@ -267,7 +267,7 @@ export default function TeamSettingsPage() {
           <button 
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-2 px-10 py-4 bg-primary text-white rounded-2xl font-bold hover:bg-primary/90 disabled:opacity-50 transition-all shadow-xl shadow-primary/30"
+            className="flex items-center gap-2 px-10 py-4 bg-primary text-primary-foreground rounded-2xl font-bold hover:bg-primary/90 disabled:opacity-50 transition-all shadow-xl shadow-primary/30"
           >
             <Save className="w-5 h-5" />
             {saving ? 'Saving...' : 'Save All Settings'}
@@ -284,8 +284,8 @@ export default function TeamSettingsPage() {
         />
 
         {/* Danger Zone */}
-        <div className="bg-red-50/50 rounded-3xl border border-red-100 overflow-hidden mt-12">
-          <div className="p-8 border-b border-red-100 bg-red-100/30">
+        <div className="bg-destructive/5 rounded-3xl border border-destructive/20 overflow-hidden mt-12">
+          <div className="p-8 border-b border-destructive/20 bg-destructive/10">
             <h2 className="text-xl font-bold flex items-center gap-2 text-red-600">
               <ShieldAlert className="w-5 h-5" />
               Danger Zone
@@ -293,7 +293,7 @@ export default function TeamSettingsPage() {
             <p className="text-sm text-red-600/70 mt-1">Actions that cannot be undone.</p>
           </div>
           <div className="p-8 space-y-4">
-            <div className="flex items-center justify-between p-4 bg-card rounded-2xl border border-red-100">
+            <div className="flex items-center justify-between p-4 bg-card rounded-2xl border border-destructive/20">
               <div>
                 <h4 className="font-bold text-red-600">Delete Team</h4>
                 <p className="text-xs text-muted-foreground">Permanently remove this team and all associated data</p>

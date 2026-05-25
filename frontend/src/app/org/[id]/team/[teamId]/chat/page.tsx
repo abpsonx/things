@@ -778,7 +778,7 @@ export default function TeamChatPage() {
           <button
             type="submit"
             disabled={!newMessage.trim()}
-            className="p-4 bg-primary text-white rounded-2xl shadow-xl shadow-primary/25 hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:grayscale disabled:scale-100 shrink-0"
+            className="p-4 bg-primary text-primary-foreground rounded-2xl shadow-xl shadow-primary/25 hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:grayscale disabled:scale-100 shrink-0"
           >
             <Send className="w-5 h-5" />
           </button>
