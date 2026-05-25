@@ -152,7 +152,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   return (
     <aside
       className={cn(
-        "w-64 border-r border-border h-screen flex flex-col bg-card z-[50]",
+        "w-52 border-r border-border h-screen flex flex-col bg-card z-[50]",
         // Desktop: part of normal flex layout, always visible
         "md:sticky md:top-0 md:translate-x-0",
         // Mobile: fixed slide-out drawer
@@ -160,9 +160,9 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
       )}
     >
-      <div className="p-6 flex items-center justify-between">
-        <Link href="/dashboard" className="flex items-center gap-2 font-bold text-xl tracking-tighter text-primary">
-          <img src="/assets/logo.png" alt="Logo" className="w-8 h-8 object-contain" />
+      <div className="px-3 py-4 flex items-center justify-between">
+        <Link href="/dashboard" className="flex items-center gap-2 font-bold text-base tracking-tighter text-primary">
+          <img src="/assets/logo.png" alt="Logo" className="w-6 h-6 object-contain" />
           <span>Things</span>
         </Link>
         <button
@@ -175,7 +175,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         </button>
       </div>
 
-      <nav className="flex-1 px-4 space-y-8 overflow-y-auto">
+      <nav className="flex-1 px-2.5 space-y-5 overflow-y-auto">
         {!activeOrgId && (
           <div className="px-3 py-5 bg-primary/5 border-2 border-dashed border-primary/20 rounded-3xl space-y-4 animate-pulse">
             <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center mx-auto text-primary">
@@ -223,21 +223,21 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                 key={item.label}
                 href={item.href}
                 className={cn(
-                  "flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-colors",
-                  isActive 
-                    ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20" 
+                  "flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[13px] font-medium transition-colors",
+                  isActive
+                    ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20"
                     : "text-muted-foreground hover:text-foreground hover:bg-secondary"
                 )}
               >
-                <item.icon className="w-4 h-4" />
+                <item.icon className="w-4 h-4 shrink-0" />
                 {item.label}
               </Link>
             );
           })}
         </div>
 
-        <div className="space-y-4">
-          <h4 className="px-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 flex items-center justify-between">
+        <div className="space-y-2">
+          <h4 className="px-2.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 flex items-center justify-between">
             Workspace
             <Plus
               onClick={() => setIsCreateOrgOpen(true)}
@@ -297,8 +297,8 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           </div>
         </div>
 
-        <div className="space-y-4">
-          <h4 className="px-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 flex items-center justify-between">
+        <div className="space-y-2">
+          <h4 className="px-2.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 flex items-center justify-between">
             Tim
             <Plus
               onClick={() => activeOrgId ? setIsCreateTeamOpen(true) : setIsCreateOrgOpen(true)}
@@ -331,8 +331,8 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           </div>
         </div>
 
-        <div className="space-y-4">
-          <h4 className="px-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 flex items-center justify-between">
+        <div className="space-y-2">
+          <h4 className="px-2.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 flex items-center justify-between">
             Direct Messages
             <Plus className="w-3 h-3 cursor-pointer hover:text-primary transition-colors" />
           </h4>
@@ -377,9 +377,9 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         </div>
       </nav>
 
-      <div className="p-4 border-t border-border mt-auto">
-        <div className="flex items-center gap-3 px-3 py-2 mb-2">
-          <div className="w-8 h-8 rounded-full bg-secondary border border-border flex items-center justify-center overflow-hidden">
+      <div className="p-2.5 border-t border-border mt-auto">
+        <div className="flex items-center gap-2.5 px-2.5 py-1.5 mb-1.5">
+          <div className="w-7 h-7 rounded-full bg-secondary border border-border flex items-center justify-center overflow-hidden">
             {user?.avatar_url ? (
               <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
             ) : (
@@ -394,14 +394,14 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         <div className="space-y-1">
           <Link
             href="/settings"
-            className="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+            className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
           >
             <Settings className="w-4 h-4" />
             Settings
           </Link>
           <button
             onClick={logout}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"
+            className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[13px] font-medium text-destructive hover:bg-destructive/10 transition-colors"
           >
             <LogOut className="w-4 h-4" />
             Keluar
