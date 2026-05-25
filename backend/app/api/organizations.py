@@ -271,22 +271,49 @@ async def invite_member(
     return {"message": f"Berhasil mengundang {data.email}", "is_pending": not bool(user)}
 
 
-@router.get("/{org_id}/activity", response_model=List[ActivityLogResponse])
+@router.get("/{org_id}/activity")
 async def list_activity_logs(
     org_id: str,
+    limit: int = 30,
+    offset: int = 0,
+    start_date: str | None = None,
+    end_date: str | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List activity logs for an organization."""
+    """Paginated activity logs, optionally filtered by date range (YYYY-MM-DD)."""
+    from datetime import datetime, timedelta
+    from sqlalchemy import func as safunc
+
+    conds = [ActivityLog.org_id == org_id]
+    if start_date:
+        try:
+            conds.append(ActivityLog.created_at >= datetime.fromisoformat(start_date))
+        except ValueError:
+            pass
+    if end_date:
+        try:
+            conds.append(ActivityLog.created_at < datetime.fromisoformat(end_date) + timedelta(days=1))
+        except ValueError:
+            pass
+
+    total = (await db.execute(
+        select(safunc.count()).select_from(ActivityLog).where(*conds)
+    )).scalar() or 0
+
     result = await db.execute(
         select(ActivityLog)
         .options(selectinload(ActivityLog.user))
-        .where(ActivityLog.org_id == org_id)
+        .where(*conds)
         .order_by(ActivityLog.created_at.desc())
-        .limit(100)
+        .limit(min(max(limit, 1), 100))
+        .offset(max(offset, 0))
     )
     logs = result.scalars().all()
-    return [ActivityLogResponse.model_validate(log) for log in logs]
+    return {
+        "items": [ActivityLogResponse.model_validate(log) for log in logs],
+        "total": total,
+    }
 
 
 @router.get("/{org_id}/activity/export")

@@ -31,11 +31,19 @@ interface Log {
   metadata: any;
 }
 
+const PAGE_SIZE = 30;
+
 export default function ActivityLogPage() {
   const { id: orgId } = useParams();
   const [logs, setLogs] = useState<Log[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const handleExport = async () => {
     setExporting(true);
@@ -60,13 +68,23 @@ export default function ActivityLogPage() {
     }
   };
 
+  // Reset to first page whenever the date filter changes.
+  useEffect(() => { setPage(0); }, [dateFrom, dateTo]);
+
   useEffect(() => {
     const fetchLogs = async () => {
+      setLoading(true);
       try {
-        // We'll need a backend endpoint for this. 
-        // For now, let's assume it exists or use a mock if not yet implemented.
-        const response = await api.get(`/organizations/${orgId}/activity`);
-        setLogs(response.data);
+        const response = await api.get(`/organizations/${orgId}/activity`, {
+          params: {
+            limit: PAGE_SIZE,
+            offset: page * PAGE_SIZE,
+            start_date: dateFrom || undefined,
+            end_date: dateTo || undefined,
+          },
+        });
+        setLogs(response.data.items || []);
+        setTotal(response.data.total || 0);
       } catch (err) {
         console.error("Failed to fetch logs", err);
       } finally {
@@ -74,7 +92,7 @@ export default function ActivityLogPage() {
       }
     };
     if (orgId) fetchLogs();
-  }, [orgId]);
+  }, [orgId, page, dateFrom, dateTo]);
 
   const getActionIcon = (action: string) => {
     if (action.includes("task")) return <Layout className="w-4 h-4" />;
@@ -127,6 +145,29 @@ export default function ActivityLogPage() {
           </div>
         </div>
 
+        {/* Date filter */}
+        <div className="flex flex-wrap items-end gap-3 p-3 rounded-2xl border border-border bg-card">
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Dari Tanggal</label>
+            <input type="date" value={dateFrom} max={dateTo || undefined}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="block px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Sampai Tanggal</label>
+            <input type="date" value={dateTo} min={dateFrom || undefined}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="block px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" />
+          </div>
+          {(dateFrom || dateTo) && (
+            <button onClick={() => { setDateFrom(""); setDateTo(""); }}
+              className="px-3 py-2 text-xs font-semibold rounded-xl border border-border hover:bg-secondary transition-colors">
+              Reset
+            </button>
+          )}
+          <span className="ml-auto text-[11px] text-muted-foreground self-center">{total} aktivitas</span>
+        </div>
+
         {/* Logs List */}
         {loading ? (
           <div className="flex justify-center py-24">
@@ -157,6 +198,27 @@ export default function ActivityLogPage() {
                 </button>
               </div>
             ))}
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-3 pt-2">
+                <button
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  disabled={page === 0}
+                  className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-border hover:bg-secondary disabled:opacity-40 transition-colors"
+                >
+                  ‹ Sebelumnya
+                </button>
+                <span className="text-xs text-muted-foreground">Halaman {page + 1} dari {totalPages}</span>
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                  disabled={page >= totalPages - 1}
+                  className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-border hover:bg-secondary disabled:opacity-40 transition-colors"
+                >
+                  Berikutnya ›
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div className="text-center py-24 border border-dashed border-border rounded-3xl space-y-4">
