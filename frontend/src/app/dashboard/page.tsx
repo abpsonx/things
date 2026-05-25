@@ -291,7 +291,7 @@ export default function DashboardPage() {
           </div>
 
           <div className="flex items-center justify-center gap-4 mt-4 text-[10px]">
-            <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-slate-500" /><span className="font-semibold text-muted-foreground">To Do</span><span className="font-bold">{taskStats.todo}</span></span>
+            <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-secondary0" /><span className="font-semibold text-muted-foreground">To Do</span><span className="font-bold">{taskStats.todo}</span></span>
             <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-blue-500" /><span className="font-semibold text-muted-foreground">In Progress</span><span className="font-bold">{taskStats.in_progress}</span></span>
             <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500" /><span className="font-semibold text-muted-foreground">Done</span><span className="font-bold">{taskStats.completed}</span></span>
           </div>

@@ -121,7 +121,7 @@ export default function TeamSettingsPage() {
       <div className="flex-1 p-8 max-w-4xl mx-auto w-full space-y-8">
         {/* General Settings */}
         <div className="bg-card rounded-3xl border border-border shadow-sm overflow-hidden">
-          <div className="p-8 border-b border-border bg-secondary/50/50">
+          <div className="p-8 border-b border-border bg-secondary/50">
             <h2 className="text-xl font-bold flex items-center gap-2">
               <Settings className="w-5 h-5 text-primary" />
               General Information
@@ -133,7 +133,7 @@ export default function TeamSettingsPage() {
               <label className="text-sm font-bold text-foreground ml-1">Team Name</label>
               <input 
                 type="text"
-                className="w-full px-4 py-3 rounded-2xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-secondary/50/30"
+                className="w-full px-4 py-3 rounded-2xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-secondary/30"
                 value={name} 
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Growth Booster" 
@@ -142,7 +142,7 @@ export default function TeamSettingsPage() {
             <div className="space-y-2">
               <label className="text-sm font-bold text-foreground ml-1">Description</label>
               <textarea 
-                className="w-full px-4 py-3 rounded-2xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-secondary/50/30 min-h-[100px]"
+                className="w-full px-4 py-3 rounded-2xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-secondary/30 min-h-[100px]"
                 value={description} 
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="What is this team working on?" 
@@ -153,7 +153,7 @@ export default function TeamSettingsPage() {
 
         {/* Members */}
         <div className="bg-card rounded-3xl border border-border shadow-sm overflow-hidden">
-          <div className="p-8 border-b border-border bg-secondary/50/50 flex items-center justify-between">
+          <div className="p-8 border-b border-border bg-secondary/50 flex items-center justify-between">
             <div>
               <h2 className="text-xl font-bold flex items-center gap-2">
                 <Users className="w-5 h-5 text-violet-500" />
@@ -202,7 +202,7 @@ export default function TeamSettingsPage() {
                         className={`text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-full ${
                           m.role === 'lead'
                             ? 'bg-violet-50 text-violet-600'
-                            : 'bg-slate-100 text-slate-600'
+                            : 'bg-secondary text-slate-600'
                         }`}
                       >
                         {m.role}
@@ -227,7 +227,7 @@ export default function TeamSettingsPage() {
 
         {/* Member Permissions */}
         <div className="bg-card rounded-3xl border border-border shadow-sm overflow-hidden">
-          <div className="p-8 border-b border-border bg-secondary/50/50">
+          <div className="p-8 border-b border-border bg-secondary/50">
             <h2 className="text-xl font-bold flex items-center gap-2">
               <Users className="w-5 h-5 text-blue-500" />
               Permissions

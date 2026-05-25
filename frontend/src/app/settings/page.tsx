@@ -362,7 +362,7 @@ export default function SettingsPage() {
               }`}
             >
               <div
-                className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${
+                className={`absolute top-1 w-4 h-4 bg-card rounded-full shadow-sm transition-all ${
                   (currentUser?.daily_digest_enabled ?? true) ? "right-1" : "left-1"
                 }`}
               />
@@ -385,7 +385,7 @@ export default function SettingsPage() {
           <div className="space-y-6">
             <div className="flex items-center justify-between p-4 border border-border rounded-2xl bg-secondary/10">
               <div className="flex items-center gap-4">
-                <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
+                <div className="w-10 h-10 bg-card rounded-xl flex items-center justify-center shadow-sm">
                   <svg className="w-6 h-6" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path d="M12 24c6.627 0 12-5.373 12-12S18.627 0 12 0 0 5.373 0 12s5.373 12 12 12z" fill="#fff"/>
                     <path d="M14.6 15.6h-5.2v-7.2h5.2v7.2z" fill="#4285f4"/>

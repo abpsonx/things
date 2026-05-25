@@ -39,7 +39,7 @@ export default function TeamActivitiesPage() {
     <div className="flex-1 flex flex-col min-h-screen bg-background">
       {/* Simple Header */}
       <div className="border-b bg-card p-5 flex items-center gap-4">
-        <button onClick={() => router.back()} className="p-2 hover:bg-slate-100 rounded-full">
+        <button onClick={() => router.back()} className="p-2 hover:bg-secondary rounded-full">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <h1 className="text-xl font-bold">Aktivitas Tim: {team?.name}</h1>
@@ -51,7 +51,7 @@ export default function TeamActivitiesPage() {
         {activities.length > 0 ? (
           activities.map((log) => (
             <div key={log.id} className="bg-card p-4 rounded-2xl border shadow-sm flex items-start gap-4">
-              <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center overflow-hidden">
+              <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center overflow-hidden">
                 {log.user?.avatar_url ? <img src={log.user.avatar_url} className="w-full h-full object-cover" /> : <UserIcon className="w-5 h-5 text-slate-400" />}
               </div>
               <div>

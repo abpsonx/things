@@ -120,7 +120,7 @@ export default function InviteProjectMemberModal({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Cari nama atau email..."
-              className="w-full pl-9 pr-3 py-2.5 rounded-2xl border border-border bg-slate-50/30 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
+              className="w-full pl-9 pr-3 py-2.5 rounded-2xl border border-border bg-secondary/30 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
               autoFocus
             />
           </div>

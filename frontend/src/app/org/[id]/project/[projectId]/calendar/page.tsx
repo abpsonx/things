@@ -82,7 +82,7 @@ export default function CalendarPage() {
     if (priority === "high") return "border-red-500 bg-red-50 text-red-700";
     if (priority === "medium") return "border-amber-500 bg-amber-50 text-amber-700";
     if (priority === "low") return "border-emerald-500 bg-emerald-50 text-emerald-700";
-    return "border-slate-400 bg-slate-50 text-slate-700";
+    return "border-slate-400 bg-secondary text-slate-700";
   };
 
   const openTask = (taskId: string) => {
