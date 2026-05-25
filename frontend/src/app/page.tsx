@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { ArrowRight, Layout, CheckCircle, MessageSquare, Bell } from "lucide-react";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
+import LandingRedirect from "@/components/LandingRedirect";
 
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-background text-foreground selection:bg-primary selection:text-primary-foreground">
+      <LandingRedirect />
       {/* Navbar */}
       <nav className="flex items-center justify-between p-6 max-w-6xl mx-auto">
         <div className="flex items-center gap-2 font-bold text-xl tracking-tighter">
