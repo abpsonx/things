@@ -96,6 +96,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     setSidebarOpen(false);
   }, [pathname]);
 
+  // Ask the browser to keep our storage (tokens live in localStorage). Without
+  // persistent storage, an installed PWA can have its storage evicted on quit,
+  // which logs the user out on the next launch.
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !navigator.storage?.persist) return;
+    navigator.storage.persisted?.().then((already) => {
+      if (!already) navigator.storage.persist().catch(() => {});
+    }).catch(() => {});
+  }, []);
+
   // Wire presence: fetch online list + listen for presence_update events.
   useEffect(() => {
     if (!isAuthenticated) return;
