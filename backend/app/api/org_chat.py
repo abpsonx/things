@@ -3,6 +3,7 @@
 Reuses the Channel/Message models and the same Socket.IO room naming
 (`channel_{id}`) as project chat, so the realtime layer is identical.
 """
+import logging
 import os
 import re
 import shutil
@@ -18,13 +19,16 @@ from sqlalchemy.orm import selectinload
 from app.core.database import get_db
 from app.dependencies import get_current_user
 from app.models.channel import Channel, Message
+from app.models.notification import PushSubscription
 from app.models.organization import OrgMember
 from app.models.user import User
 from app.schemas import MessageCreate, MessageResponse
 from app.services.notification import notify_user
-from app.sockets.manager import sio
+from app.services.push import send_push_notification
+from app.sockets.manager import online_user_ids, sio
 
 router = APIRouter(prefix="/organizations/{org_id}/chat", tags=["Workspace Chat"])
+logger = logging.getLogger(__name__)
 
 WORKSPACE_CHANNEL_NAME = "general"
 _MENTION_RE = re.compile(r"@\[[^\]]+\]\(([0-9a-fA-F-]{36})\)")
@@ -135,13 +139,37 @@ async def create_workspace_message(
         },
     }, room=f"channel_{ch.id}")
 
-    # Live unread ping to every workspace member (badge updates instantly
-    # in the sidebar without needing to navigate). Lightweight: just org_id.
+    # Notify the other members: a live sidebar badge for those online, and a
+    # web-push banner for those offline (so they see it with the app closed).
     mem = await db.execute(select(OrgMember.user_id).where(OrgMember.org_id == uuid.UUID(org_id)))
-    for (member_id,) in mem.all():
-        if str(member_id) == str(current_user.id):
-            continue
+    member_ids = [m for (m,) in mem.all() if str(m) != str(current_user.id)]
+    online = online_user_ids()
+    for member_id in member_ids:
         await sio.emit("workspace_chat_unread", {"org_id": org_id}, room=f"user_{member_id}")
+
+    offline_ids = [m for m in member_ids if str(m) not in online]
+    if offline_ids:
+        snippet = (data.content or "").strip()
+        if full_message.attachment_url and not snippet:
+            snippet = "mengirim lampiran"
+        if len(snippet) > 120:
+            snippet = snippet[:117] + "..."
+        push_data = {
+            "title": f"{current_user.name} · Chat Workspace",
+            "body": snippet or "pesan baru",
+            "url": f"/org/{org_id}/chat",
+            "icon": "/assets/logo.png",
+            "tag": f"wschat-{org_id}",
+        }
+        subs = await db.execute(select(PushSubscription).where(PushSubscription.user_id.in_(offline_ids)))
+        for sub in subs.scalars().all():
+            try:
+                send_push_notification(
+                    {"endpoint": sub.endpoint, "keys": {"p256dh": sub.p256dh, "auth": sub.auth}},
+                    push_data,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("workspace push failed: %s", exc)
 
     # Notify @mentioned members.
     if data.content:
