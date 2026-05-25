@@ -74,6 +74,12 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
 
+        # per-user team bullet colors
+        try:
+            await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS team_colors JSONB DEFAULT '{}'::jsonb"))
+        except Exception:
+            pass
+
         # workspace (org-level) chat: channels can be org-scoped, not just project
         try:
             await conn.execute(text("ALTER TABLE channels ADD COLUMN IF NOT EXISTS org_id UUID REFERENCES organizations(id) ON DELETE CASCADE"))

@@ -34,6 +34,7 @@ class UserResponse(BaseModel):
     role: str = "staff"
     created_at: datetime
     daily_digest_enabled: bool = True
+    team_colors: dict = {}
 
     class Config:
         from_attributes = True

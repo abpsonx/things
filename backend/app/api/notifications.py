@@ -23,6 +23,28 @@ async def list_online_users(current_user: User = Depends(get_current_user)):
     from app.sockets.manager import online_user_ids
     return {"online": sorted(online_user_ids())}
 
+
+@presence_router.patch("/me/team-colors")
+async def set_team_color(
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Set this user's personal bullet color for a team. Body: {team_id, color}.
+    Pass color=null/"" to reset to the default."""
+    team_id = str(data.get("team_id") or "").strip()
+    color = data.get("color")
+    if not team_id:
+        raise HTTPException(status_code=400, detail="team_id wajib")
+    colors = dict(current_user.team_colors or {})
+    if color:
+        colors[team_id] = color
+    else:
+        colors.pop(team_id, None)
+    current_user.team_colors = colors  # reassign so SQLAlchemy tracks the change
+    await db.commit()
+    return {"team_colors": colors}
+
 @router.get("", response_model=List[NotificationResponse])
 async def get_notifications(
     db: AsyncSession = Depends(get_db),

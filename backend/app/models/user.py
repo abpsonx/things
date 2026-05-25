@@ -2,7 +2,7 @@
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import Column, String, Boolean, DateTime, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 
@@ -25,6 +25,9 @@ class User(Base):
 
     # Daily digest opt-in (1am UTC ≈ 8am Jakarta)
     daily_digest_enabled = Column(Boolean, default=True)
+
+    # Per-user UI prefs: team bullet colors { team_id: "#hex" } (personal).
+    team_colors = Column(JSONB, default=dict)
 
     # Relationships
     org_memberships = relationship("OrgMember", back_populates="user", cascade="all, delete-orphan")

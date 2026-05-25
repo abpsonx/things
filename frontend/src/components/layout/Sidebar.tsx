@@ -38,13 +38,20 @@ type SidebarProps = {
   onClose?: () => void;
 };
 
+// Personal bullet color presets for teams (per-user preference).
+const TEAM_COLOR_PRESETS = [
+  "#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6",
+  "#3b82f6", "#8b5cf6", "#ec4899", "#64748b",
+];
+
 export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const params = useParams();
   const router = useRouter();
   const orgId = params?.id;
   const projectId = params?.projectId;
-  const { user, logout } = useAuthStore();
+  const { user, logout, setAuth } = useAuthStore();
+  const [colorPickerTeam, setColorPickerTeam] = useState<string | null>(null);
   const isOnline = usePresenceStore((s) => s.isOnline);
   // Subscribe to the Set so the dots re-render on presence_update.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -116,6 +123,23 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       setOrgs((prev) => prev.map((o) => (o.id === ws.id ? { ...o, name } : o)));
     } catch (err: any) {
       alert(err?.response?.data?.detail || "Gagal mengubah nama workspace");
+    }
+  };
+
+  const setTeamColor = async (teamId: string, color: string | null) => {
+    try {
+      const res = await api.patch("/users/me/team-colors", { team_id: teamId, color });
+      if (user) {
+        setAuth(
+          { ...(user as any), team_colors: res.data.team_colors },
+          localStorage.getItem("access_token") || "",
+          localStorage.getItem("refresh_token") || "",
+        );
+      }
+    } catch (err) {
+      console.error("Failed to set team color", err);
+    } finally {
+      setColorPickerTeam(null);
     }
   };
 
@@ -362,20 +386,48 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             {teams.map((team) => {
               const href = `/org/${activeOrgId}/team/${team.id}/board`;
               const isActive = pathname.includes(team.id);
+              const color = (user as any)?.team_colors?.[team.id] as string | undefined;
               return (
-                <Link
-                  key={team.id}
-                  href={href}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
-                    isActive
-                      ? "bg-primary/10 text-primary border-r-2 border-primary rounded-r-none"
-                      : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                <div key={team.id} className="relative">
+                  <Link
+                    href={href}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+                      isActive
+                        ? "bg-primary/10 text-primary border-r-2 border-primary rounded-r-none"
+                        : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                    )}
+                  >
+                    <button
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setColorPickerTeam(colorPickerTeam === team.id ? null : team.id); }}
+                      title="Ubah warna (pribadi)"
+                      className="w-3 h-3 rounded-full shrink-0 ring-offset-1 hover:ring-2 hover:ring-border transition-all"
+                      style={{ backgroundColor: color || undefined }}
+                    >
+                      {!color && <span className="block w-2 h-2 m-auto rounded-full bg-primary/40" />}
+                    </button>
+                    <span className="truncate">{team.name}</span>
+                  </Link>
+
+                  {colorPickerTeam === team.id && (
+                    <div className="absolute z-50 left-2 top-full mt-1 p-2 rounded-xl border border-border bg-card shadow-lg flex items-center gap-1.5 flex-wrap w-44">
+                      {TEAM_COLOR_PRESETS.map((c) => (
+                        <button
+                          key={c}
+                          onClick={() => setTeamColor(team.id, c)}
+                          className={cn("w-5 h-5 rounded-full hover:scale-110 transition-transform", color === c && "ring-2 ring-offset-1 ring-foreground")}
+                          style={{ backgroundColor: c }}
+                        />
+                      ))}
+                      <button
+                        onClick={() => setTeamColor(team.id, null)}
+                        className="text-[10px] text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded-md hover:bg-secondary w-full text-left mt-0.5"
+                      >
+                        Reset default
+                      </button>
+                    </div>
                   )}
-                >
-                  <div className="w-2 h-2 rounded-full bg-primary/40" />
-                  <span className="truncate">{team.name}</span>
-                </Link>
+                </div>
               );
             })}
             {teams.length === 0 && (
