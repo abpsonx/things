@@ -74,6 +74,16 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
 
+        # workspace (org-level) chat: channels can be org-scoped, not just project
+        try:
+            await conn.execute(text("ALTER TABLE channels ADD COLUMN IF NOT EXISTS org_id UUID REFERENCES organizations(id) ON DELETE CASCADE"))
+        except Exception:
+            pass
+        try:
+            await conn.execute(text("ALTER TABLE channels ALTER COLUMN project_id DROP NOT NULL"))
+        except Exception:
+            pass
+
         # parent_id on dm_messages + team_messages so replies work in DM and team chat
         try:
             await conn.execute(text(
@@ -389,6 +399,8 @@ app.include_router(task_activities.router, prefix="/api")
 app.include_router(task_edit_requests.router, prefix="/api")
 app.include_router(sosmed.router, prefix="/api")
 app.include_router(sosmed.webhook_router, prefix="/api")
+from app.api import org_chat
+app.include_router(org_chat.router, prefix="/api")
 
 
 # Static Files

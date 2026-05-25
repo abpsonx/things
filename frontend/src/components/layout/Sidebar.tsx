@@ -22,6 +22,7 @@ import {
   Users,
   CheckSquare,
   Share2,
+  Hash,
   X
 } from "lucide-react";
 import CreateTeamModal from "@/components/team/CreateTeamModal";
@@ -98,10 +99,15 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
     { icon: CheckSquare, label: "Tugas Saya", href: "/my-tasks" },
     { icon: Briefcase, label: "Proyek", href: "/projects" },
-    { 
-      icon: MessageSquare, 
-      label: "Chat", 
-      href: (activeOrgId && activeProjectId) ? `/org/${activeOrgId}/project/${activeProjectId}/chat` : "#" 
+    {
+      icon: MessageSquare,
+      label: "Chat",
+      href: (activeOrgId && activeProjectId) ? `/org/${activeOrgId}/project/${activeProjectId}/chat` : "#"
+    },
+    {
+      icon: Hash,
+      label: "Chat Workspace",
+      href: activeOrgId ? `/org/${activeOrgId}/chat` : "#"
     },
     { 
       icon: Calendar, 
@@ -181,7 +187,9 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             if (item.label === "Proyek") {
               isActive = pathname === "/projects" || pathname.includes("/project/");
             } else if (item.label === "Chat") {
-              isActive = pathname.includes("/chat") || pathname.includes("/dm/");
+              isActive = (pathname.includes("/chat") && pathname.includes("/project/")) || pathname.includes("/dm/");
+            } else if (item.label === "Chat Workspace") {
+              isActive = pathname.endsWith("/chat") && !pathname.includes("/project/");
             } else if (item.label === "Kalender") {
               isActive = pathname.includes("/calendar");
             } else if (item.label === "Aktivitas") {
@@ -191,7 +199,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             } else if (item.label === "Sosmed") {
               isActive = pathname.includes("/sosmed");
             } else if (item.label === "Dashboard") {
-              isActive = pathname === "/dashboard" || (pathname.startsWith("/org/") && !pathname.includes("/project/") && !pathname.includes("/team/") && !pathname.includes("/activity") && !pathname.includes("/files") && !pathname.includes("/members") && !pathname.includes("/sosmed"));
+              isActive = pathname === "/dashboard" || (pathname.startsWith("/org/") && !pathname.includes("/project/") && !pathname.includes("/team/") && !pathname.includes("/activity") && !pathname.includes("/files") && !pathname.includes("/members") && !pathname.includes("/sosmed") && !pathname.endsWith("/chat"));
             }
 
             return (
