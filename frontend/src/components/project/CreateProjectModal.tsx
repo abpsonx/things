@@ -60,7 +60,7 @@ export default function CreateProjectModal({ isOpen, onClose, onSuccess, initial
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+      <div className="bg-card w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
         {/* Header */}
         <div className="p-6 border-b flex items-center justify-between bg-slate-50/50">
           <div className="flex items-center gap-3">

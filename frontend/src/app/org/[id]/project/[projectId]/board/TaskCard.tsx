@@ -150,7 +150,7 @@ export default function TaskCard({
             "absolute -top-1.5 -left-1.5 w-5 h-5 rounded-full flex items-center justify-center transition-all border-2",
             selected
               ? "bg-primary border-primary text-white"
-              : "bg-white border-border text-transparent hover:border-primary",
+              : "bg-card border-border text-transparent hover:border-primary",
           )}
         >
           <Check className="w-3 h-3" />
