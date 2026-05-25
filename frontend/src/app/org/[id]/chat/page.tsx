@@ -103,10 +103,14 @@ export default function WorkspaceChatPage() {
     setSending(true);
     try {
       if (editing) {
-        await api.patch(`/organizations/${orgId}/chat/messages/${editing.id}`, { content: body });
+        const res = await api.patch(`/organizations/${orgId}/chat/messages/${editing.id}`, { content: body });
+        setMessages((prev) => prev.map((m) => (m.id === res.data.id ? { ...m, ...res.data } : m)));
         setEditing(null);
       } else {
-        await api.post(`/organizations/${orgId}/chat/messages`, { content: body, parent_id: replyTo?.id || null });
+        const res = await api.post(`/organizations/${orgId}/chat/messages`, { content: body, parent_id: replyTo?.id || null });
+        // Show immediately from the response; the socket echo is de-duped by id.
+        setMessages((prev) => (prev.find((m) => m.id === res.data.id) ? prev : [...prev, res.data]));
+        scrollDown();
         setReplyTo(null);
       }
       setText("");
@@ -128,12 +132,14 @@ export default function WorkspaceChatPage() {
       const up = await api.post(`/organizations/${orgId}/chat/messages/upload`, fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      await api.post(`/organizations/${orgId}/chat/messages`, {
+      const res = await api.post(`/organizations/${orgId}/chat/messages`, {
         content: file.name,
         attachment_url: up.data.url,
         attachment_name: file.name,
         parent_id: replyTo?.id || null,
       });
+      setMessages((prev) => (prev.find((m) => m.id === res.data.id) ? prev : [...prev, res.data]));
+      scrollDown();
       setReplyTo(null);
     } catch (err) {
       console.error("upload failed", err);
