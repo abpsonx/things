@@ -487,75 +487,128 @@ async def list_organization_files(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List all attachments in an organization (Task, Channel Chat, and DM Chat)."""
+    """List attachments in an org that the current user is allowed to see.
+
+    Access is scoped to membership: Task/Chat files only from projects/teams
+    the user belongs to; DM files only from conversations they're part of.
+    Developers (superusers) see everything.
+    """
     from app.models.attachment import Attachment
     from app.models.task import Task
-    from app.models.project import Project
+    from app.models.project import Project, ProjectMember
+    from app.models.team import Team, TeamMember
     from app.models.channel import Message, Channel
     from app.models.dm import DMMessage, DMChannel
-    from sqlalchemy import and_, or_
+
+    # Must be a member of this workspace.
+    mem = await db.execute(
+        select(OrgMember).where(OrgMember.org_id == org_id, OrgMember.user_id == current_user.id)
+    )
+    superuser = is_superuser(current_user)
+    if not mem.scalar_one_or_none() and not superuser:
+        raise HTTPException(status_code=403, detail="Bukan anggota workspace ini")
+
+    # Projects & teams in this org the user belongs to (superuser → all).
+    proj_ids: set[str] = set()
+    team_ids: set[str] = set()
+    if not superuser:
+        pr = await db.execute(
+            select(ProjectMember.project_id)
+            .join(Project, Project.id == ProjectMember.project_id)
+            .where(ProjectMember.user_id == current_user.id, Project.org_id == org_id)
+        )
+        proj_ids = {str(x) for x in pr.scalars().all()}
+        tr = await db.execute(
+            select(TeamMember.team_id)
+            .join(Team, Team.id == TeamMember.team_id)
+            .where(TeamMember.user_id == current_user.id, Team.org_id == org_id)
+        )
+        team_ids = {str(x) for x in tr.scalars().all()}
+
+    def can_see_project(p) -> bool:
+        return superuser or (p is not None and str(p.id) in proj_ids)
+
+    def can_see_team(t) -> bool:
+        return superuser or (t is not None and str(t.id) in team_ids)
 
     all_files = []
 
-    # 1. Fetch Task Attachments
+    # 1. Task attachments — only tasks in projects/teams the user is in.
     result_task = await db.execute(
         select(Attachment)
         .options(
             selectinload(Attachment.uploader),
-            selectinload(Attachment.task).selectinload(Task.project)
+            selectinload(Attachment.task).selectinload(Task.project),
+            selectinload(Attachment.task).selectinload(Task.team),
         )
     )
     for a in result_task.scalars().all():
-        if a.task and a.task.project and str(a.task.project.org_id) == str(org_id):
-            size = a.file_size if a.file_size else _disk_size(a.file_path)
-            all_files.append({
-                "id": str(a.id),
-                "source": "Task",
-                "file_name": a.file_name,
-                "file_path": _public_url(a.file_path),
-                "file_size": size,
-                "created_at": a.created_at,
-                "uploader": {"id": str(a.uploader.id), "name": a.uploader.name, "avatar_url": a.uploader.avatar_url},
-                "context": {"type": "Task", "name": a.task.title, "parent": a.task.project.name}
-            })
+        if not a.task:
+            continue
+        proj = a.task.project
+        team = a.task.team
+        in_org = (proj and str(proj.org_id) == str(org_id)) or (team and str(team.org_id) == str(org_id))
+        if not in_org:
+            continue
+        if not (can_see_project(proj) or can_see_team(team)):
+            continue
+        size = a.file_size if a.file_size else _disk_size(a.file_path)
+        all_files.append({
+            "id": str(a.id),
+            "source": "Task",
+            "file_name": a.file_name,
+            "file_path": _public_url(a.file_path),
+            "file_size": size,
+            "created_at": a.created_at,
+            "uploader": {"id": str(a.uploader.id), "name": a.uploader.name, "avatar_url": a.uploader.avatar_url},
+            "context": {"type": "Task", "name": a.task.title, "parent": proj.name if proj else (team.name if team else "")}
+        })
 
-    # 2. Channel Message Attachments
+    # 2. Channel chat attachments — only project channels the user is in.
     result_msg = await db.execute(
         select(Message)
         .options(selectinload(Message.user), selectinload(Message.channel).selectinload(Channel.project))
         .where(Message.attachment_url != None)
     )
     for m in result_msg.scalars().all():
-        if m.channel and m.channel.project and str(m.channel.project.org_id) == str(org_id):
-            all_files.append({
-                "id": str(m.id),
-                "source": "Chat",
-                "file_name": m.attachment_name or "Unnamed File",
-                "file_path": _public_url(m.attachment_url),
-                "file_size": _disk_size(m.attachment_url),
-                "created_at": m.created_at,
-                "uploader": {"id": str(m.user.id), "name": m.user.name, "avatar_url": m.user.avatar_url},
-                "context": {"type": "Chat", "name": m.channel.name, "parent": m.channel.project.name}
-            })
+        if not (m.channel and m.channel.project and str(m.channel.project.org_id) == str(org_id)):
+            continue
+        if not can_see_project(m.channel.project):
+            continue
+        all_files.append({
+            "id": str(m.id),
+            "source": "Chat",
+            "file_name": m.attachment_name or "Unnamed File",
+            "file_path": _public_url(m.attachment_url),
+            "file_size": _disk_size(m.attachment_url),
+            "created_at": m.created_at,
+            "uploader": {"id": str(m.user.id), "name": m.user.name, "avatar_url": m.user.avatar_url},
+            "context": {"type": "Chat", "name": m.channel.name, "parent": m.channel.project.name}
+        })
 
-    # 3. DM Message Attachments
+    # 3. DM attachments — only conversations the user is part of.
     result_dm = await db.execute(
         select(DMMessage)
         .options(selectinload(DMMessage.user), selectinload(DMMessage.dm_channel))
         .where(DMMessage.attachment_url != None)
     )
+    me = str(current_user.id)
     for dm in result_dm.scalars().all():
-        if dm.dm_channel and str(dm.dm_channel.org_id) == str(org_id):
-            all_files.append({
-                "id": str(dm.id),
-                "source": "DM",
-                "file_name": dm.attachment_name or "Unnamed File",
-                "file_path": _public_url(dm.attachment_url),
-                "file_size": _disk_size(dm.attachment_url),
-                "created_at": dm.created_at,
-                "uploader": {"id": str(dm.user.id), "name": dm.user.name, "avatar_url": dm.user.avatar_url},
-                "context": {"type": "DM", "name": "Private Chat", "parent": "DM"}
-            })
+        ch = dm.dm_channel
+        if not (ch and str(ch.org_id) == str(org_id)):
+            continue
+        if not (superuser or me == str(ch.user1_id) or me == str(ch.user2_id)):
+            continue
+        all_files.append({
+            "id": str(dm.id),
+            "source": "DM",
+            "file_name": dm.attachment_name or "Unnamed File",
+            "file_path": _public_url(dm.attachment_url),
+            "file_size": _disk_size(dm.attachment_url),
+            "created_at": dm.created_at,
+            "uploader": {"id": str(dm.user.id), "name": dm.user.name, "avatar_url": dm.user.avatar_url},
+            "context": {"type": "DM", "name": "Private Chat", "parent": "DM"}
+        })
 
     all_files.sort(key=lambda x: x["created_at"], reverse=True)
     return all_files
