@@ -23,6 +23,8 @@ import {
   CheckSquare,
   Share2,
   Hash,
+  Building2,
+  ChevronDown,
   X
 } from "lucide-react";
 import CreateTeamModal from "@/components/team/CreateTeamModal";
@@ -50,6 +52,8 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const markDMsFromSenderRead = useNotificationsStore((s) => s.markDMsFromSenderRead);
   const dmBySender = useMemo(() => dmSummaryBySender(), [notifItems, dmSummaryBySender]);
   const [members, setMembers] = useState<any[]>([]);
+  const [orgs, setOrgs] = useState<any[]>([]);
+  const [expandedWs, setExpandedWs] = useState<Record<string, boolean>>({});
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [teams, setTeams] = useState<any[]>([]);
@@ -61,7 +65,8 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       const orgsRes = await api.get("/organizations");
       // Handle the case where orgsRes.data might not be an array or is empty
       const organizations = Array.isArray(orgsRes.data) ? orgsRes.data : [];
-      
+      setOrgs(organizations);
+
       const fallbackId = organizations.length > 0 ? organizations[0].id : null;
       const currentId = (orgId && orgId !== "undefined" && orgId !== "null") ? (orgId as string) : fallbackId;
       
@@ -103,11 +108,6 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       icon: MessageSquare,
       label: "Chat",
       href: (activeOrgId && activeProjectId) ? `/org/${activeOrgId}/project/${activeProjectId}/chat` : "#"
-    },
-    {
-      icon: Hash,
-      label: "Chat Workspace",
-      href: activeOrgId ? `/org/${activeOrgId}/chat` : "#"
     },
     { 
       icon: Calendar, 
@@ -188,8 +188,6 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
               isActive = pathname === "/projects" || pathname.includes("/project/");
             } else if (item.label === "Chat") {
               isActive = (pathname.includes("/chat") && pathname.includes("/project/")) || pathname.includes("/dm/");
-            } else if (item.label === "Chat Workspace") {
-              isActive = pathname.endsWith("/chat") && !pathname.includes("/project/");
             } else if (item.label === "Kalender") {
               isActive = pathname.includes("/calendar");
             } else if (item.label === "Aktivitas") {
@@ -222,10 +220,60 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
 
         <div className="space-y-4">
           <h4 className="px-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 flex items-center justify-between">
+            Workspace
+            <Plus
+              onClick={() => setIsCreateOrgOpen(true)}
+              className="w-3 h-3 cursor-pointer hover:text-primary transition-colors"
+            />
+          </h4>
+          <div className="space-y-1">
+            {orgs.map((ws) => {
+              const expanded = expandedWs[ws.id] ?? (ws.id === activeOrgId);
+              const chatActive = pathname === `/org/${ws.id}/chat`;
+              return (
+                <div key={ws.id}>
+                  <button
+                    onClick={() => setExpandedWs((prev) => ({ ...prev, [ws.id]: !expanded }))}
+                    className={cn(
+                      "w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors",
+                      ws.id === activeOrgId ? "text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                    )}
+                  >
+                    <Building2 className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate flex-1 text-left">{ws.name}</span>
+                    <ChevronDown className={cn("w-3 h-3 shrink-0 transition-transform", !expanded && "-rotate-90")} />
+                  </button>
+                  {expanded && (
+                    <div className="ml-4 pl-2 border-l border-border space-y-1 mt-1">
+                      <Link
+                        href={`/org/${ws.id}/chat`}
+                        className={cn(
+                          "flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+                          chatActive
+                            ? "bg-primary/10 text-primary"
+                            : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                        )}
+                      >
+                        <Hash className="w-3.5 h-3.5" />
+                        <span className="truncate">Chat</span>
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {orgs.length === 0 && (
+              <p className="px-3 text-[10px] text-muted-foreground/40 italic">Belum ada workspace</p>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <h4 className="px-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 flex items-center justify-between">
             Tim
-            <Plus 
+            <Plus
               onClick={() => activeOrgId ? setIsCreateTeamOpen(true) : setIsCreateOrgOpen(true)}
-              className="w-3 h-3 cursor-pointer hover:text-primary transition-colors" 
+              className="w-3 h-3 cursor-pointer hover:text-primary transition-colors"
             />
           </h4>
           <div className="space-y-1">
