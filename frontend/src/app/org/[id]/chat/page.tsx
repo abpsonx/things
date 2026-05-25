@@ -204,6 +204,9 @@ export default function WorkspaceChatPage() {
               <div className={cn("max-w-[75%] min-w-0", me && "items-end flex flex-col")}>
                 <div className="flex items-center gap-2 mb-0.5">
                   <span className="text-[11px] font-bold">{me ? "Kamu" : m.user?.name}</span>
+                  {(m.user as any)?.tagline && (
+                    <span className="text-[10px] text-muted-foreground italic truncate max-w-[160px]">· {(m.user as any).tagline}</span>
+                  )}
                   <span className="text-[10px] text-muted-foreground">
                     {new Date(m.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
                   </span>

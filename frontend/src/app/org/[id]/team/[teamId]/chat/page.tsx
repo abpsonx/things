@@ -446,7 +446,12 @@ export default function TeamChatPage() {
 
                 {/* Message Bubble Container */}
                 <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} max-w-[75%] relative`}>
-                  {!isMe && <span className="text-[11px] font-bold text-muted-foreground mb-1 ml-1">{msg.user?.name}</span>}
+                  {!isMe && (
+                    <span className="text-[11px] font-bold text-muted-foreground mb-1 ml-1">
+                      {msg.user?.name}
+                      {(msg.user as any)?.tagline && <span className="font-normal italic opacity-70"> · {(msg.user as any).tagline}</span>}
+                    </span>
+                  )}
                   
                   <div className="flex items-center gap-2 group/bubble" id={`team-msg-${msg.id}`}>
                     {/* Action buttons (Left for Me) */}

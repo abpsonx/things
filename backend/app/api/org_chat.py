@@ -136,6 +136,7 @@ async def create_workspace_message(
             "id": str(current_user.id),
             "name": current_user.name,
             "avatar_url": current_user.avatar_url,
+            "tagline": current_user.tagline,
         },
     }, room=f"channel_{ch.id}")
 

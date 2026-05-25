@@ -132,6 +132,9 @@ async def update_me(
         current_user.name = data["name"]
     if "daily_digest_enabled" in data:
         current_user.daily_digest_enabled = bool(data["daily_digest_enabled"])
+    if "tagline" in data:
+        tagline = (data.get("tagline") or "").strip()
+        current_user.tagline = tagline[:120] or None
 
     await db.commit()
     await db.refresh(current_user)

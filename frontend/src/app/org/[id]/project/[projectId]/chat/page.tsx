@@ -921,6 +921,9 @@ export default function ChatPage() {
                         {!isMe && (
                           <div className="text-[9px] font-bold text-blue-500 mb-0.5 flex items-center gap-2">
                             <span>{msg.user?.name}</span>
+                            {(msg.user as any)?.tagline && (
+                              <span className="font-normal italic text-muted-foreground">· {(msg.user as any).tagline}</span>
+                            )}
                           </div>
                         )}
 

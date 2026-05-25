@@ -168,6 +168,32 @@ export default function SettingsPage() {
                 />
               </div>
               <div className="space-y-2">
+                <label className="text-sm font-bold block">Bio / Tagline</label>
+                <input
+                  type="text"
+                  maxLength={120}
+                  defaultValue={(currentUser as any)?.tagline || ""}
+                  placeholder="mis. makelar, content creator, finance…"
+                  onBlur={async (e) => {
+                    const val = e.target.value.trim();
+                    if (val === ((currentUser as any)?.tagline || "")) return;
+                    setSaving(true);
+                    try {
+                      await api.put("/auth/me", { tagline: val });
+                      updateUser({ tagline: val } as any);
+                      setSuccess(true);
+                      setTimeout(() => setSuccess(false), 3000);
+                    } catch (err) {
+                      setError("Gagal update bio.");
+                    } finally {
+                      setSaving(false);
+                    }
+                  }}
+                  className="w-full px-4 py-3 bg-secondary/30 border border-border rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                />
+                <p className="text-[10px] text-muted-foreground">Tampil di bawah namamu pada chat tim, proyek &amp; workspace (tidak di DM).</p>
+              </div>
+              <div className="space-y-2">
                 <label className="text-sm font-bold block text-muted-foreground">Email (Tetap)</label>
                 <input
                   type="email"

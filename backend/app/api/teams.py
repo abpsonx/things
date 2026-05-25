@@ -661,7 +661,8 @@ async def send_team_message(
         "parent": parent_preview,
         "user": {
             "name": current_user.name,
-            "avatar_url": current_user.avatar_url
+            "avatar_url": current_user.avatar_url,
+            "tagline": current_user.tagline
         }
     }, room=f"team_{team_id}")
 
@@ -679,7 +680,8 @@ async def send_team_message(
         "status": "sent",
         "user": {
             "name": current_user.name,
-            "avatar_url": current_user.avatar_url
+            "avatar_url": current_user.avatar_url,
+            "tagline": current_user.tagline
         }
     }
 
@@ -785,7 +787,8 @@ async def upload_chat_file(
         "created_at": msg.created_at.isoformat(),
         "user": {
             "name": current_user.name,
-            "avatar_url": current_user.avatar_url
+            "avatar_url": current_user.avatar_url,
+            "tagline": current_user.tagline
         }
     }, room=f"team_{team_id}")
 
@@ -855,7 +858,8 @@ async def list_team_messages(
             "reactions": reactions_map.get(str(m.id), []),
             "user": {
                 "name": m.user.name,
-                "avatar_url": m.user.avatar_url
+                "avatar_url": m.user.avatar_url,
+                "tagline": m.user.tagline
             }
         }
         for m in messages

@@ -15,6 +15,7 @@ class User(Base):
     email = Column(String(255), unique=True, nullable=False, index=True)
     password_hash = Column(Text, nullable=False)
     avatar_url = Column(Text, nullable=True)
+    tagline = Column(String(120), nullable=True)  # short bio shown in chat rooms
     is_verified = Column(Boolean, default=False)
     role = Column(String(20), default="staff") # "admin" or "staff"
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

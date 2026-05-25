@@ -140,7 +140,8 @@ async def create_message(
         "user": {
             "id": str(current_user.id),
             "name": current_user.name,
-            "avatar_url": current_user.avatar_url
+            "avatar_url": current_user.avatar_url,
+            "tagline": current_user.tagline
         }
     }, room=f"channel_{channel_id}")
 

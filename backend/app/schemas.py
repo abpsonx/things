@@ -30,6 +30,7 @@ class UserResponse(BaseModel):
     name: str
     email: str
     avatar_url: Optional[str] = None
+    tagline: Optional[str] = None
     is_verified: bool
     role: str = "staff"
     created_at: datetime

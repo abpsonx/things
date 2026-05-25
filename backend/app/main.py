@@ -84,6 +84,10 @@ async def lifespan(app: FastAPI):
                 await conn.execute(text(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} JSONB DEFAULT '[]'::jsonb"))
             except Exception:
                 pass
+        try:
+            await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS tagline VARCHAR(120)"))
+        except Exception:
+            pass
 
         # workspace (org-level) chat: channels can be org-scoped, not just project
         try:
