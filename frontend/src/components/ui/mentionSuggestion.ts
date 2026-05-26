@@ -41,13 +41,9 @@ export function createMentionSuggestion(getMembers: () => MentionMember[]) {
       let editor: any = null;
       let range: any = null;
 
-      const select = (i: number) => {
+      const insert = (i: number) => {
         const item = items[i];
-        if (!item) {
-          console.warn("[mention] no item at index", i, items);
-          return;
-        }
-        console.log("[mention] select", item);
+        if (!item) return;
         try {
           if (editor && range) {
             editor
@@ -58,16 +54,18 @@ export function createMentionSuggestion(getMembers: () => MentionMember[]) {
                 { type: "text", text: " " },
               ])
               .run();
-            console.log("[mention] inserted via editor chain");
           } else if (command) {
             command({ id: item.id, label: item.name });
-            console.log("[mention] inserted via props.command (fallback)");
-          } else {
-            console.error("[mention] no editor/range/command available", { editor, range, command });
           }
         } catch (err) {
           console.error("[mention] insert failed", err);
         }
+      };
+
+      const highlight = () => {
+        el?.querySelectorAll(".mention-item").forEach((b, i) =>
+          b.classList.toggle("is-selected", i === selectedIndex),
+        );
       };
 
       const paint = () => {
@@ -81,24 +79,35 @@ export function createMentionSuggestion(getMembers: () => MentionMember[]) {
         items.forEach((m, i) => {
           const btn = document.createElement("button");
           btn.type = "button";
+          btn.dataset.idx = String(i);
           btn.className = "mention-item" + (i === selectedIndex ? " is-selected" : "");
           btn.textContent = m.name;
-          btn.addEventListener("mousedown", (e) => {
-            e.preventDefault();
-            select(i);
-          });
-          btn.addEventListener("mouseenter", () => {
-            selectedIndex = i;
-            paint();
-          });
           el!.appendChild(btn);
         });
+      };
+
+      // Delegated handlers on the (stable) container so they survive repaints
+      // and reliably fire — per-button listeners were lost when paint() rebuilt
+      // the DOM on hover.
+      const onMouseDown = (e: MouseEvent) => {
+        const target = (e.target as HTMLElement)?.closest(".mention-item") as HTMLElement | null;
+        if (!target || !el?.contains(target)) return;
+        e.preventDefault(); // keep editor focus so insertion lands
+        insert(Number(target.dataset.idx));
+      };
+      const onMouseMove = (e: MouseEvent) => {
+        const target = (e.target as HTMLElement)?.closest(".mention-item") as HTMLElement | null;
+        if (!target) return;
+        const idx = Number(target.dataset.idx);
+        if (idx !== selectedIndex) {
+          selectedIndex = idx;
+          highlight();
+        }
       };
 
       const position = (rect: DOMRect | null | undefined) => {
         if (!el || !rect) return;
         const margin = 6;
-        // Open downward unless there isn't room.
         const below = rect.bottom + margin;
         const wouldOverflow = below + 240 > window.innerHeight;
         el.style.left = `${Math.round(rect.left)}px`;
@@ -118,9 +127,10 @@ export function createMentionSuggestion(getMembers: () => MentionMember[]) {
           command = props.command;
           editor = props.editor;
           range = props.range;
-          console.log("[mention] onStart", { hasEditor: !!editor, range, hasCommand: !!command, items: items.length });
           el = document.createElement("div");
           el.className = "mention-dropdown";
+          el.addEventListener("mousedown", onMouseDown);
+          el.addEventListener("mousemove", onMouseMove);
           document.body.appendChild(el);
           paint();
           position(props.clientRect?.());
@@ -139,16 +149,16 @@ export function createMentionSuggestion(getMembers: () => MentionMember[]) {
           if (items.length === 0) return false;
           if (key === "ArrowDown") {
             selectedIndex = (selectedIndex + 1) % items.length;
-            paint();
+            highlight();
             return true;
           }
           if (key === "ArrowUp") {
             selectedIndex = (selectedIndex - 1 + items.length) % items.length;
-            paint();
+            highlight();
             return true;
           }
           if (key === "Enter" || key === "Tab") {
-            select(selectedIndex);
+            insert(selectedIndex);
             return true;
           }
           if (key === "Escape") {

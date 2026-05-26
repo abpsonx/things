@@ -31,7 +31,9 @@ export function RichTextEditor({ content, onChange, placeholder = "Mulai menulis
 
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      // StarterKit v3 bundles its own Link — disable it so our explicit
+      // Link.configure below is the only one (avoids the duplicate-extension warning).
+      StarterKit.configure({ link: false } as any),
       Placeholder.configure({ placeholder }),
       TaskList,
       TaskItem.configure({ nested: true }),
