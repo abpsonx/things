@@ -38,20 +38,27 @@ export default function AnnouncementsPage() {
   const [content, setContent] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [members, setMembers] = useState<any[]>([]);
+  const [teams, setTeams] = useState<any[]>([]);
   const formRef = useRef<HTMLDivElement>(null);
 
-  const memberOptions = members
-    .filter((m: any) => m.user)
-    .map((m: any) => ({ id: m.user_id || m.user.id, name: m.user.name, avatar_url: m.user.avatar_url }));
+  // Mention list = teams (as "@Tim ...") first, then project members.
+  const memberOptions = [
+    ...teams.map((t: any) => ({ id: `team:${t.id}`, name: `Tim ${t.name}` })),
+    ...members
+      .filter((m: any) => m.user)
+      .map((m: any) => ({ id: m.user_id || m.user.id, name: m.user.name, avatar_url: m.user.avatar_url })),
+  ];
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [annRes, memRes] = await Promise.all([
+        const [annRes, memRes, teamsRes] = await Promise.all([
           api.get(`/projects/${projectId}/announcements`),
           api.get(`/organizations/${orgId}/projects/${projectId}/members`),
+          api.get(`/organizations/${orgId}/teams`).catch(() => ({ data: [] })),
         ]);
         setAnnouncements(annRes.data);
+        setTeams(Array.isArray(teamsRes.data) ? teamsRes.data : []);
         setMembers(memRes.data || []);
       } catch (err) {
         console.error("Failed to fetch announcements", err);

@@ -445,7 +445,8 @@ class DocumentResponse(BaseModel):
 class AnnouncementCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     content: str
-    mention_ids: List[UUID] = []
+    # Either a user UUID or a "team:{team_id}" token (expanded server-side).
+    mention_ids: List[str] = []
 
 class AnnouncementUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=255)
@@ -453,7 +454,9 @@ class AnnouncementUpdate(BaseModel):
 
 class AnnouncementResponse(BaseModel):
     id: UUID
-    project_id: UUID
+    project_id: Optional[UUID] = None
+    org_id: Optional[UUID] = None
+    team_id: Optional[UUID] = None
     creator_id: UUID
     title: str
     content: str

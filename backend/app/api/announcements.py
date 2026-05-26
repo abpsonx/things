@@ -54,7 +54,8 @@ async def create_announcement(
     from app.services.notification import notify_user
 
     # Tagged people get a distinct "kamu di-tag" ping (and skip the generic one).
-    mentioned = {str(u) for u in (data.mention_ids or [])}
+    from app.core.mentions import expand_mention_ids
+    mentioned = await expand_mention_ids(db, data.mention_ids)
     for uid in mentioned:
         if uid == str(current_user.id):
             continue

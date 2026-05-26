@@ -75,7 +75,8 @@ async def create_org_announcement(
     )
 
     # Broadcast to every workspace member except the author.
-    mentioned = {str(u) for u in (data.mention_ids or [])}
+    from app.core.mentions import expand_mention_ids
+    mentioned = await expand_mention_ids(db, data.mention_ids)
     mem = await db.execute(select(OrgMember.user_id).where(OrgMember.org_id == oid))
     member_ids = [str(m) for (m,) in mem.all()]
     for uid in member_ids:

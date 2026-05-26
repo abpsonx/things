@@ -29,21 +29,28 @@ export default function WorkspaceAnnouncementsPage() {
   const [content, setContent] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [members, setMembers] = useState<any[]>([]);
+  const [teams, setTeams] = useState<any[]>([]);
   const [canManage, setCanManage] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
 
-  const memberOptions = members
-    .filter((m: any) => m.user)
-    .map((m: any) => ({ id: m.user_id || m.user.id, name: m.user.name, avatar_url: m.user.avatar_url }));
+  // Mention list = teams first (so "@tim" is easy to find), then people.
+  const memberOptions = [
+    ...teams.map((t: any) => ({ id: `team:${t.id}`, name: `Tim ${t.name}` })),
+    ...members
+      .filter((m: any) => m.user)
+      .map((m: any) => ({ id: m.user_id || m.user.id, name: m.user.name, avatar_url: m.user.avatar_url })),
+  ];
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [annRes, orgRes] = await Promise.all([
+        const [annRes, orgRes, teamsRes] = await Promise.all([
           api.get(`/organizations/${orgId}/announcements`),
           api.get(`/organizations/${orgId}`),
+          api.get(`/organizations/${orgId}/teams`).catch(() => ({ data: [] })),
         ]);
         setAnnouncements(annRes.data);
+        setTeams(Array.isArray(teamsRes.data) ? teamsRes.data : []);
         const mems = orgRes.data?.members || [];
         setMembers(mems);
         const mine = mems.find((m: any) => m.user_id === user?.id);
