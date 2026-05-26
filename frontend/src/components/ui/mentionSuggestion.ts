@@ -18,6 +18,19 @@ export function createMentionSuggestion(getMembers: () => MentionMember[]) {
         .filter((m) => m.name.toLowerCase().includes(q))
         .slice(0, 6);
     },
+    // Tiptap v3's `Mention.configure({ suggestion })` REPLACES the default
+    // suggestion object, so the built-in command that inserts the node is
+    // gone — we must provide our own or nothing gets inserted on select.
+    command: ({ editor, range, props }: any) => {
+      editor
+        .chain()
+        .focus()
+        .insertContentAt(range, [
+          { type: "mention", attrs: { id: props.id, label: props.label } },
+          { type: "text", text: " " },
+        ])
+        .run();
+    },
     render: () => {
       let el: HTMLDivElement | null = null;
       let items: MentionMember[] = [];
