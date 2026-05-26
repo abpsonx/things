@@ -231,6 +231,22 @@ async def _require_member(db: AsyncSession, org_id: str, user_id):
         raise HTTPException(status_code=403, detail="Bukan anggota workspace ini")
 
 
+async def _require_manager(db: AsyncSession, org_id: str, current_user: User):
+    """Manager / Admin (owner role) / Super User-Developer only."""
+    from app.core.permissions import is_superuser
+    if is_superuser(current_user):
+        return
+    res = await db.execute(
+        select(OrgMember).where(
+            OrgMember.org_id == org_id,
+            OrgMember.user_id == current_user.id,
+            OrgMember.role.in_(["owner", "manager"]),
+        )
+    )
+    if not res.scalar_one_or_none():
+        raise HTTPException(status_code=403, detail="Hanya Manager ke atas yang bisa aksi ini")
+
+
 def _account_out(a: SocialAccount) -> dict:
     return {
         "id": str(a.id),
@@ -718,7 +734,7 @@ async def reply_comment(
     current_user: User = Depends(get_current_user),
 ):
     """Reply to a comment (posts under the comment thread)."""
-    await _require_member(db, org_id, current_user.id)
+    await _require_manager(db, org_id, current_user)
     acc = await _account_or_404(db, org_id, account_id)
     message = (payload.get("message") or "").strip()
     if not message:
@@ -747,7 +763,7 @@ async def hide_comment(
     current_user: User = Depends(get_current_user),
 ):
     """Hide or unhide a comment."""
-    await _require_member(db, org_id, current_user.id)
+    await _require_manager(db, org_id, current_user)
     acc = await _account_or_404(db, org_id, account_id)
     hidden = bool(payload.get("hidden", True))
     try:
@@ -772,7 +788,7 @@ async def delete_comment(
     current_user: User = Depends(get_current_user),
 ):
     """Delete a comment (only comments on your own media can be deleted)."""
-    await _require_member(db, org_id, current_user.id)
+    await _require_manager(db, org_id, current_user)
     acc = await _account_or_404(db, org_id, account_id)
     try:
         async with httpx.AsyncClient(timeout=20) as client:
