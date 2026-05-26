@@ -29,7 +29,9 @@ import {
   Pencil,
   Trash2,
   Pin,
-  X
+  X,
+  Megaphone,
+  CalendarDays
 } from "lucide-react";
 import CreateTeamModal from "@/components/team/CreateTeamModal";
 import CreateOrgModal from "@/components/org/CreateOrgModal";
@@ -390,6 +392,30 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                             {unread > 9 ? "9+" : unread}
                           </span>
                         )}
+                      </Link>
+                      <Link
+                        href={`/org/${ws.id}/announcements`}
+                        className={cn(
+                          "flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+                          pathname === `/org/${ws.id}/announcements`
+                            ? "bg-primary/10 text-primary"
+                            : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                        )}
+                      >
+                        <Megaphone className="w-3.5 h-3.5" />
+                        <span className="truncate flex-1">Pengumuman</span>
+                      </Link>
+                      <Link
+                        href={`/org/${ws.id}/calendar`}
+                        className={cn(
+                          "flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+                          pathname === `/org/${ws.id}/calendar`
+                            ? "bg-primary/10 text-primary"
+                            : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                        )}
+                      >
+                        <CalendarDays className="w-3.5 h-3.5" />
+                        <span className="truncate flex-1">Kalender</span>
                       </Link>
                     </div>
                   )}
