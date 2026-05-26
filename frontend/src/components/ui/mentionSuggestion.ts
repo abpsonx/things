@@ -36,10 +36,38 @@ export function createMentionSuggestion(getMembers: () => MentionMember[]) {
       let items: MentionMember[] = [];
       let selectedIndex = 0;
       let command: ((item: { id: string; label: string }) => void) | null = null;
+      // Captured straight from the suggestion props so we can insert the node
+      // ourselves without relying on the (fragile) props.command wiring.
+      let editor: any = null;
+      let range: any = null;
 
       const select = (i: number) => {
         const item = items[i];
-        if (item && command) command({ id: item.id, label: item.name });
+        if (!item) {
+          console.warn("[mention] no item at index", i, items);
+          return;
+        }
+        console.log("[mention] select", item);
+        try {
+          if (editor && range) {
+            editor
+              .chain()
+              .focus()
+              .insertContentAt(range, [
+                { type: "mention", attrs: { id: item.id, label: item.name } },
+                { type: "text", text: " " },
+              ])
+              .run();
+            console.log("[mention] inserted via editor chain");
+          } else if (command) {
+            command({ id: item.id, label: item.name });
+            console.log("[mention] inserted via props.command (fallback)");
+          } else {
+            console.error("[mention] no editor/range/command available", { editor, range, command });
+          }
+        } catch (err) {
+          console.error("[mention] insert failed", err);
+        }
       };
 
       const paint = () => {
@@ -88,6 +116,9 @@ export function createMentionSuggestion(getMembers: () => MentionMember[]) {
           items = props.items || [];
           selectedIndex = 0;
           command = props.command;
+          editor = props.editor;
+          range = props.range;
+          console.log("[mention] onStart", { hasEditor: !!editor, range, hasCommand: !!command, items: items.length });
           el = document.createElement("div");
           el.className = "mention-dropdown";
           document.body.appendChild(el);
@@ -98,6 +129,8 @@ export function createMentionSuggestion(getMembers: () => MentionMember[]) {
           items = props.items || [];
           selectedIndex = 0;
           command = props.command;
+          editor = props.editor;
+          range = props.range;
           paint();
           position(props.clientRect?.());
         },
