@@ -448,9 +448,9 @@ class AnnouncementUpdate(BaseModel):
     content: Optional[str] = None
 
 class AnnouncementResponse(BaseModel):
-    id: str
-    project_id: str
-    creator_id: str
+    id: UUID
+    project_id: UUID
+    creator_id: UUID
     title: str
     content: str
     created_at: datetime

@@ -22,41 +22,19 @@ async def create_announcement(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # Manager+ (project's workspace) guard — raises 403 if not allowed.
     await require_project_manager(db, project_id, current_user)
-    # Check if user is manager in the project and get project for org_id
     from app.models.project import Project
     from uuid import UUID
-    
+
     proj_id = UUID(project_id) if isinstance(project_id, str) else project_id
-    
+
     result = await db.execute(
         select(Project).options(selectinload(Project.members)).where(Project.id == proj_id)
     )
     project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project tidak ditemukan")
-
-    is_project_manager = any(m.user_id == current_user.id and m.role == "manager" for m in project.members)
-    # Anyone who is owner/manager/supervisor at the workspace level can also
-    # post announcements, not just project managers.
-    from app.models.organization import OrgMember
-    org_role_res = await db.execute(
-        select(OrgMember.role).where(
-            OrgMember.org_id == project.org_id,
-            OrgMember.user_id == current_user.id,
-        )
-    )
-    org_role = org_role_res.scalar()
-    can_post = (
-        is_project_manager
-        or is_superuser(current_user)
-        or (org_role in ("owner", "manager", "supervisor"))
-    )
-    if not can_post:
-        raise HTTPException(
-            status_code=403,
-            detail="Hanya owner/manager/supervisor workspace atau manager project yang bisa membuat pengumuman",
-        )
 
     announcement = Announcement(
         project_id=proj_id,
