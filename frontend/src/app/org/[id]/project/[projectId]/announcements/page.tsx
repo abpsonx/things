@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import api from "@/lib/api";
 import { 
@@ -38,6 +38,7 @@ export default function AnnouncementsPage() {
   const [content, setContent] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [members, setMembers] = useState<any[]>([]);
+  const formRef = useRef<HTMLDivElement>(null);
 
   const memberOptions = members
     .filter((m: any) => m.user)
@@ -88,6 +89,7 @@ export default function AnnouncementsPage() {
       setAnnouncements(prev => prev.filter(a => a.id !== id));
     } catch (err) {
       console.error("Failed to delete", err);
+      alert("Gagal menghapus pengumuman. Hanya pembuat atau manager yang bisa menghapus.");
     }
   };
 
@@ -103,8 +105,16 @@ export default function AnnouncementsPage() {
     setContent(a.content);
     setIsEditing(a.id);
     setIsCreating(true);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Scrolling happens in the effect below once the form has mounted.
   };
+
+  // The scroll container is <main>, not window, so window.scrollTo is a no-op
+  // here — scroll the freshly-opened form into view once it's in the DOM.
+  useEffect(() => {
+    if (isCreating) {
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [isCreating, isEditing]);
 
   if (loading) {
     return (
@@ -138,7 +148,7 @@ export default function AnnouncementsPage() {
 
       {/* Create/Edit Form */}
       {isCreating && (
-        <div className="bg-card border border-border rounded-3xl p-6 shadow-xl animate-in fade-in slide-in-from-top-4 duration-500">
+        <div ref={formRef} className="bg-card border border-border rounded-3xl p-6 shadow-xl animate-in fade-in slide-in-from-top-4 duration-500 scroll-mt-4">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-xl font-bold">{isEditing ? "Edit Pengumuman" : "Pengumuman Baru"}</h3>
             <button onClick={resetForm} className="p-2 hover:bg-secondary rounded-full">
