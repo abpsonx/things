@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
 export interface MentionMember {
@@ -37,6 +37,18 @@ export default function MentionTextarea({
   const taRef = useRef<HTMLTextAreaElement>(null);
   const [query, setQuery] = useState<string | null>(null);
   const [highlight, setHighlight] = useState(0);
+
+  // Auto-grow: expand to fit content so long descriptions don't force the
+  // user to scroll inside a tiny box while writing. Caps at ~60vh, then
+  // scrolls internally.
+  useEffect(() => {
+    const ta = taRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    const cap = Math.round(window.innerHeight * 0.6);
+    ta.style.height = Math.min(ta.scrollHeight, cap) + "px";
+    ta.style.overflowY = ta.scrollHeight > cap ? "auto" : "hidden";
+  }, [value]);
 
   const matches =
     query === null
