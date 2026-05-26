@@ -625,6 +625,7 @@ async def send_team_message(
         file_name=data.get("file_name"),
         file_type=data.get("file_type"),
         parent_id=parent_id_raw,
+        is_sticker=bool(data.get("is_sticker")),
     )
     db.add(msg)
     await db.commit()
@@ -656,6 +657,7 @@ async def send_team_message(
         "file_url": msg.file_url,
         "file_name": msg.file_name,
         "file_type": msg.file_type,
+        "is_sticker": msg.is_sticker,
         "created_at": msg.created_at.isoformat(),
         "parent_id": str(msg.parent_id) if msg.parent_id else None,
         "parent": parent_preview,
@@ -673,6 +675,7 @@ async def send_team_message(
         "file_url": msg.file_url,
         "file_name": msg.file_name,
         "file_type": msg.file_type,
+        "is_sticker": msg.is_sticker,
         "created_at": msg.created_at.isoformat(),
         "edited_at": None,
         "parent_id": str(msg.parent_id) if msg.parent_id else None,
@@ -850,6 +853,7 @@ async def list_team_messages(
             "file_url": m.file_url,
             "file_name": m.file_name,
             "file_type": m.file_type,
+            "is_sticker": m.is_sticker,
             "created_at": m.created_at.isoformat(),
             "edited_at": m.edited_at.isoformat() if m.edited_at else None,
             "parent_id": str(m.parent_id) if m.parent_id else None,

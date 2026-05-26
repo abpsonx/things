@@ -110,7 +110,8 @@ async def create_message(
         content=data.content,
         parent_id=data.parent_id,
         attachment_url=data.attachment_url,
-        attachment_name=data.attachment_name
+        attachment_name=data.attachment_name,
+        is_sticker=bool(data.is_sticker),
     )
     db.add(message)
     await db.commit()
@@ -136,6 +137,7 @@ async def create_message(
         "read_by": full_message.read_by or [],
         "attachment_url": full_message.attachment_url,
         "attachment_name": full_message.attachment_name,
+        "is_sticker": full_message.is_sticker,
         "created_at": full_message.created_at.isoformat(),
         "user": {
             "id": str(current_user.id),

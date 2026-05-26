@@ -32,6 +32,7 @@ import {
   ExternalLink,
   BarChart3,
   Download,
+  Sticker,
 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
 import CreatePollModal from "@/components/poll/CreatePollModal";
@@ -74,6 +75,8 @@ export default function ChatPage() {
 
   // Attachments & Emojis
   const [attachment, setAttachment] = useState<File | null>(null);
+  const [sendAsSticker, setSendAsSticker] = useState(false);
+  const attachmentIsImage = !!attachment && attachment.type.startsWith("image/");
   const [isPollModalOpen, setIsPollModalOpen] = useState(false);
 
   // /file slash command — picker dropdown state
@@ -636,7 +639,8 @@ export default function ChatPage() {
           content: expandedContent || (attachment ? `Sent a file: ${attachment.name}` : ""),
           parent_id: replyingTo?.id,
           attachment_url: attachmentUrl,
-          attachment_name: attachmentName
+          attachment_name: attachmentName,
+          is_sticker: sendAsSticker && attachmentIsImage,
         });
         
         // Optimistic update: langsung tambahkan ke state agar tidak perlu refresh
@@ -651,6 +655,7 @@ export default function ChatPage() {
       stopTyping();
       pickedMentionsRef.current.clear();
       setAttachment(null);
+      setSendAsSticker(false);
       setUploadingFile(false);
     } catch (err) {
       console.error("Failed to send message", err);
@@ -882,6 +887,7 @@ export default function ChatPage() {
               ).map((msg: any) => {
                 const isMe = currentUser && msg.user_id === currentUser.id;
                 const replyMsg = msg.parent_id ? messages.find((m: any) => m.id === msg.parent_id) : null;
+                const isSticker = !!(msg.is_sticker && msg.attachment_url);
 
                 return (
                   <div key={msg.id} id={`msg-${msg.id}`} className={cn("flex w-full group animate-in fade-in slide-in-from-bottom-1 duration-200", isMe ? "justify-end" : "justify-start")}>
@@ -900,13 +906,13 @@ export default function ChatPage() {
                       <div className={cn(
                         "text-[13px] relative group/msg transition-all min-w-[40px]",
                         // Poll messages let PollBubble own its styling — no dark wrapper, no padding.
-                        msg.poll
+                        (msg.poll || isSticker)
                           ? "bg-transparent"
                           : isMe
                             ? "px-3 py-1.5 rounded-2xl shadow-sm bg-[#3D4F6B] text-white rounded-tr-none"
                             : "px-3 py-1.5 rounded-2xl shadow-sm bg-card border border-border text-foreground rounded-tl-none",
-                        !msg.poll && msg.is_pinned && "ring-1 ring-blue-500/30",
-                        !msg.poll && msg.is_starred && "ring-1 ring-yellow-500/30"
+                        !msg.poll && !isSticker && msg.is_pinned && "ring-1 ring-blue-500/30",
+                        !msg.poll && !isSticker && msg.is_starred && "ring-1 ring-yellow-500/30"
                       )}>
                         {msg.is_pinned && (
                           <div className="absolute -top-2 -right-2 bg-blue-500 text-white p-0.5 rounded-full shadow-sm z-10">
@@ -949,7 +955,10 @@ export default function ChatPage() {
                               <VoiceNotePlayer url={msg.attachment_url} onDark={isMe} />
                             ) : msg.attachment_url.match(/\.(jpeg|jpg|gif|png|webp)$/i) ? (
                               <a href={msg.attachment_url} target="_blank" rel="noreferrer">
-                                <img src={msg.attachment_url} alt="attachment" className="rounded max-w-full h-auto max-h-[200px] object-cover cursor-pointer hover:opacity-90 transition-opacity border border-border" />
+                                <img src={msg.attachment_url} alt="attachment" className={cn(
+                                  "h-auto cursor-pointer hover:opacity-90 transition-opacity",
+                                  isSticker ? "max-h-[150px] w-auto object-contain drop-shadow" : "rounded max-w-full max-h-[200px] object-cover border border-border",
+                                )} />
                               </a>
                             ) : (
                               <a
@@ -1006,10 +1015,10 @@ export default function ChatPage() {
                           "flex items-end justify-end gap-x-2",
                           msg.poll && "mt-1 pr-1"
                         )}>
-                          {msg.content && !msg.poll && !(msg.attachment_url && msg.content === "🎤 Voice note") && <p className={cn("flex-1 min-w-[30px] whitespace-pre-wrap leading-snug py-0.5", isMe ? "text-white" : "text-foreground")}>{renderMessageContent(msg.content, isMe)}</p>}
+                          {msg.content && !msg.poll && !isSticker && !(msg.attachment_url && msg.content === "🎤 Voice note") && <p className={cn("flex-1 min-w-[30px] whitespace-pre-wrap leading-snug py-0.5", isMe ? "text-white" : "text-foreground")}>{renderMessageContent(msg.content, isMe)}</p>}
                           <div className={cn(
                             "flex items-center gap-0.5 text-[8px] mb-[1px] shrink-0 font-medium select-none",
-                            msg.poll
+                            (msg.poll || isSticker)
                               ? "text-muted-foreground/70"
                               : isMe
                                 ? "text-white/70"
@@ -1024,8 +1033,8 @@ export default function ChatPage() {
                             {isMe && (
                               <button onClick={() => setReadInfo(msg)} className="ml-0.5 transition-colors">
                                 {(msg.read_by && msg.read_by.length > 0)
-                                  ? <CheckCheck className={cn("w-3 h-3", msg.poll ? "text-muted-foreground" : "text-white")} />
-                                  : <CheckCheck className={cn("w-3 h-3", msg.poll ? "text-muted-foreground/40" : "text-white/40")} />
+                                  ? <CheckCheck className={cn("w-3 h-3", (msg.poll || isSticker) ? "text-muted-foreground" : "text-white")} />
+                                  : <CheckCheck className={cn("w-3 h-3", (msg.poll || isSticker) ? "text-muted-foreground/40" : "text-white/40")} />
                                 }
                               </button>
                             )}
@@ -1108,17 +1117,26 @@ export default function ChatPage() {
 
               {/* File Preview */}
               {attachment && (
-                <div className="mb-4 p-4 bg-secondary/50 border border-border rounded-2xl flex items-center justify-between animate-in slide-in-from-bottom-2">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-foreground/10 rounded-xl flex items-center justify-center">
+                <div className="mb-4 p-4 bg-secondary/50 border border-border rounded-2xl flex items-center justify-between gap-2 animate-in slide-in-from-bottom-2">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 bg-foreground/10 rounded-xl flex items-center justify-center shrink-0">
                       <Paperclip className="w-5 h-5 text-foreground" />
                     </div>
-                    <div className="text-sm">
+                    <div className="text-sm min-w-0">
                       <span className="font-bold block text-foreground truncate max-w-[200px]">{attachment.name}</span>
                       <span className="text-muted-foreground text-xs">{(attachment.size / 1024 / 1024).toFixed(2)} MB</span>
                     </div>
                   </div>
-                  <button onClick={() => setAttachment(null)} className="p-2 hover:bg-secondary rounded-full transition-all"><X className="w-4 h-4" /></button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {attachmentIsImage && (
+                      <button type="button" onClick={() => setSendAsSticker((v) => !v)} title="Kirim sebagai sticker (gambar gede, tanpa bubble)"
+                        className={cn("flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition-all border",
+                          sendAsSticker ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border text-muted-foreground hover:text-foreground")}>
+                        <Sticker className="w-3.5 h-3.5" /> Sticker
+                      </button>
+                    )}
+                    <button onClick={() => { setAttachment(null); setSendAsSticker(false); }} className="p-2 hover:bg-secondary rounded-full transition-all"><X className="w-4 h-4" /></button>
+                  </div>
                 </div>
               )}
 

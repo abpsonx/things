@@ -36,6 +36,7 @@ class DMMessage(Base):
     reactions = Column(JSONB, default=dict)  # {"user_id": "👍", "user2_id": "❤️"}
     attachment_url = Column(String, nullable=True)
     attachment_name = Column(String, nullable=True)
+    is_sticker = Column(Boolean, default=False)
     parent_id = Column(UUID(as_uuid=True), ForeignKey("dm_messages.id", ondelete="SET NULL"), nullable=True)
     edited_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

@@ -54,6 +54,13 @@ async def lifespan(app: FastAPI):
             except Exception:
                 pass
 
+        # is_sticker — image attachment rendered sticker-style (big, no bubble)
+        for tbl in ("messages", "team_messages", "dm_messages"):
+            try:
+                await conn.execute(text(f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS is_sticker BOOLEAN DEFAULT FALSE"))
+            except Exception:
+                pass
+
         # engagement totals on social_metrics (existing tables predate them)
         for col in ("comments", "shares", "saves"):
             try:

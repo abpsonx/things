@@ -378,6 +378,7 @@ class MessageCreate(BaseModel):
     parent_id: Optional[UUID] = None
     attachment_url: Optional[str] = None
     attachment_name: Optional[str] = None
+    is_sticker: Optional[bool] = False
 
 
 class MessageResponse(BaseModel):
@@ -394,6 +395,7 @@ class MessageResponse(BaseModel):
     attachment_name: Optional[str] = None
     is_pinned: bool = False
     is_starred: bool = False
+    is_sticker: bool = False
     poll_id: Optional[UUID] = None
     # Optional[Any] so Pydantic's from_attributes doesn't trip when the
     # SQLAlchemy relationship hands back a Poll ORM object. The handler

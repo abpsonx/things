@@ -38,6 +38,8 @@ class Message(Base):
     attachment_name = Column(String, nullable=True)
     is_pinned = Column(Boolean, default=False)
     is_starred = Column(Boolean, default=False)
+    # Image attachment shown sticker-style (big, no bubble) when True.
+    is_sticker = Column(Boolean, default=False)
     poll_id = Column(UUID(as_uuid=True), ForeignKey("polls.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 

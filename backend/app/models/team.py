@@ -59,6 +59,7 @@ class TeamMessage(Base):
     file_type = Column(String, nullable=True)
     parent_id = Column(UUID(as_uuid=True), ForeignKey("team_messages.id", ondelete="SET NULL"), nullable=True)
     poll_id = Column(UUID(as_uuid=True), ForeignKey("polls.id", ondelete="SET NULL"), nullable=True)
+    is_sticker = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     edited_at = Column(DateTime(timezone=True), nullable=True)
 
