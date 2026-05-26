@@ -1,13 +1,17 @@
 """Role-based permission helpers.
 
-A "superuser" is any user whose User.role grants global access across the
-entire system, bypassing per-organization role checks. Currently this
-includes "admin" and "developer".
+A "superuser" is any user whose platform-level User.role grants global
+access across the entire system (every workspace + platform settings),
+bypassing per-workspace role checks: "super_user" (business owner) and
+"developer" (technical owner).
+
+NOTE: "admin" is a per-WORKSPACE role (OrgMember.role), NOT a platform
+superuser — it must never be in this set.
 """
 from typing import Optional
 from app.models.user import User
 
-SUPERUSER_ROLES = frozenset({"admin", "developer"})
+SUPERUSER_ROLES = frozenset({"super_user", "developer"})
 DEVELOPER_ROLE = "developer"
 
 

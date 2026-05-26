@@ -23,7 +23,9 @@ async def create_organization(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Create a new organization (workspace)."""
+    """Create a new organization (workspace) — Super User / Developer only."""
+    if not is_superuser(current_user):
+        raise HTTPException(status_code=403, detail="Hanya Super User yang bisa membuat workspace")
     org = Organization(name=data.name, owner_id=current_user.id)
     db.add(org)
     await db.flush()

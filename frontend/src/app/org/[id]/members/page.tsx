@@ -172,7 +172,7 @@ export default function MembersPage() {
                         >
                           <option value="member">Member</option>
                           <option value="manager">Manager</option>
-                          <option value="owner">Owner</option>
+                          <option value="owner">Admin</option>
                         </select>
                       ) : (
                         <div className="flex items-center gap-2">
@@ -183,7 +183,7 @@ export default function MembersPage() {
                           ) : (
                             <UserIcon className="w-4 h-4 text-muted-foreground" />
                           )}
-                          <span className="text-xs font-bold capitalize">{member.role}</span>
+                          <span className="text-xs font-bold capitalize">{member.role === "owner" ? "Admin" : member.role}</span>
                         </div>
                       )}
                     </td>
@@ -226,9 +226,10 @@ export default function MembersPage() {
         <div className="space-y-1">
           <h4 className="font-bold text-sm">Informasi Role</h4>
           <ul className="text-xs text-muted-foreground space-y-2">
-            <li><span className="font-bold text-foreground">Owner:</span> Kontrol penuh workspace, termasuk menghapus workspace & ganti role orang lain.</li>
-            <li><span className="font-bold text-foreground">Manager:</span> Bisa membuat proyek, mengundang member, dan ganti role (kecuali Owner).</li>
-            <li><span className="font-bold text-foreground">Member:</span> Bisa berkontribusi di proyek, chat, dan kelola tugas yang ditugaskan.</li>
+            <li><span className="font-bold text-foreground">Admin:</span> Kelola workspace, anggota, & role (s/d Manager). Tidak bisa menghapus workspace.</li>
+            <li><span className="font-bold text-foreground">Manager:</span> Pimpin proyek/tim yang dibuatnya, atur task & moderasi chat di situ.</li>
+            <li><span className="font-bold text-foreground">Member:</span> Berkontribusi di proyek/tim yang diikuti — task, chat, dokumen.</li>
+            <li className="opacity-70"><span className="font-bold text-foreground">Super User / Developer:</span> Kontrol penuh semua workspace (termasuk buat & hapus workspace).</li>
           </ul>
         </div>
       </div>

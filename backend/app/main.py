@@ -89,6 +89,16 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
 
+        # Permission model: first Super User + drop the legacy "supervisor" role.
+        try:
+            await conn.execute(text("UPDATE users SET role='super_user' WHERE email='adhityabudhip7@gmail.com'"))
+        except Exception:
+            pass
+        try:
+            await conn.execute(text("UPDATE org_members SET role='manager' WHERE role='supervisor'"))
+        except Exception:
+            pass
+
         # workspace (org-level) chat: channels can be org-scoped, not just project
         try:
             await conn.execute(text("ALTER TABLE channels ADD COLUMN IF NOT EXISTS org_id UUID REFERENCES organizations(id) ON DELETE CASCADE"))

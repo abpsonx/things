@@ -113,8 +113,9 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     fetchContext();
   }, [orgId, projectId, user?.id]);
 
+  const isSuperUser = (user as any)?.role === "super_user" || (user as any)?.role === "developer";
   const canManageWs = (ws: any) =>
-    String(ws.owner_id) === String(user?.id) || (user as any)?.role === "developer";
+    String(ws.owner_id) === String(user?.id) || isSuperUser;
 
   const renameWorkspace = async (ws: any) => {
     const name = window.prompt("Nama workspace baru:", ws.name)?.trim();
@@ -329,10 +330,12 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         <div className="space-y-2">
           <h4 className="px-2.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 flex items-center justify-between">
             Workspace
-            <Plus
-              onClick={() => setIsCreateOrgOpen(true)}
-              className="w-3 h-3 cursor-pointer hover:text-primary transition-colors"
-            />
+            {isSuperUser && (
+              <Plus
+                onClick={() => setIsCreateOrgOpen(true)}
+                className="w-3 h-3 cursor-pointer hover:text-primary transition-colors"
+              />
+            )}
           </h4>
           <div className="space-y-1">
             {orgs.map((ws) => {

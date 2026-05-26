@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/store/useAuthStore";
 import { format, isValid, isToday, isTomorrow, isThisWeek } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 import {
@@ -75,6 +76,8 @@ function formatMeetingTime(iso: string) {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { user } = useAuthStore();
+  const isSuperUser = (user as any)?.role === "super_user" || (user as any)?.role === "developer";
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
@@ -138,13 +141,15 @@ export default function DashboardPage() {
           <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight mt-1">Selamat Datang!</h1>
           <p className="text-sm text-muted-foreground mt-1">Ringkasan tugas, jadwal, dan workspace kamu hari ini.</p>
         </div>
-        <button
-          onClick={() => setIsCreating(true)}
-          className="shrink-0 flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-xl text-sm font-bold hover:bg-primary/90 transition-all shadow-lg shadow-primary/10"
-        >
-          <Plus className="w-4 h-4" />
-          Workspace Baru
-        </button>
+        {isSuperUser && (
+          <button
+            onClick={() => setIsCreating(true)}
+            className="shrink-0 flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-xl text-sm font-bold hover:bg-primary/90 transition-all shadow-lg shadow-primary/10"
+          >
+            <Plus className="w-4 h-4" />
+            Workspace Baru
+          </button>
+        )}
       </div>
 
       {/* Create workspace inline */}
