@@ -9,6 +9,7 @@ from app.models.user import User
 from app.models.event import Event, EventAttendee
 from app.schemas import EventCreate, EventResponse
 from app.dependencies import get_current_user
+from app.core.permissions import require_project_manager, require_org_manager
 
 router = APIRouter(prefix="/projects/{project_id}/events", tags=["Events"])
 
@@ -20,6 +21,7 @@ async def create_event(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    await require_project_manager(db, project_id, current_user)
     """Create a new event in a project."""
     try:
         event = Event(
@@ -155,6 +157,7 @@ async def delete_event(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    await require_project_manager(db, project_id, current_user)
     """Delete an event."""
     result = await db.execute(
         select(Event).options(selectinload(Event.creator)).where(Event.id == event_id)

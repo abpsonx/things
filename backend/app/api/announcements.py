@@ -11,6 +11,7 @@ from app.schemas import AnnouncementCreate, AnnouncementUpdate, AnnouncementResp
 from app.dependencies import get_current_user
 from app.services import log_activity
 from app.core.permissions import is_superuser
+from app.core.permissions import require_project_manager, require_org_manager
 
 router = APIRouter(prefix="/projects/{project_id}/announcements", tags=["Announcements"])
 
@@ -21,6 +22,7 @@ async def create_announcement(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    await require_project_manager(db, project_id, current_user)
     # Check if user is manager in the project and get project for org_id
     from app.models.project import Project
     from uuid import UUID
@@ -138,6 +140,7 @@ async def update_announcement(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    await require_project_manager(db, project_id, current_user)
     from uuid import UUID
     proj_id = UUID(project_id) if isinstance(project_id, str) else project_id
     ann_id = UUID(announcement_id) if isinstance(announcement_id, str) else announcement_id
@@ -171,6 +174,7 @@ async def delete_announcement(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    await require_project_manager(db, project_id, current_user)
     from uuid import UUID
     proj_id = UUID(project_id) if isinstance(project_id, str) else project_id
     ann_id = UUID(announcement_id) if isinstance(announcement_id, str) else announcement_id

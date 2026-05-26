@@ -8,6 +8,7 @@ from app.models.user import User
 from app.models.label import Label, TaskLabel
 from app.schemas import LabelCreate, LabelResponse
 from app.dependencies import get_current_user
+from app.core.permissions import require_project_manager, require_org_manager
 
 # Project-specific labels router
 router = APIRouter(prefix="/projects/{project_id}/labels", tags=["Labels"])
@@ -24,6 +25,7 @@ async def create_project_label(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    await require_project_manager(db, project_id, current_user)
     # Check duplicate
     result = await db.execute(
         select(Label).where(Label.project_id == project_id, Label.name == data.name)
@@ -58,6 +60,7 @@ async def create_org_label(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    await require_org_manager(db, org_id, current_user)
     # Check duplicate in this org
     result = await db.execute(
         select(Label).where(Label.org_id == org_id, Label.name == data.name)
@@ -127,6 +130,7 @@ async def delete_project_label(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    await require_project_manager(db, project_id, current_user)
     result = await db.execute(
         select(Label).where(Label.id == label_id, Label.project_id == project_id)
     )
@@ -143,6 +147,7 @@ async def delete_org_label(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    await require_org_manager(db, org_id, current_user)
     result = await db.execute(
         select(Label).where(Label.id == label_id, Label.org_id == org_id)
     )

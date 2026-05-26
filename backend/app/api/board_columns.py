@@ -13,6 +13,7 @@ from app.models.user import User
 from app.models.board_column import BoardColumn
 from app.models.task import Task
 from app.dependencies import get_current_user
+from app.core.permissions import require_project_manager, require_org_manager
 
 router = APIRouter(prefix="/projects/{project_id}/columns", tags=["Board Columns"])
 
@@ -80,6 +81,7 @@ async def create_column(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    await require_project_manager(db, project_id, current_user)
     title = (data.title or "").strip()
     if not title:
         raise HTTPException(status_code=400, detail="Judul kolom wajib")
@@ -123,6 +125,7 @@ async def update_column(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    await require_project_manager(db, project_id, current_user)
     result = await db.execute(
         select(BoardColumn).where(
             BoardColumn.id == column_id, BoardColumn.project_id == project_id
@@ -150,6 +153,7 @@ async def delete_column(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    await require_project_manager(db, project_id, current_user)
     # Don't allow deleting the last column — board would be empty.
     count_res = await db.execute(
         select(func.count(BoardColumn.id)).where(BoardColumn.project_id == project_id)
