@@ -288,9 +288,15 @@ export default function SettingsPage() {
               <ShieldCheck className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-base font-bold">Keamanan &amp; Akses</h2>
-              <p className="text-xs text-muted-foreground">Kontrol siapa yang bisa mendaftar ke aplikasi.</p>
+              <h2 className="text-base font-bold">Kode Pendaftaran Platform</h2>
+              <p className="text-xs text-muted-foreground">Gerbang siapa yang boleh <b>mendaftar akun</b> di aplikasi.</p>
             </div>
+          </div>
+
+          <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 text-xs text-muted-foreground space-y-1">
+            <p className="font-bold text-foreground">Mau kasih level Admin / Manager / Member ke tim?</p>
+            <p>Itu diatur <b>per workspace</b> — buka workspace → menu <b>Members</b> → bagian <b>“Kode Undangan per Level”</b>. Orang yang daftar pakai kode itu langsung masuk workspace dengan level yang kamu pilih.</p>
+            <p>Kode di bawah ini beda fungsi: cuma <b>izin mendaftar akun</b> (bukan penentu level di workspace). Pembuatan workspace hanya untuk Super User.</p>
           </div>
 
           <div className="space-y-6">
@@ -301,9 +307,9 @@ export default function SettingsPage() {
                   <div className="space-y-1">
                     <label className="text-sm font-bold flex items-center gap-2">
                       <Key className="w-4 h-4 text-primary" />
-                      Kode Full Akses (Admin)
+                      Kode Pendaftaran Internal
                     </label>
-                    <p className="text-[10px] text-muted-foreground">User dengan kode ini bisa membuat workspace sendiri.</p>
+                    <p className="text-[10px] text-muted-foreground">Izin mendaftar sebagai akun internal. Level di workspace tetap diatur lewat Kode Undangan / undangan member.</p>
                   </div>
                 </div>
                 
