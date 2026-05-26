@@ -224,6 +224,29 @@ export default function SettingsPage() {
                   className="w-full px-4 py-3 bg-secondary/10 border border-border rounded-2xl text-muted-foreground cursor-not-allowed opacity-60"
                 />
               </div>
+              <div className="space-y-2">
+                <label className="text-sm font-bold block text-muted-foreground">Level Akun</label>
+                {(() => {
+                  const role = (currentUser as any)?.role;
+                  const meta: Record<string, { label: string; cls: string }> = {
+                    super_user: { label: "Super User", cls: "bg-amber-500/15 text-amber-600 border-amber-500/30" },
+                    developer: { label: "Developer", cls: "bg-violet-500/15 text-violet-600 border-violet-500/30" },
+                    admin: { label: "Admin", cls: "bg-primary/10 text-primary border-primary/30" },
+                  };
+                  const m = meta[role] || { label: "Member / Staff", cls: "bg-secondary text-muted-foreground border-border" };
+                  return (
+                    <div className="flex items-center gap-2">
+                      <span className={cn("inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-bold border", m.cls)}>
+                        <ShieldCheck className="w-4 h-4" /> {m.label}
+                      </span>
+                      {(role === "super_user" || role === "developer") && (
+                        <span className="text-[11px] text-muted-foreground">akses penuh semua workspace</span>
+                      )}
+                    </div>
+                  );
+                })()}
+                <p className="text-[10px] text-muted-foreground">Level per-workspace (Admin/Manager/Member) bisa berbeda tiap workspace — lihat di halaman Members.</p>
+              </div>
             </div>
           </div>
         </section>
