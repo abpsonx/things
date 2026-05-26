@@ -166,5 +166,12 @@ async def check_reminders():
         except Exception as e:
             print(f"[SCHEDULER] digest error: {e}")
 
+        # Retention cleanup: drop uploaded files older than 90 days (once/day)
+        try:
+            from app.services.cleanup import cleanup_old_files
+            await cleanup_old_files()
+        except Exception as e:
+            print(f"[SCHEDULER] cleanup error: {e}")
+
         # Run every 5 minutes
         await asyncio.sleep(300)
