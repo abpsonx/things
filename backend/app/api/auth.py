@@ -31,19 +31,30 @@ async def register(request: Request, data: RegisterRequest, db: AsyncSession = D
     db_staff_code = await db.execute(select(SystemSetting.value).where(SystemSetting.key == "registration_code_staff"))
     active_staff_code = db_staff_code.scalar() or settings.REGISTRATION_CODE_STAFF
 
+    from app.models.org_invite_code import OrgInviteCode
+
     user_role = "staff"
+    invite_join = None  # (org_id, role) if a workspace invite code was used
     if data.registration_code == active_admin_code:
         user_role = "admin"
     elif data.registration_code == active_staff_code:
         user_role = "staff"
     else:
-        # Check if user is at least invited via email
-        inv_result = await db.execute(select(Invitation).where(Invitation.email == data.email))
-        if not inv_result.scalar_one_or_none():
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Kode perusahaan salah atau email belum diundang",
-            )
+        # Workspace invite code? → join that workspace with the code's role.
+        ic_res = await db.execute(
+            select(OrgInviteCode).where(OrgInviteCode.code == data.registration_code)
+        )
+        ic = ic_res.scalar_one_or_none()
+        if ic:
+            invite_join = (ic.org_id, ic.role)
+        else:
+            # Last fallback: at least invited via email
+            inv_result = await db.execute(select(Invitation).where(Invitation.email == data.email))
+            if not inv_result.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Kode perusahaan salah atau email belum diundang",
+                )
 
     # 2. Check if email already exists
     existing = await db.execute(select(User).where(User.email == data.email))
@@ -63,6 +74,11 @@ async def register(request: Request, data: RegisterRequest, db: AsyncSession = D
     )
     db.add(user)
     await db.flush() # Get user.id
+
+    # Joined via a workspace invite code → add to that workspace with its role.
+    if invite_join:
+        join_org_id, join_role = invite_join
+        db.add(OrgMember(org_id=join_org_id, user_id=user.id, role=join_role))
 
     # 4. Handle Pending Invitations
     inv_result = await db.execute(select(Invitation).where(Invitation.email == data.email))

@@ -1,4 +1,6 @@
 """Organization (Workspace) endpoints."""
+import secrets
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
@@ -111,6 +113,67 @@ async def delete_organization(
     await db.execute(text("DELETE FROM organizations WHERE id = :id"), {"id": str(org_id)})
     await db.commit()
     return None
+
+
+_INVITE_ROLES = ("owner", "manager", "member")
+_INVITE_PREFIX = {"owner": "ADM", "manager": "MGR", "member": "MBR"}
+_INVITE_LABEL = {"owner": "Admin", "manager": "Manager", "member": "Member"}
+
+
+def _gen_code(role: str) -> str:
+    return f"{_INVITE_PREFIX[role]}-{secrets.token_hex(3).upper()}"
+
+
+@router.get("/{org_id}/invite-codes")
+async def list_invite_codes(
+    org_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Shareable invite codes per role (Admin/Super User only). Auto-creates them."""
+    from app.models.org_invite_code import OrgInviteCode
+    org = await _load_org_or_404(db, org_id)
+    if not await _is_org_owner(db, org, current_user):
+        raise HTTPException(status_code=403, detail="Hanya Admin/Super User yang bisa lihat kode undangan")
+
+    res = await db.execute(select(OrgInviteCode).where(OrgInviteCode.org_id == org_id))
+    by_role = {c.role: c for c in res.scalars().all()}
+    created = False
+    for role in _INVITE_ROLES:
+        if role not in by_role:
+            c = OrgInviteCode(org_id=uuid.UUID(str(org_id)), role=role, code=_gen_code(role))
+            db.add(c)
+            by_role[role] = c
+            created = True
+    if created:
+        await db.commit()
+    return [{"role": r, "label": _INVITE_LABEL[r], "code": by_role[r].code} for r in _INVITE_ROLES]
+
+
+@router.post("/{org_id}/invite-codes/{role}/regenerate")
+async def regenerate_invite_code(
+    org_id: str, role: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Generate a fresh code for a role (old one stops working)."""
+    if role not in _INVITE_ROLES:
+        raise HTTPException(status_code=400, detail="Role tidak valid")
+    from app.models.org_invite_code import OrgInviteCode
+    org = await _load_org_or_404(db, org_id)
+    if not await _is_org_owner(db, org, current_user):
+        raise HTTPException(status_code=403, detail="Hanya Admin/Super User yang bisa atur kode")
+    res = await db.execute(
+        select(OrgInviteCode).where(OrgInviteCode.org_id == org_id, OrgInviteCode.role == role)
+    )
+    c = res.scalar_one_or_none()
+    new_code = _gen_code(role)
+    if c:
+        c.code = new_code
+    else:
+        db.add(OrgInviteCode(org_id=uuid.UUID(str(org_id)), role=role, code=new_code))
+    await db.commit()
+    return {"role": role, "label": _INVITE_LABEL[role], "code": new_code}
 
 
 @router.get("", response_model=List[OrgResponse])

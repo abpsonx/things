@@ -14,7 +14,10 @@ import {
   Trash2,
   Loader2,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Copy,
+  RefreshCw,
+  Ticket
 } from "lucide-react";
 import Link from "next/link";
 import { useAuthStore } from "@/store/useAuthStore";
@@ -27,7 +30,31 @@ export default function MembersPage() {
   const { user: currentUser } = useAuthStore();
   const [members, setMembers] = useState<any[]>([]);
   const [ownerId, setOwnerId] = useState<string | null>(null);
+  const [codes, setCodes] = useState<any[]>([]);
+  const [copied, setCopied] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const fetchCodes = async () => {
+    try {
+      const res = await api.get(`/organizations/${orgId}/invite-codes`);
+      setCodes(res.data || []);
+    } catch { /* not allowed (manager/member) — hide section */ }
+  };
+
+  const regenCode = async (role: string) => {
+    try {
+      const res = await api.post(`/organizations/${orgId}/invite-codes/${role}/regenerate`);
+      setCodes((prev) => prev.map((c) => (c.role === role ? { ...c, code: res.data.code } : c)));
+    } catch {
+      alert("Gagal regenerasi kode.");
+    }
+  };
+
+  const copyCode = (code: string) => {
+    navigator.clipboard?.writeText(code);
+    setCopied(code);
+    setTimeout(() => setCopied(null), 1500);
+  };
   const [isInviting, setIsInviting] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
@@ -45,7 +72,7 @@ export default function MembersPage() {
   };
 
   useEffect(() => {
-    if (orgId) fetchMembers();
+    if (orgId) { fetchMembers(); fetchCodes(); }
   }, [orgId]);
 
   const handleUpdateRole = async (memberId: string, newRole: string) => {
@@ -218,6 +245,39 @@ export default function MembersPage() {
           </table>
         </div>
       </div>
+
+      {codes.length > 0 && (
+        <div className="border border-border rounded-3xl bg-card p-6 space-y-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-primary/10 rounded-2xl flex items-center justify-center text-primary shrink-0">
+              <Ticket className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="font-bold text-sm">Kode Undangan per Level</h4>
+              <p className="text-xs text-muted-foreground">Bagikan kode ini ke tim — saat daftar, mereka langsung masuk workspace ini dengan level-nya.</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {codes.map((c) => (
+              <div key={c.role} className="rounded-2xl border border-border bg-secondary/20 p-4 space-y-2">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{c.label}</p>
+                <div className="flex items-center justify-between gap-2">
+                  <code className="text-sm font-bold tracking-wide">{c.code}</code>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button onClick={() => copyCode(c.code)} title="Salin" className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground">
+                      {copied === c.code ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                    <button onClick={() => regenCode(c.role)} title="Ganti kode" className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground">
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-muted-foreground">Ganti kode kalau bocor — kode lama langsung nonaktif.</p>
+        </div>
+      )}
 
       <div className="p-6 bg-secondary/20 rounded-3xl border border-border flex items-start gap-4">
         <div className="w-10 h-10 bg-primary/10 rounded-2xl flex items-center justify-center text-primary shrink-0">
