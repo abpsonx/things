@@ -39,6 +39,25 @@ async def _check_org_membership(db: AsyncSession, org_id: str, user_id) -> OrgMe
     raise HTTPException(status_code=403, detail="Anda bukan member organization ini")
 
 
+async def _is_team_member(db: AsyncSession, team_id, user_id) -> bool:
+    res = await db.execute(
+        select(TeamMember.id).where(TeamMember.team_id == team_id, TeamMember.user_id == user_id)
+    )
+    return res.scalar_one_or_none() is not None
+
+
+async def _require_team_access(db: AsyncSession, org_id: str, team_id: str, user: User) -> OrgMember:
+    """Gate access to a specific team. Workspace Admin/Manager/Super User see
+    every team (they manage the workspace); everyone else must actually be a
+    member of THIS team. Returns the caller's OrgMember (synthetic for SU)."""
+    member = await _check_org_membership(db, org_id, user.id)
+    if member.role in ("owner", "manager"):
+        return member
+    if await _is_team_member(db, team_id, user.id):
+        return member
+    raise HTTPException(status_code=403, detail="Kamu bukan anggota tim ini")
+
+
 @router.post("", response_model=TeamResponse, status_code=status.HTTP_201_CREATED)
 async def create_team(
     org_id: str,
@@ -79,14 +98,21 @@ async def list_teams(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List all teams in an organization."""
-    await _check_org_membership(db, org_id, current_user.id)
+    """List teams in an organization.
 
-    result = await db.execute(
-        select(Team)
-        .where(Team.org_id == org_id)
-        .order_by(Team.created_at.desc())
-    )
+    Workspace Admin/Manager/Super User see every team; regular members only
+    see the teams they actually belong to (teams are private to their members).
+    """
+    member = await _check_org_membership(db, org_id, current_user.id)
+
+    query = select(Team).where(Team.org_id == org_id)
+    if member.role not in ("owner", "manager"):
+        query = query.where(
+            Team.id.in_(
+                select(TeamMember.team_id).where(TeamMember.user_id == current_user.id)
+            )
+        )
+    result = await db.execute(query.order_by(Team.created_at.desc()))
     teams = result.scalars().all()
     return [TeamResponse.model_validate(t) for t in teams]
 
@@ -99,7 +125,7 @@ async def get_team(
     current_user: User = Depends(get_current_user),
 ):
     """Get team detail."""
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
 
     result = await db.execute(
         select(Team).where(Team.id == team_id, Team.org_id == org_id)
@@ -120,7 +146,7 @@ async def update_team(
     current_user: User = Depends(get_current_user),
 ):
     """Update team details."""
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
 
     result = await db.execute(
         select(Team).where(Team.id == team_id, Team.org_id == org_id)
@@ -152,7 +178,7 @@ async def delete_team(
     current_user: User = Depends(get_current_user),
 ):
     """Delete a team."""
-    org_member = await _check_org_membership(db, org_id, current_user.id)
+    org_member = await _require_team_access(db, org_id, team_id, current_user)
     if org_member.role not in ("owner", "manager"):
         raise HTTPException(status_code=403, detail="Hanya owner/manager yang bisa hapus team")
 
@@ -181,7 +207,7 @@ async def list_team_members(
     current_user: User = Depends(get_current_user),
 ):
     """List members of a team."""
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
 
     result = await db.execute(
         select(TeamMember)
@@ -210,7 +236,7 @@ async def add_team_member(
     current_user: User = Depends(get_current_user),
 ):
     """Add a member to a team."""
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
 
     # Find user
     result = await db.execute(select(User).where(User.email == data.email))
@@ -266,7 +292,7 @@ async def remove_team_member(
     current_user: User = Depends(get_current_user),
 ):
     """Remove a member from a team."""
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
 
     result = await db.execute(
         select(TeamMember).where(TeamMember.id == member_id, TeamMember.team_id == team_id)
@@ -311,7 +337,7 @@ async def list_team_tasks(
     current_user: User = Depends(get_current_user),
 ):
     """List all tasks for a team (excludes archived)."""
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
     from app.models.label import TaskLabel
     result = await db.execute(
         select(Task)
@@ -336,7 +362,7 @@ async def list_archived_team_tasks(
     current_user: User = Depends(get_current_user),
 ):
     """Archived team tasks only."""
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
     from app.models.label import TaskLabel
     result = await db.execute(
         select(Task)
@@ -362,7 +388,7 @@ async def archive_team_task(
     """Soft-delete a team task."""
     from datetime import datetime as _dt, timezone as _tz
     from app.models.label import TaskLabel
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
     res = await db.execute(select(Task).where(Task.id == task_id, Task.team_id == team_id))
     task = res.scalar_one_or_none()
     if not task:
@@ -389,7 +415,7 @@ async def restore_team_task(
 ):
     """Restore an archived team task."""
     from app.models.label import TaskLabel
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
     res = await db.execute(select(Task).where(Task.id == task_id, Task.team_id == team_id))
     task = res.scalar_one_or_none()
     if not task:
@@ -415,7 +441,7 @@ async def create_team_task(
     current_user: User = Depends(get_current_user),
 ):
     """Create a task for a team."""
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
 
     result = await db.execute(
         select(func.coalesce(func.max(Task.position), 0))
@@ -459,7 +485,7 @@ async def move_team_task(
     current_user: User = Depends(get_current_user),
 ):
     """Move a team task to a different status/position."""
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
 
     result = await db.execute(select(Task).where(Task.id == task_id, Task.team_id == team_id))
     task = result.scalar_one_or_none()
@@ -501,7 +527,7 @@ async def get_team_task(
     current_user: User = Depends(get_current_user),
 ):
     """Get detail for a specific team task."""
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
 
     result = await db.execute(
         select(Task).options(
@@ -527,7 +553,7 @@ async def update_team_task(
     current_user: User = Depends(get_current_user),
 ):
     """Update a team task."""
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
 
     result = await db.execute(select(Task).where(Task.id == task_id, Task.team_id == team_id))
     task = result.scalar_one_or_none()
@@ -583,7 +609,7 @@ async def delete_team_task(
     current_user: User = Depends(get_current_user),
 ):
     """Delete a team task."""
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
 
     result = await db.execute(select(Task).where(Task.id == task_id, Task.team_id == team_id))
     task = result.scalar_one_or_none()
@@ -614,7 +640,7 @@ async def send_team_message(
     current_user: User = Depends(get_current_user),
 ):
     """Send a message to the team chat."""
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
 
     parent_id_raw = data.get("parent_id")
     msg = TeamMessage(
@@ -696,7 +722,7 @@ async def edit_team_message(
     current_user: User = Depends(get_current_user),
 ):
     """Edit an existing chat message."""
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
 
     result = await db.execute(
         select(TeamMessage).where(TeamMessage.id == message_id, TeamMessage.user_id == current_user.id)
@@ -728,7 +754,7 @@ async def delete_team_message(
     current_user: User = Depends(get_current_user),
 ):
     """Delete a chat message."""
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
 
     result = await db.execute(
         select(TeamMessage).where(TeamMessage.id == message_id, TeamMessage.user_id == current_user.id)
@@ -754,7 +780,7 @@ async def upload_chat_file(
     current_user: User = Depends(get_current_user),
 ):
     """Upload a file to team chat."""
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
 
     upload_dir = f"uploads/teams/{team_id}/chat"
     os.makedirs(upload_dir, exist_ok=True)
@@ -805,7 +831,7 @@ async def list_team_messages(
     current_user: User = Depends(get_current_user),
 ):
     """List last 50 messages from team chat."""
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
 
     from app.models.poll import Poll
     from app.api.polls import _serialize as _serialize_poll
@@ -878,7 +904,7 @@ async def get_team_activities(
     current_user: User = Depends(get_current_user),
 ):
     """Get activity logs for a specific team."""
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
 
     result = await db.execute(
         select(ActivityLog)
@@ -900,7 +926,7 @@ async def list_team_files(
     current_user: User = Depends(get_current_user),
 ):
     """List files uploaded directly to the team."""
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
     from app.models.team_file import TeamFile
 
     res = await db.execute(
@@ -930,7 +956,7 @@ async def upload_team_file(
     current_user: User = Depends(get_current_user),
 ):
     """Upload a file directly to the team."""
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
     from app.models.team_file import TeamFile
 
     upload_dir = f"uploads/teams/{team_id}/files"
@@ -973,7 +999,7 @@ async def delete_team_file(
     current_user: User = Depends(get_current_user),
 ):
     """Delete a directly-uploaded team file (uploader or org owner/manager)."""
-    member = await _check_org_membership(db, org_id, current_user.id)
+    member = await _require_team_access(db, org_id, team_id, current_user)
     from app.models.team_file import TeamFile
 
     res = await db.execute(select(TeamFile).where(TeamFile.id == file_id, TeamFile.team_id == team_id))
@@ -1000,7 +1026,7 @@ async def list_team_docs(
     current_user: User = Depends(get_current_user),
 ):
     """List team wiki documents."""
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
     from app.models.document import Document
 
     res = await db.execute(
@@ -1027,7 +1053,7 @@ async def create_team_doc(
     current_user: User = Depends(get_current_user),
 ):
     """Create a team wiki document."""
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
     from app.models.document import Document
 
     doc = Document(
@@ -1049,7 +1075,7 @@ async def update_team_doc(
     current_user: User = Depends(get_current_user),
 ):
     """Update a team wiki document."""
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
     from app.models.document import Document
 
     res = await db.execute(select(Document).where(Document.id == doc_id, Document.team_id == team_id))
@@ -1072,7 +1098,7 @@ async def delete_team_doc(
     current_user: User = Depends(get_current_user),
 ):
     """Delete a team wiki document."""
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
     from app.models.document import Document
 
     res = await db.execute(select(Document).where(Document.id == doc_id, Document.team_id == team_id))
@@ -1096,7 +1122,7 @@ async def list_team_events(
 
     Private events are only visible to their attendees + the creator.
     """
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
     from app.models.event import Event, EventAttendee
 
     result = await db.execute(
@@ -1145,7 +1171,7 @@ async def create_team_event(
     visibility: "public" (default, semua) | "private" (hanya peserta).
     Empty attendee_ids on a public event = whole team.
     """
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
     from app.models.event import Event, EventAttendee
     from datetime import datetime as _dt
 
@@ -1252,7 +1278,7 @@ async def delete_team_event(
     current_user: User = Depends(get_current_user),
 ):
     """Delete a team event (creator or org owner/manager)."""
-    member = await _check_org_membership(db, org_id, current_user.id)
+    member = await _require_team_access(db, org_id, team_id, current_user)
     from app.models.event import Event
 
     res = await db.execute(select(Event).where(Event.id == event_id, Event.team_id == team_id))
@@ -1281,7 +1307,7 @@ async def list_team_announcements(
     untargeted (visible to all) or where the user is an explicit recipient.
     The creator always sees their own.
     """
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
     from app.models.announcement import Announcement, AnnouncementRecipient, AnnouncementComment
     from datetime import datetime as _dt, timezone as _tz
 
@@ -1339,7 +1365,7 @@ async def create_team_announcement(
     Body: { title, content, expires_at?, recipient_ids?[] }.
     Empty/absent recipient_ids = everyone in the team.
     """
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
     from app.models.announcement import Announcement, AnnouncementRecipient
     from datetime import datetime as _dt
 
@@ -1437,7 +1463,7 @@ async def update_team_announcement(
     current_user: User = Depends(get_current_user),
 ):
     """Edit a team announcement (creator only)."""
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
     from app.models.announcement import Announcement
 
     res = await db.execute(
@@ -1486,7 +1512,7 @@ async def delete_team_announcement(
     current_user: User = Depends(get_current_user),
 ):
     """Delete a team announcement (creator or org owner/manager)."""
-    member = await _check_org_membership(db, org_id, current_user.id)
+    member = await _require_team_access(db, org_id, team_id, current_user)
     from app.models.announcement import Announcement
 
     res = await db.execute(
@@ -1517,7 +1543,7 @@ async def list_announcement_comments(
     current_user: User = Depends(get_current_user),
 ):
     """List comments on a team announcement (oldest first)."""
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
     from app.models.announcement import AnnouncementComment
 
     res = await db.execute(
@@ -1545,7 +1571,7 @@ async def create_announcement_comment(
     current_user: User = Depends(get_current_user),
 ):
     """Comment on a team announcement + notify the announcement creator."""
-    await _check_org_membership(db, org_id, current_user.id)
+    await _require_team_access(db, org_id, team_id, current_user)
     from app.models.announcement import Announcement, AnnouncementComment
 
     content = (data.get("content") or "").strip()
@@ -1599,7 +1625,7 @@ async def delete_announcement_comment(
     current_user: User = Depends(get_current_user),
 ):
     """Delete an announcement comment (author or org owner/manager)."""
-    member = await _check_org_membership(db, org_id, current_user.id)
+    member = await _require_team_access(db, org_id, team_id, current_user)
     from app.models.announcement import AnnouncementComment
 
     res = await db.execute(
