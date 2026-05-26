@@ -205,6 +205,13 @@ async def lifespan(app: FastAPI):
             ))
         except Exception as e:
             print(f"[boot] announcements.team_id add skipped: {e}")
+        # Workspace-wide announcements — add org_id
+        try:
+            await conn.execute(text(
+                "ALTER TABLE announcements ADD COLUMN IF NOT EXISTS org_id UUID REFERENCES organizations(id) ON DELETE CASCADE"
+            ))
+        except Exception as e:
+            print(f"[boot] announcements.org_id add skipped: {e}")
 
         # Announcement deadline + recipients + comments
         try:
@@ -247,6 +254,13 @@ async def lifespan(app: FastAPI):
             await conn.execute(text("ALTER TABLE events ADD COLUMN IF NOT EXISTS category VARCHAR(20) DEFAULT 'meeting' NOT NULL"))
         except Exception as e:
             print(f"[boot] events.visibility/category add skipped: {e}")
+        # Workspace-wide events/meetings — add org_id
+        try:
+            await conn.execute(text(
+                "ALTER TABLE events ADD COLUMN IF NOT EXISTS org_id UUID REFERENCES organizations(id) ON DELETE CASCADE"
+            ))
+        except Exception as e:
+            print(f"[boot] events.org_id add skipped: {e}")
 
         # Team documents (wiki) — make project_id nullable + add team_id
         try:
@@ -426,6 +440,9 @@ app.include_router(sosmed.router, prefix="/api")
 app.include_router(sosmed.webhook_router, prefix="/api")
 from app.api import org_chat
 app.include_router(org_chat.router, prefix="/api")
+from app.api import org_announcements, org_events
+app.include_router(org_announcements.router, prefix="/api")
+app.include_router(org_events.router, prefix="/api")
 
 
 # Static Files

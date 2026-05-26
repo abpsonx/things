@@ -9,9 +9,11 @@ class Announcement(Base):
     __tablename__ = "announcements"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    # Exactly one of project_id / team_id is set.
+    # Exactly one of project_id / team_id / org_id is set. org_id => a
+    # workspace-wide "all staff" announcement.
     project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True)
     team_id = Column(UUID(as_uuid=True), ForeignKey("teams.id", ondelete="CASCADE"), nullable=True)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True)
     creator_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     title = Column(String(255), nullable=False)
     content = Column(Text, nullable=False)

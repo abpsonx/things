@@ -9,9 +9,10 @@ import re
 import shutil
 import uuid
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -32,6 +33,10 @@ logger = logging.getLogger(__name__)
 
 WORKSPACE_CHANNEL_NAME = "general"
 _MENTION_RE = re.compile(r"@\[[^\]]+\]\(([0-9a-fA-F-]{36})\)")
+
+
+class ReadWorkspaceRequest(BaseModel):
+    message_ids: Optional[List[str]] = None
 
 
 async def _require_member(db: AsyncSession, org_id: str, user_id) -> None:
@@ -76,10 +81,15 @@ async def get_workspace_messages(
     await _require_member(db, org_id, current_user.id)
     ch = await _get_or_create_channel(db, org_id)
     from app.api.reactions import fetch_reactions_for
+    from app.api.polls import _serialize as _serialize_poll
+    from app.models.poll import Poll
 
     result = await db.execute(
         select(Message)
-        .options(selectinload(Message.user))
+        .options(
+            selectinload(Message.user),
+            selectinload(Message.poll).selectinload(Poll.votes),
+        )
         .where(Message.channel_id == ch.id)
         .order_by(Message.created_at.asc())
     )
@@ -88,6 +98,8 @@ async def get_workspace_messages(
     out: list = []
     for m in msgs:
         resp = MessageResponse.model_validate(m)
+        if m.poll:
+            resp.poll = _serialize_poll(m.poll, current_user.id)
         resp.reactions = reactions_map.get(str(m.id), [])
         out.append(resp)
     return out
@@ -239,30 +251,100 @@ async def delete_workspace_message(
     return None
 
 
-@router.post("/read")
-async def mark_workspace_read(
+@router.post("/messages/{message_id}/pin", response_model=MessageResponse)
+async def toggle_pin_workspace_message(
+    org_id: str, message_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await _require_member(db, org_id, current_user.id)
+    ch = await _get_or_create_channel(db, org_id)
+    result = await db.execute(select(Message).where(Message.id == message_id))
+    message = result.scalar_one_or_none()
+    if not message:
+        raise HTTPException(status_code=404, detail="Pesan tidak ditemukan")
+    message.is_pinned = not message.is_pinned
+    await db.commit()
+    await db.refresh(message)
+    await sio.emit("message_pinned", {
+        "id": str(message.id), "channel_id": str(ch.id), "is_pinned": message.is_pinned,
+    }, room=f"channel_{ch.id}")
+    return message
+
+
+@router.post("/messages/{message_id}/star", response_model=MessageResponse)
+async def toggle_star_workspace_message(
+    org_id: str, message_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await _require_member(db, org_id, current_user.id)
+    ch = await _get_or_create_channel(db, org_id)
+    result = await db.execute(select(Message).where(Message.id == message_id))
+    message = result.scalar_one_or_none()
+    if not message:
+        raise HTTPException(status_code=404, detail="Pesan tidak ditemukan")
+    message.is_starred = not message.is_starred
+    await db.commit()
+    await db.refresh(message)
+    await sio.emit("message_starred", {
+        "id": str(message.id), "channel_id": str(ch.id), "is_starred": message.is_starred,
+    }, room=f"channel_{ch.id}")
+    return message
+
+
+@router.delete("/clear", status_code=status.HTTP_204_NO_CONTENT)
+async def clear_workspace_messages(
     org_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Mark all messages in the workspace channel as read by the current user."""
+    from app.core.permissions import can_manage_org
+    from sqlalchemy import delete
+    await _require_member(db, org_id, current_user.id)
+    if not await can_manage_org(db, uuid.UUID(org_id), current_user):
+        raise HTTPException(status_code=403, detail="Hanya Manager ke atas yang bisa mengosongkan chat")
+    ch = await _get_or_create_channel(db, org_id)
+    await db.execute(delete(Message).where(Message.channel_id == ch.id))
+    await db.commit()
+    await sio.emit("channel_cleared", {"channel_id": str(ch.id)}, room=f"channel_{ch.id}")
+    return None
+
+
+@router.post("/read")
+async def mark_workspace_read(
+    org_id: str,
+    data: Optional[ReadWorkspaceRequest] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Mark messages in the workspace channel as read by the current user.
+
+    Accepts an optional list of message_ids (parity with project chat); when
+    omitted, marks every message in the channel as read.
+    """
     await _require_member(db, org_id, current_user.id)
     ch = await _get_or_create_channel(db, org_id)
-    result = await db.execute(select(Message).where(Message.channel_id == ch.id))
+    q = select(Message).where(Message.channel_id == ch.id)
+    if data and data.message_ids:
+        q = q.where(Message.id.in_(data.message_ids))
+    result = await db.execute(q)
     now = datetime.now(timezone.utc).isoformat()
     reader = {"id": str(current_user.id), "name": current_user.name, "read_at": now}
-    updated = 0
+    updates = []
     for msg in result.scalars().all():
         if str(msg.user_id) == str(current_user.id):
             continue
         read_by = msg.read_by or []
         if not any(r.get("id") == str(current_user.id) for r in read_by):
-            msg.read_by = [*read_by, reader]
+            new_read_by = [*read_by, reader]
+            msg.read_by = new_read_by
             msg.is_read = True
-            updated += 1
-    if updated:
+            updates.append({"message_id": str(msg.id), "read_by": new_read_by})
+    if updates:
         await db.commit()
-    return {"status": "success", "updated_count": updated}
+        await sio.emit("messages_read", {"channel_id": str(ch.id), "updates": updates}, room=f"channel_{ch.id}")
+    return {"status": "success", "updated_count": len(updates)}
 
 
 @router.post("/messages/upload")

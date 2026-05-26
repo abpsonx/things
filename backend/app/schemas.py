@@ -330,18 +330,22 @@ class EventCreate(BaseModel):
     description: Optional[str] = None
     start_at: datetime
     end_at: Optional[datetime] = None
+    category: Optional[str] = "meeting"
     attendee_ids: List[UUID] = []
     mention_ids: List[UUID] = []
 
 
 class EventResponse(BaseModel):
     id: UUID
-    project_id: UUID
+    project_id: Optional[UUID] = None
+    org_id: Optional[UUID] = None
+    team_id: Optional[UUID] = None
     created_by: UUID
     title: str
     description: Optional[str] = None
     start_at: datetime
     end_at: Optional[datetime] = None
+    category: str = "meeting"
     created_at: datetime
     creator: Optional[UserResponse] = None
     attendees: List[EventAttendeeResponse] = []
