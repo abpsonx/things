@@ -450,6 +450,8 @@ app.include_router(org_chat.router, prefix="/api")
 from app.api import org_announcements, org_events
 app.include_router(org_announcements.router, prefix="/api")
 app.include_router(org_events.router, prefix="/api")
+from app.api import media
+app.include_router(media.router, prefix="/api")
 
 
 # Static Files

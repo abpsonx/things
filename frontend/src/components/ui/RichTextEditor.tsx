@@ -1,17 +1,20 @@
 "use client";
 
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import Link from '@tiptap/extension-link';
+import Image from '@tiptap/extension-image';
 import Mention from '@tiptap/extension-mention';
 import { createMentionSuggestion, MentionMember } from './mentionSuggestion';
+import api from '@/lib/api';
 import {
   Bold, Italic, Strikethrough, Code, Heading1, Heading2,
-  List, ListOrdered, CheckSquare, Quote, Undo, Redo, Link as LinkIcon
+  List, ListOrdered, CheckSquare, Quote, Undo, Redo, Link as LinkIcon,
+  Image as ImageIcon, Paperclip, Loader2
 } from 'lucide-react';
 
 interface RichTextEditorProps {
@@ -28,6 +31,9 @@ export function RichTextEditor({ content, onChange, placeholder = "Mulai menulis
   // always sees freshly fetched members.
   const membersRef = useRef<MentionMember[]>(members || []);
   membersRef.current = members || [];
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
 
   const editor = useEditor({
     extensions: [
@@ -37,7 +43,15 @@ export function RichTextEditor({ content, onChange, placeholder = "Mulai menulis
       Placeholder.configure({ placeholder }),
       TaskList,
       TaskItem.configure({ nested: true }),
-      Link.configure({ openOnClick: false }),
+      // autolink + linkOnPaste so typed/pasted URLs become clickable links;
+      // open in a new tab when the announcement is viewed.
+      Link.configure({
+        openOnClick: false,
+        autolink: true,
+        linkOnPaste: true,
+        HTMLAttributes: { class: "rte-link", target: "_blank", rel: "noopener noreferrer" },
+      }),
+      Image.configure({ HTMLAttributes: { class: "rte-image" } }),
       Mention.configure({
         HTMLAttributes: { class: "mention" },
         suggestion: createMentionSuggestion(() => membersRef.current),
@@ -70,6 +84,46 @@ export function RichTextEditor({ content, onChange, placeholder = "Mulai menulis
       return;
     }
     editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+  };
+
+  const uploadFile = async (file: File): Promise<{ url: string; filename: string } | null> => {
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await api.post("/media/upload", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      return res.data;
+    } catch (err) {
+      console.error("Upload gagal", err);
+      alert("Gagal mengunggah file.");
+      return null;
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const onPickImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const up = await uploadFile(file);
+      if (up) editor.chain().focus().setImage({ src: up.url, alt: up.filename }).run();
+    }
+    if (imageInputRef.current) imageInputRef.current.value = "";
+  };
+
+  const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const up = await uploadFile(file);
+      if (up) {
+        // Insert the filename as a clickable link to the uploaded file.
+        editor.chain().focus()
+          .insertContent({ type: "text", text: `📎 ${up.filename}`, marks: [{ type: "link", attrs: { href: up.url } }] })
+          .insertContent(" ")
+          .run();
+      }
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   return (
@@ -121,9 +175,22 @@ export function RichTextEditor({ content, onChange, placeholder = "Mulai menulis
             onClick={() => editor.chain().focus().toggleBlockquote().run()} 
             isActive={editor.isActive('blockquote')} icon={<Quote className="w-4 h-4" />} 
           />
-          <MenuButton 
-            onClick={toggleLink} 
-            isActive={editor.isActive('link')} icon={<LinkIcon className="w-4 h-4" />} 
+          <MenuButton
+            onClick={toggleLink}
+            isActive={editor.isActive('link')} icon={<LinkIcon className="w-4 h-4" />}
+          />
+          <div className="w-px h-4 bg-border mx-1" />
+          <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={onPickImage} />
+          <input ref={fileInputRef} type="file" className="hidden" onChange={onPickFile} />
+          <MenuButton
+            onClick={() => imageInputRef.current?.click()}
+            isActive={false} disabled={uploading}
+            icon={uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIcon className="w-4 h-4" />}
+          />
+          <MenuButton
+            onClick={() => fileInputRef.current?.click()}
+            isActive={false} disabled={uploading}
+            icon={<Paperclip className="w-4 h-4" />}
           />
           <div className="flex-1" />
           <MenuButton 

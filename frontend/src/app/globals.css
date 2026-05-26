@@ -151,3 +151,33 @@
   color: #4f46e5;
   font-weight: 600;
 }
+
+/* Links inside the rich-text editor + rendered announcements — clearly
+   coloured, underlined and clickable. */
+.ProseMirror a,
+.prose a,
+.rte-link {
+  color: #2563eb;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  word-break: break-word;
+}
+.dark .ProseMirror a,
+.dark .prose a,
+.dark .rte-link {
+  color: #60a5fa;
+}
+/* Images embedded via the editor */
+.ProseMirror img,
+.prose img,
+.rte-image {
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+  margin: 8px 0;
+}
+.ProseMirror img.ProseMirror-selectednode {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
