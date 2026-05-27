@@ -531,57 +531,84 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
             </div>
           </div>
 
+          {(() => {
+            const assigneeList: any[] = (task?.assignees && task.assignees.length)
+              ? task.assignees
+              : (task?.assignee ? [{ id: task.assignee_id, ...task.assignee }] : []);
+            const assigneeIds: string[] = assigneeList.map((a) => a.id).filter(Boolean);
+            const toggleAssignee = (uid: string) => {
+              const set = new Set(assigneeIds);
+              if (set.has(uid)) set.delete(uid); else set.add(uid);
+              updateTask({ assignee_ids: Array.from(set) });
+            };
+            return (
           <div className="space-y-2">
             <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1">
-              <UserIcon className="w-3 h-3" /> Assignee
+              <UserIcon className="w-3 h-3" /> Assignee {assigneeIds.length > 1 && <span className="text-primary">({assigneeIds.length})</span>}
             </label>
             <Popover
               align="right"
               trigger={
-                <div className="flex items-center gap-2 p-2 bg-background border border-border rounded-md hover:border-primary/30 transition-colors">
-                  <div className="w-5 h-5 rounded-full bg-secondary border border-border flex items-center justify-center text-[8px] font-bold text-muted-foreground overflow-hidden">
-                    {task?.assignee?.avatar_url ? (
-                      <img src={task.assignee.avatar_url} alt={task.assignee.name} className="w-full h-full object-cover" />
-                    ) : (
-                      task?.assignee?.name?.charAt(0) || "U"
-                    )}
-                  </div>
-                  <span className="text-xs font-medium">{task?.assignee?.name || "Unassigned"}</span>
+                <div className="flex items-center gap-2 p-2 bg-background border border-border rounded-md hover:border-primary/30 transition-colors min-h-[36px]">
+                  {assigneeList.length > 0 ? (
+                    <>
+                      <div className="flex -space-x-1.5">
+                        {assigneeList.slice(0, 4).map((a) => (
+                          <div key={a.id} className="w-5 h-5 rounded-full bg-secondary border border-background flex items-center justify-center text-[8px] font-bold text-muted-foreground overflow-hidden" title={a.name}>
+                            {a.avatar_url ? <img src={a.avatar_url} alt={a.name} className="w-full h-full object-cover" /> : a.name?.charAt(0) || "U"}
+                          </div>
+                        ))}
+                      </div>
+                      <span className="text-xs font-medium truncate">
+                        {assigneeList.length === 1 ? assigneeList[0].name : `${assigneeList.length} orang`}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-xs font-medium text-muted-foreground">Unassigned</span>
+                  )}
                 </div>
               }
             >
               <div className="p-2 space-y-1">
+                <div className="px-2 py-1 text-[10px] text-muted-foreground">Pilih beberapa orang — klik untuk tambah/hapus.</div>
                 <div className="max-h-48 overflow-y-auto">
-                  <button 
-                    onClick={() => updateTask({ assignee_id: null })}
-                    className="w-full flex items-center gap-2 p-2 hover:bg-secondary rounded-md text-xs"
-                  >
-                    <div className="w-5 h-5 rounded-full border border-dashed border-border flex items-center justify-center text-[8px]"><X className="w-2 h-2" /></div>
-                    Unassigned
-                  </button>
-                  {members.map((m) => (
-                    <button 
-                      key={m.user_id}
-                      onClick={() => updateTask({ assignee_id: m.user_id })}
-                      className="w-full flex items-center justify-between p-2 hover:bg-secondary rounded-md text-xs group"
+                  {assigneeIds.length > 0 && (
+                    <button
+                      onClick={() => updateTask({ assignee_ids: [] })}
+                      className="w-full flex items-center gap-2 p-2 hover:bg-secondary rounded-md text-xs text-muted-foreground"
                     >
-                      <div className="flex items-center gap-2">
-                        <div className="w-5 h-5 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-[8px] font-bold text-primary overflow-hidden">
-                          {m.user?.avatar_url ? (
-                            <img src={m.user.avatar_url} alt={m.user?.name} className="w-full h-full object-cover" />
-                          ) : (
-                            m.user?.name?.charAt(0)
-                          )}
-                        </div>
-                        {m.user?.name}
-                      </div>
-                      {task?.assignee_id === m.user_id && <Check className="w-3 h-3 text-primary" />}
+                      <div className="w-5 h-5 rounded-full border border-dashed border-border flex items-center justify-center text-[8px]"><X className="w-2 h-2" /></div>
+                      Kosongkan semua
                     </button>
-                  ))}
+                  )}
+                  {members.map((m) => {
+                    const selected = assigneeIds.includes(m.user_id);
+                    return (
+                      <button
+                        key={m.user_id}
+                        onClick={() => toggleAssignee(m.user_id)}
+                        className={cn("w-full flex items-center justify-between p-2 hover:bg-secondary rounded-md text-xs group", selected && "bg-primary/5")}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="w-5 h-5 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-[8px] font-bold text-primary overflow-hidden">
+                            {m.user?.avatar_url ? (
+                              <img src={m.user.avatar_url} alt={m.user?.name} className="w-full h-full object-cover" />
+                            ) : (
+                              m.user?.name?.charAt(0)
+                            )}
+                          </div>
+                          {m.user?.name}
+                        </div>
+                        {selected && <Check className="w-3 h-3 text-primary" />}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </Popover>
           </div>
+            );
+          })()}
           </div>
 
           <div className="pt-6 border-t border-border mt-4 space-y-2">

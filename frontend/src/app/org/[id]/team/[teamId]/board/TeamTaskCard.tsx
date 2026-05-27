@@ -19,6 +19,7 @@ interface Task {
   comments_count?: number;
   attachments_count?: number;
   assignee?: { name: string; avatar_url?: string };
+  assignees?: { id?: string; name: string; avatar_url?: string }[];
 }
 
 const PRIORITY_META: Record<string, { label: string; flagColor: string; textColor: string } | undefined> = {
@@ -98,21 +99,38 @@ export default function TeamTaskCard({
       <h4 className="text-[14px] font-extrabold leading-snug text-foreground mb-2">{task.title}</h4>
 
       {/* Assignee + due date row */}
-      {(task.assignee || dueDateValid) && (
+      {(() => {
+        const people = (task.assignees && task.assignees.length)
+          ? task.assignees
+          : (task.assignee ? [task.assignee] : []);
+        if (!people.length && !dueDateValid) return null;
+        return (
         <div className="flex items-center justify-between gap-2 mb-2">
-          {task.assignee ? (
+          {people.length > 0 ? (
             <div className="flex items-center gap-2 min-w-0">
-              <div
-                className="w-6 h-6 rounded-full bg-secondary border border-border flex items-center justify-center text-[9px] font-bold overflow-hidden shrink-0"
-                title={task.assignee.name}
-              >
-                {task.assignee.avatar_url ? (
-                  <img src={task.assignee.avatar_url} alt={task.assignee.name} className="w-full h-full object-cover" />
-                ) : (
-                  (task.assignee.name || "?").charAt(0).toUpperCase()
+              <div className="flex -space-x-1.5 shrink-0">
+                {people.slice(0, 3).map((a: any, i: number) => (
+                  <div
+                    key={a.id || i}
+                    className="w-6 h-6 rounded-full bg-secondary border border-background flex items-center justify-center text-[9px] font-bold overflow-hidden"
+                    title={a.name}
+                  >
+                    {a.avatar_url ? (
+                      <img src={a.avatar_url} alt={a.name} className="w-full h-full object-cover" />
+                    ) : (
+                      (a.name || "?").charAt(0).toUpperCase()
+                    )}
+                  </div>
+                ))}
+                {people.length > 3 && (
+                  <div className="w-6 h-6 rounded-full bg-secondary border border-background flex items-center justify-center text-[8px] font-bold text-muted-foreground">
+                    +{people.length - 3}
+                  </div>
                 )}
               </div>
-              <span className="text-[11px] font-semibold text-foreground/80 truncate">{task.assignee.name}</span>
+              <span className="text-[11px] font-semibold text-foreground/80 truncate">
+                {people.length === 1 ? people[0].name : `${people.length} orang`}
+              </span>
             </div>
           ) : (
             <span className="text-[11px] text-muted-foreground italic">Belum ada assignee</span>
@@ -124,7 +142,8 @@ export default function TeamTaskCard({
             </span>
           )}
         </div>
-      )}
+        );
+      })()}
 
       {/* Description */}
       {task.description && (

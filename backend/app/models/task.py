@@ -1,7 +1,7 @@
 """Task, SubTask, and Attachment models."""
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Text, DateTime, Date, Integer, ForeignKey, CheckConstraint
+from sqlalchemy import Column, String, Text, DateTime, Date, Integer, ForeignKey, CheckConstraint, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy import Boolean
@@ -52,6 +52,24 @@ class Task(Base):
     comments = relationship("Comment", back_populates="task", cascade="all, delete-orphan")
     attachments = relationship("Attachment", back_populates="task", cascade="all, delete-orphan")
     task_labels = relationship("TaskLabel", back_populates="task", cascade="all, delete-orphan")
+    # Multiple assignees (in addition to the legacy single assignee_id, which
+    # we keep as the "primary" for backward-compatible UIs).
+    assignee_links = relationship("TaskAssignee", back_populates="task", cascade="all, delete-orphan")
+
+    @property
+    def assignees(self):
+        """List of assigned Users. Reads only already-loaded data so it never
+        triggers a lazy load (returns [] when assignee_links wasn't eager-loaded,
+        e.g. on the project board which still uses the single assignee)."""
+        links = self.__dict__.get("assignee_links")
+        if not links:
+            return []
+        out = []
+        for link in links:
+            u = link.__dict__.get("user")
+            if u is not None:
+                out.append(u)
+        return out
 
     # Dependencies — a task "blocks" others and is "blocked_by" others.
     blocks_relations = relationship(
@@ -77,6 +95,22 @@ class TaskDependency(Base):
 
     blocker = relationship("Task", foreign_keys=[blocker_id])
     blocked = relationship("Task", foreign_keys=[blocked_id])
+
+
+class TaskAssignee(Base):
+    """Many-to-many: a task can have several assignees."""
+    __tablename__ = "task_assignees"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    task_id = Column(UUID(as_uuid=True), ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("task_id", "user_id", name="uq_task_assignee"),
+    )
+
+    task = relationship("Task", back_populates="assignee_links")
+    user = relationship("User")
 
 
 class SubTask(Base):

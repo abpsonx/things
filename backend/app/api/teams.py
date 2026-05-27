@@ -13,7 +13,7 @@ from app.models.organization import OrgMember
 from app.models.team import Team, TeamMember, TeamMessage
 from app.models.team_board_column import TeamBoardColumn
 from app.models.activity_log import ActivityLog
-from app.models.task import Task
+from app.models.task import Task, TaskAssignee
 from app.schemas import (
     TeamCreate, TeamUpdate, TeamResponse, 
     TeamMemberResponse, UserResponse, InviteMemberRequest,
@@ -319,7 +319,7 @@ async def remove_team_member(
 # ============ Team Task Endpoints ============
 
 from sqlalchemy import func
-from app.models.task import Task
+from app.models.task import Task, TaskAssignee
 from app.models.label import TaskLabel
 from app.schemas import TaskCreate, TaskUpdate, TaskMoveRequest, TaskResponse, LabelResponse
 
@@ -332,6 +332,22 @@ def _task_to_response(task):
     resp.comments_count = len(task.comments) if hasattr(task, 'comments') else 0
     resp.attachments_count = len(task.attachments) if hasattr(task, 'attachments') else 0
     return resp
+
+
+async def _sync_task_assignees(db, task, ids):
+    """Replace a task's assignees with `ids`. Keeps the legacy single
+    assignee_id in sync (= first id) so older single-assignee UIs still work."""
+    from sqlalchemy import delete as _sa_delete
+    norm, seen = [], set()
+    for i in (ids or []):
+        s = str(i)
+        if s not in seen:
+            seen.add(s)
+            norm.append(s)
+    await db.execute(_sa_delete(TaskAssignee).where(TaskAssignee.task_id == task.id))
+    for uid in norm:
+        db.add(TaskAssignee(task_id=task.id, user_id=uid))
+    task.assignee_id = norm[0] if norm else None
 
 
 @router.get("/{team_id}/tasks", response_model=List[TaskResponse])
@@ -350,7 +366,7 @@ async def list_team_tasks(
             selectinload(Task.subtasks),
             selectinload(Task.comments),
             selectinload(Task.attachments),
-            selectinload(Task.assignee)
+            selectinload(Task.assignee), selectinload(Task.assignee_links).selectinload(TaskAssignee.user)
         )
         .where(Task.team_id == team_id, Task.archived_at.is_(None))
         .order_by(Task.position)
@@ -375,7 +391,7 @@ async def list_archived_team_tasks(
             selectinload(Task.subtasks),
             selectinload(Task.comments),
             selectinload(Task.attachments),
-            selectinload(Task.assignee),
+            selectinload(Task.assignee), selectinload(Task.assignee_links).selectinload(TaskAssignee.user),
         )
         .where(Task.team_id == team_id, Task.archived_at.isnot(None))
         .order_by(Task.archived_at.desc())
@@ -405,7 +421,7 @@ async def archive_team_task(
         select(Task).options(
             selectinload(Task.task_labels).selectinload(TaskLabel.label),
             selectinload(Task.subtasks), selectinload(Task.comments),
-            selectinload(Task.attachments), selectinload(Task.assignee),
+            selectinload(Task.attachments), selectinload(Task.assignee), selectinload(Task.assignee_links).selectinload(TaskAssignee.user),
         ).where(Task.id == task_id)
     )
     return _task_to_response(res.scalar_one())
@@ -432,7 +448,7 @@ async def restore_team_task(
         select(Task).options(
             selectinload(Task.task_labels).selectinload(TaskLabel.label),
             selectinload(Task.subtasks), selectinload(Task.comments),
-            selectinload(Task.attachments), selectinload(Task.assignee),
+            selectinload(Task.attachments), selectinload(Task.assignee), selectinload(Task.assignee_links).selectinload(TaskAssignee.user),
         ).where(Task.id == task_id)
     )
     return _task_to_response(res.scalar_one())
@@ -461,6 +477,13 @@ async def create_team_task(
     db.add(task)
     await db.flush()
 
+    # Multiple assignees (preferred). Fall back to mirroring the single
+    # assignee_id into the M2M so the multi-assignee UI shows it too.
+    if data.assignee_ids is not None:
+        await _sync_task_assignees(db, task, data.assignee_ids)
+    elif data.assignee_id is not None:
+        db.add(TaskAssignee(task_id=task.id, user_id=data.assignee_id))
+
     await log_activity(
         db, org_id=org_id, user_id=current_user.id,
         action="task_created", entity_type="task", entity_id=task.id,
@@ -474,7 +497,7 @@ async def create_team_task(
             selectinload(Task.subtasks),
             selectinload(Task.comments),
             selectinload(Task.attachments),
-            selectinload(Task.assignee)
+            selectinload(Task.assignee), selectinload(Task.assignee_links).selectinload(TaskAssignee.user)
         )
         .where(Task.id == task.id)
     )
@@ -516,7 +539,7 @@ async def move_team_task(
             selectinload(Task.subtasks),
             selectinload(Task.comments),
             selectinload(Task.attachments),
-            selectinload(Task.assignee)
+            selectinload(Task.assignee), selectinload(Task.assignee_links).selectinload(TaskAssignee.user)
         )
         .where(Task.id == task_id)
     )
@@ -539,7 +562,7 @@ async def get_team_task(
             selectinload(Task.subtasks),
             selectinload(Task.comments),
             selectinload(Task.attachments),
-            selectinload(Task.assignee)
+            selectinload(Task.assignee), selectinload(Task.assignee_links).selectinload(TaskAssignee.user)
         )
         .where(Task.id == task_id, Task.team_id == team_id)
     )
@@ -565,9 +588,12 @@ async def update_team_task(
         raise HTTPException(status_code=404, detail="Task tidak ditemukan")
 
     update_data = data.model_dump(exclude_unset=True)
+    # assignee_ids isn't a Task column — handle it separately via the M2M table.
+    assignee_ids = update_data.pop("assignee_ids", None)
 
-    # Status/position changes are free; other edits need permission.
-    if not set(update_data.keys()) <= {"status", "position"}:
+    # Status/position changes are free; other edits (incl. assignees) need permission.
+    free_only = set(update_data.keys()) <= {"status", "position"} and assignee_ids is None
+    if not free_only:
         from app.services.task_permissions import user_can_edit_task
         if not await user_can_edit_task(db, task, current_user):
             raise HTTPException(status_code=403, detail="Kamu belum punya izin mengedit task ini. Minta izin ke pembuat task.")
@@ -579,6 +605,9 @@ async def update_team_task(
     }
     for key, value in update_data.items():
         setattr(task, key, value)
+
+    if assignee_ids is not None:
+        await _sync_task_assignees(db, task, assignee_ids)
 
     from app.services.task_activity import build_task_change_summary
     summary = await build_task_change_summary(db, old_values, update_data)
@@ -598,7 +627,7 @@ async def update_team_task(
             selectinload(Task.subtasks),
             selectinload(Task.comments),
             selectinload(Task.attachments),
-            selectinload(Task.assignee)
+            selectinload(Task.assignee), selectinload(Task.assignee_links).selectinload(TaskAssignee.user)
         )
         .where(Task.id == task_id)
     )

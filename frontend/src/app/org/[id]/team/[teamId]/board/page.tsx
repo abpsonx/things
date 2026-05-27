@@ -54,6 +54,7 @@ interface Task {
   attachments_count?: number;
   created_at: string;
   assignee?: { name: string; avatar_url?: string };
+  assignees?: { id?: string; name: string; avatar_url?: string }[];
 }
 
 interface TeamInfo {

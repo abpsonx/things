@@ -165,6 +165,7 @@ class TaskCreate(BaseModel):
     status: str = "todo"
     priority: str = "medium"
     assignee_id: Optional[UUID] = None
+    assignee_ids: Optional[List[UUID]] = None
     due_date: Optional[datetime] = None
     position: int = 0
     recurrence: Optional[str] = None
@@ -176,6 +177,7 @@ class TaskUpdate(BaseModel):
     status: Optional[str] = None
     priority: Optional[str] = None
     assignee_id: Optional[UUID] = None
+    assignee_ids: Optional[List[UUID]] = None
     due_date: Optional[datetime] = None
     position: Optional[int] = None
     recurrence: Optional[str] = None
@@ -232,6 +234,7 @@ class TaskResponse(BaseModel):
     comments_count: int = 0
     attachments_count: int = 0
     assignee: Optional[UserResponse] = None
+    assignees: List[UserResponse] = []
     recurrence: Optional[str] = None
     archived_at: Optional[datetime] = None
 
