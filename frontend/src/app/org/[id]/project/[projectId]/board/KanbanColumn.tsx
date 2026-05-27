@@ -17,6 +17,8 @@ interface ColumnProps {
   tasks: any[];
   projectId: string;
   onTaskAdded: () => void;
+  /** Quick-create a task in this column and open its detail modal (team-style). */
+  onQuickAdd?: () => void;
   onTaskClick: (id: string) => void;
   onRename?: (newTitle: string) => void | Promise<void>;
   onDelete?: () => void | Promise<void>;
@@ -31,6 +33,7 @@ export default function KanbanColumn({
   tasks,
   projectId,
   onTaskAdded,
+  onQuickAdd,
   onTaskClick,
   onRename,
   onDelete,
@@ -129,7 +132,7 @@ export default function KanbanColumn({
         <div className="flex items-center gap-0.5 shrink-0">
           <button
             type="button"
-            onClick={() => setIsAdding(true)}
+            onClick={() => (onQuickAdd ? onQuickAdd() : setIsAdding(true))}
             title="Tambah tugas baru"
             className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
           >

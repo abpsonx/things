@@ -292,6 +292,19 @@ export default function KanbanBoard() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
+  // Quick-create a task in a column and immediately open its detail modal
+  // (team-style) — no tiny inline form / double work.
+  const handleQuickAdd = async (status: string) => {
+    try {
+      const res = await api.post(`/projects/${projectId}/tasks`, { title: "Tugas Baru", status });
+      await fetchTasks();
+      setSelectedTaskId(res.data.id);
+      setIsModalOpen(true);
+    } catch (err) {
+      console.error("Failed to create task", err);
+    }
+  };
+
   const persistColumnOrder = async (ordered: typeof columns) => {
     try {
       await Promise.all(
@@ -457,6 +470,7 @@ export default function KanbanBoard() {
                 tasks={filteredTasks.filter((t) => t.status === col.slug)}
                 projectId={projectId as string}
                 onTaskAdded={fetchTasks}
+                onQuickAdd={() => handleQuickAdd(col.slug)}
                 onTaskClick={(id) => {
                   setSelectedTaskId(id);
                   setIsModalOpen(true);
