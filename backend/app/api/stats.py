@@ -33,30 +33,53 @@ async def get_dashboard_stats(
     )
     project_count = (await db.execute(project_query)).scalar() or 0
 
-    # 2. Task Stats (Across all projects user has access to)
-    # Join Projects -> Organizations -> OrgMembers to ensure access
-    task_base_query = (
+    # 2. Task Stats — ringkasan performa SEMUA task yang bisa diakses user:
+    #    task project (di org tempat user jadi anggota) + task tim (di tim
+    #    tempat user jadi anggota). Sebelumnya hanya menghitung task project.
+    from app.models.team import TeamMember
+    now = datetime.now(timezone.utc)
+
+    task_stats = {"todo": 0, "in_progress": 0, "completed": 0, "total": 0, "overdue": 0}
+
+    proj_task_q = (
         select(Task.status, func.count(Task.id))
-        .join(Project)
-        .join(Organization)
-        .join(OrgMember)
+        .join(Project, Task.project_id == Project.id)
+        .join(Organization, Project.org_id == Organization.id)
+        .join(OrgMember, OrgMember.org_id == Organization.id)
         .where(OrgMember.user_id == current_user.id)
         .group_by(Task.status)
     )
-    task_results = (await db.execute(task_base_query)).all()
-    
-    task_stats = {
-        "todo": 0,
-        "in_progress": 0,
-        "completed": 0,
-        "total": 0
-    }
-    
-    for status, count in task_results:
-        task_stats["total"] += count
-        if status == "todo": task_stats["todo"] = count
-        elif status == "in_progress": task_stats["in_progress"] = count
-        elif status == "done": task_stats["completed"] = count
+    team_task_q = (
+        select(Task.status, func.count(Task.id))
+        .join(TeamMember, TeamMember.team_id == Task.team_id)
+        .where(TeamMember.user_id == current_user.id)
+        .group_by(Task.status)
+    )
+    for q in (proj_task_q, team_task_q):
+        for status, count in (await db.execute(q)).all():
+            task_stats["total"] += count
+            if status == "todo": task_stats["todo"] += count
+            elif status == "in_progress": task_stats["in_progress"] += count
+            elif status == "done": task_stats["completed"] += count
+
+    # Overdue = punya deadline lewat & belum selesai (project + tim).
+    overdue_proj_q = (
+        select(func.count(Task.id))
+        .join(Project, Task.project_id == Project.id)
+        .join(Organization, Project.org_id == Organization.id)
+        .join(OrgMember, OrgMember.org_id == Organization.id)
+        .where(OrgMember.user_id == current_user.id, Task.status != "done",
+               Task.due_date.is_not(None), Task.due_date < now)
+    )
+    overdue_team_q = (
+        select(func.count(Task.id))
+        .join(TeamMember, TeamMember.team_id == Task.team_id)
+        .where(TeamMember.user_id == current_user.id, Task.status != "done",
+               Task.due_date.is_not(None), Task.due_date < now)
+    )
+    task_stats["overdue"] = ((await db.execute(overdue_proj_q)).scalar() or 0) + \
+                            ((await db.execute(overdue_team_q)).scalar() or 0)
+    task_stats["completion_rate"] = round(task_stats["completed"] / task_stats["total"] * 100) if task_stats["total"] else 0
 
     # 3. Recent Activity (Last 5)
     from app.models.activity_log import ActivityLog

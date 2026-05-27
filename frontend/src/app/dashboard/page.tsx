@@ -115,7 +115,7 @@ export default function DashboardPage() {
     }
   };
 
-  const taskStats = stats?.task_stats || { todo: 0, in_progress: 0, completed: 0, total: 0 };
+  const taskStats = stats?.task_stats || { todo: 0, in_progress: 0, completed: 0, total: 0, overdue: 0, completion_rate: 0 };
   const myTasks: MyTask[] = stats?.my_tasks || [];
   const meetings: Meeting[] = stats?.upcoming_meetings || [];
   // Filter out zero-value slices so paddingAngle doesn't leave broken gaps
@@ -251,8 +251,8 @@ export default function DashboardPage() {
         <div className="lg:col-span-1 p-5 bg-card border border-border rounded-2xl flex flex-col">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Project Overview</p>
-              <h2 className="text-base font-bold mt-1">Status semua tugas</h2>
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Ringkasan Performa</p>
+              <h2 className="text-base font-bold mt-1">Semua tugas (project + tim)</h2>
             </div>
           </div>
 
@@ -260,8 +260,8 @@ export default function DashboardPage() {
             {hasAnyTask ? (
               <>
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                  <span className="text-3xl font-black leading-none">{taskStats.total}</span>
-                  <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mt-1">Total</span>
+                  <span className="text-3xl font-black leading-none">{taskStats.completion_rate}%</span>
+                  <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mt-1">Tuntas · {taskStats.total} tugas</span>
                 </div>
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
@@ -296,10 +296,17 @@ export default function DashboardPage() {
           </div>
 
           <div className="flex items-center justify-center gap-4 mt-4 text-[10px]">
-            <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-secondary0" /><span className="font-semibold text-muted-foreground">To Do</span><span className="font-bold">{taskStats.todo}</span></span>
+            <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-slate-400" /><span className="font-semibold text-muted-foreground">To Do</span><span className="font-bold">{taskStats.todo}</span></span>
             <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-blue-500" /><span className="font-semibold text-muted-foreground">In Progress</span><span className="font-bold">{taskStats.in_progress}</span></span>
             <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500" /><span className="font-semibold text-muted-foreground">Done</span><span className="font-bold">{taskStats.completed}</span></span>
           </div>
+          {taskStats.overdue > 0 && (
+            <div className="mt-3 flex items-center justify-center">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/10 text-red-500 text-[10px] font-bold">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> {taskStats.overdue} tugas telat deadline
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Upcoming meetings */}
