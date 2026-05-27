@@ -1,12 +1,12 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { Plus, MoreHorizontal } from "lucide-react";
+import { Plus, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import TeamTaskCard from "./TeamTaskCard";
 
 interface ColumnProps {
@@ -19,6 +19,8 @@ interface ColumnProps {
   badge?: string;
   onAddTask: () => void;
   onTaskClick: (task: any) => void;
+  onRename?: () => void;
+  onDelete?: () => void;
 }
 
 export default function TeamKanbanColumn({
@@ -27,8 +29,18 @@ export default function TeamKanbanColumn({
   tasks,
   onAddTask,
   onTaskClick,
+  onRename,
+  onDelete,
 }: ColumnProps) {
   const { setNodeRef } = useDroppable({ id });
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = () => setMenuOpen(false);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [menuOpen]);
 
   return (
     <div
@@ -51,13 +63,34 @@ export default function TeamKanbanColumn({
           >
             <Plus className="w-4 h-4" />
           </button>
-          <button
-            type="button"
-            title="Opsi kolom"
-            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-          >
-            <MoreHorizontal className="w-4 h-4" />
-          </button>
+          {(onRename || onDelete) && (
+            <div className="relative">
+              <button
+                type="button"
+                title="Opsi kolom"
+                onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
+                className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+              >
+                <MoreHorizontal className="w-4 h-4" />
+              </button>
+              {menuOpen && (
+                <div className="absolute top-full right-0 mt-1 w-40 bg-background border border-border rounded-xl shadow-2xl z-50 p-1 animate-in fade-in slide-in-from-top-1">
+                  {onRename && (
+                    <button type="button" onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onRename(); }}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs hover:bg-secondary transition-colors text-left">
+                      <Pencil className="w-3.5 h-3.5 opacity-60" /> Ubah nama
+                    </button>
+                  )}
+                  {onDelete && (
+                    <button type="button" onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onDelete(); }}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs hover:bg-red-500/10 text-red-500 transition-colors text-left">
+                      <Trash2 className="w-3.5 h-3.5 opacity-60" /> Hapus kolom
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

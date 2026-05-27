@@ -45,7 +45,7 @@ interface Task {
   id: string;
   title: string;
   description: string;
-  status: "todo" | "in_progress" | "pending" | "done";
+  status: string;
   priority: "low" | "medium" | "high";
   assignee_id?: string;
   position: number;
@@ -62,12 +62,12 @@ interface TeamInfo {
   description?: string;
 }
 
-const COLUMNS = [
-  { id: "todo", title: "To Do", color: "border-t-blue-500", bg: "bg-blue-500/10", badge: "bg-blue-500" },
-  { id: "in_progress", title: "Dikerjakan", color: "border-t-amber-500", bg: "bg-amber-500/10", badge: "bg-amber-500" },
-  { id: "pending", title: "Pending", color: "border-t-orange-500", bg: "bg-orange-500/10", badge: "bg-orange-500" },
-  { id: "done", title: "Selesai", color: "border-t-emerald-500", bg: "bg-emerald-500/10", badge: "bg-emerald-500" },
-];
+interface BoardCol {
+  id: string;
+  slug: string;
+  title: string;
+  position: number;
+}
 
 export default function TeamBoardPage() {
   const params = useParams();
@@ -79,6 +79,7 @@ export default function TeamBoardPage() {
   const { user } = useAuthStore();
   const [team, setTeam] = useState<TeamInfo | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [columns, setColumns] = useState<BoardCol[]>([]);
   const [loading, setLoading] = useState(true);
   const [members, setMembers] = useState<any[]>([]);
 
@@ -139,20 +140,50 @@ export default function TeamBoardPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [teamRes, tasksRes, membersRes] = await Promise.all([
+      const [teamRes, tasksRes, membersRes, colsRes] = await Promise.all([
         api.get(`/organizations/${orgId}/teams/${teamId}`),
         api.get(`/organizations/${orgId}/teams/${teamId}/tasks`),
         api.get(`/organizations/${orgId}/teams/${teamId}/members`),
+        api.get(`/organizations/${orgId}/teams/${teamId}/columns`).catch(() => ({ data: [] })),
       ]);
       setTeam(teamRes.data);
       setTasks(tasksRes.data);
       setMembers(membersRes.data);
+      setColumns(Array.isArray(colsRes.data) ? colsRes.data : []);
     } catch (err) {
       console.error("Failed to fetch team data", err);
     } finally {
       setLoading(false);
     }
   }, [orgId, teamId]);
+
+  const createColumn = async () => {
+    const title = window.prompt("Nama kolom baru (misal: Urgent, Note):");
+    if (!title || !title.trim()) return;
+    try {
+      await api.post(`/organizations/${orgId}/teams/${teamId}/columns`, { title: title.trim() });
+      await fetchData();
+    } catch { alert("Gagal menambah kolom."); }
+  };
+
+  const renameColumn = async (col: BoardCol) => {
+    const title = window.prompt("Ubah nama kolom:", col.title);
+    if (!title || !title.trim() || title === col.title) return;
+    try {
+      await api.patch(`/organizations/${orgId}/teams/${teamId}/columns/${col.id}`, { title: title.trim() });
+      await fetchData();
+    } catch { alert("Gagal mengubah nama kolom."); }
+  };
+
+  const deleteColumn = async (col: BoardCol) => {
+    if (!window.confirm(`Hapus kolom "${col.title}"? Tugas di dalamnya akan dipindah ke kolom pertama.`)) return;
+    try {
+      await api.delete(`/organizations/${orgId}/teams/${teamId}/columns/${col.id}`);
+      await fetchData();
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || "Gagal menghapus kolom.");
+    }
+  };
 
   useEffect(() => {
     if (orgId && teamId) {
@@ -221,7 +252,7 @@ export default function TeamBoardPage() {
     }
 
     // Dropping a Task over a Column
-    const isOverAColumn = COLUMNS.some((c) => c.id === overId);
+    const isOverAColumn = columns.some((c) => c.slug === overId);
     if (isActiveATask && isOverAColumn) {
       setTasks((tasks) => {
         const activeIndex = tasks.findIndex((t) => t.id === activeId);
@@ -244,7 +275,7 @@ export default function TeamBoardPage() {
     if (!task) return;
 
     // Find new position and status
-    const newStatus = COLUMNS.some(c => c.id === overId) ? overId : tasks.find(t => t.id === overId)?.status || task.status;
+    const newStatus = columns.some(c => c.slug === overId) ? overId : tasks.find(t => t.id === overId)?.status || task.status;
     const columnTasks = tasks.filter(t => t.status === newStatus);
     const newPosition = columnTasks.findIndex(t => t.id === taskId);
 
@@ -363,18 +394,26 @@ export default function TeamBoardPage() {
       >
         <div className="flex-1 overflow-x-auto p-8 pt-2">
           <div className="flex gap-6 h-full min-w-max pb-4">
-            {COLUMNS.map((col) => (
+            {columns.map((col) => (
               <TeamKanbanColumn
                 key={col.id}
-                id={col.id}
+                id={col.slug}
                 title={col.title}
-                color={col.color}
-                badge={col.badge}
-                tasks={filteredTasks.filter((t) => t.status === col.id)}
-                onAddTask={() => handleAddTask(col.id)}
+                tasks={filteredTasks.filter((t) => t.status === col.slug)}
+                onAddTask={() => handleAddTask(col.slug)}
                 onTaskClick={handleTaskClick}
+                onRename={() => renameColumn(col)}
+                onDelete={columns.length > 1 ? () => deleteColumn(col) : undefined}
               />
             ))}
+            {/* Add custom column */}
+            <button
+              onClick={createColumn}
+              className="flex flex-col items-center justify-center w-[280px] min-w-[280px] min-h-[120px] rounded-2xl border-2 border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-secondary/20 transition-all gap-2 self-start"
+            >
+              <Plus className="w-5 h-5" />
+              <span className="text-xs font-bold">Tambah Kolom</span>
+            </button>
           </div>
         </div>
 

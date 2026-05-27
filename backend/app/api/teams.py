@@ -1,13 +1,17 @@
 """Team endpoints — CRUD and member management."""
+import re
+from uuid import UUID as _UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
-from typing import List
+from typing import List, Optional
+from pydantic import BaseModel
 from app.core.database import get_db
 from app.models.user import User
 from app.models.organization import OrgMember
 from app.models.team import Team, TeamMember, TeamMessage
+from app.models.team_board_column import TeamBoardColumn
 from app.models.activity_log import ActivityLog
 from app.models.task import Task
 from app.schemas import (
@@ -1641,5 +1645,156 @@ async def delete_announcement_comment(
         raise HTTPException(status_code=403, detail="Tidak berhak menghapus komentar ini")
 
     await db.delete(c)
+    await db.commit()
+    return None
+
+
+# ===================== Team board columns (custom kanban) =====================
+
+class TeamColumnCreate(BaseModel):
+    title: str
+
+
+class TeamColumnUpdate(BaseModel):
+    title: Optional[str] = None
+    position: Optional[int] = None
+
+
+class TeamColumnResponse(BaseModel):
+    id: _UUID
+    slug: str
+    title: str
+    position: int
+
+    class Config:
+        from_attributes = True
+
+
+def _team_slugify(title: str) -> str:
+    s = re.sub(r"[^a-z0-9]+", "_", title.lower()).strip("_")
+    return s or "col"
+
+
+_DEFAULT_TEAM_COLUMNS = [
+    ("todo", "To Do", 0),
+    ("in_progress", "Dikerjakan", 1),
+    ("pending", "Pending", 2),
+    ("done", "Selesai", 3),
+]
+
+
+@router.get("/{team_id}/columns", response_model=List[TeamColumnResponse])
+async def list_team_columns(
+    org_id: str, team_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await _require_team_access(db, org_id, team_id, current_user)
+    result = await db.execute(
+        select(TeamBoardColumn).where(TeamBoardColumn.team_id == team_id).order_by(TeamBoardColumn.position.asc())
+    )
+    cols = result.scalars().all()
+    if not cols:
+        for slug, title, pos in _DEFAULT_TEAM_COLUMNS:
+            db.add(TeamBoardColumn(team_id=team_id, slug=slug, title=title, position=pos))
+        await db.commit()
+        result = await db.execute(
+            select(TeamBoardColumn).where(TeamBoardColumn.team_id == team_id).order_by(TeamBoardColumn.position.asc())
+        )
+        cols = result.scalars().all()
+    return cols
+
+
+@router.post("/{team_id}/columns", response_model=TeamColumnResponse, status_code=status.HTTP_201_CREATED)
+async def create_team_column(
+    org_id: str, team_id: str, data: TeamColumnCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await _require_team_access(db, org_id, team_id, current_user)
+    title = (data.title or "").strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="Judul kolom wajib")
+    base_slug = _team_slugify(title)
+    suffix, n = "", 0
+    while True:
+        candidate = f"{base_slug}{suffix}"
+        exists = await db.execute(
+            select(TeamBoardColumn.id).where(
+                TeamBoardColumn.team_id == team_id, TeamBoardColumn.slug == candidate
+            )
+        )
+        if not exists.scalar():
+            base_slug = candidate
+            break
+        n += 1
+        suffix = f"_{n}"
+    max_pos = await db.execute(
+        select(func.coalesce(func.max(TeamBoardColumn.position), -1)).where(TeamBoardColumn.team_id == team_id)
+    )
+    col = TeamBoardColumn(team_id=team_id, slug=base_slug, title=title, position=(max_pos.scalar() or -1) + 1)
+    db.add(col)
+    await db.commit()
+    await db.refresh(col)
+    return col
+
+
+@router.patch("/{team_id}/columns/{column_id}", response_model=TeamColumnResponse)
+async def update_team_column(
+    org_id: str, team_id: str, column_id: str, data: TeamColumnUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await _require_team_access(db, org_id, team_id, current_user)
+    result = await db.execute(
+        select(TeamBoardColumn).where(TeamBoardColumn.id == column_id, TeamBoardColumn.team_id == team_id)
+    )
+    col = result.scalar_one_or_none()
+    if not col:
+        raise HTTPException(status_code=404, detail="Kolom tidak ditemukan")
+    if data.title is not None:
+        t = data.title.strip()
+        if not t:
+            raise HTTPException(status_code=400, detail="Judul kolom wajib")
+        col.title = t
+    if data.position is not None:
+        col.position = data.position
+    await db.commit()
+    await db.refresh(col)
+    return col
+
+
+@router.delete("/{team_id}/columns/{column_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_team_column(
+    org_id: str, team_id: str, column_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await _require_team_access(db, org_id, team_id, current_user)
+    count_res = await db.execute(
+        select(func.count(TeamBoardColumn.id)).where(TeamBoardColumn.team_id == team_id)
+    )
+    if (count_res.scalar() or 0) <= 1:
+        raise HTTPException(status_code=400, detail="Tidak bisa menghapus kolom terakhir")
+    result = await db.execute(
+        select(TeamBoardColumn).where(TeamBoardColumn.id == column_id, TeamBoardColumn.team_id == team_id)
+    )
+    col = result.scalar_one_or_none()
+    if not col:
+        raise HTTPException(status_code=404, detail="Kolom tidak ditemukan")
+    # Move tasks in this column to the first remaining column so none orphan.
+    first_res = await db.execute(
+        select(TeamBoardColumn)
+        .where(TeamBoardColumn.team_id == team_id, TeamBoardColumn.id != column_id)
+        .order_by(TeamBoardColumn.position.asc()).limit(1)
+    )
+    first = first_res.scalar_one_or_none()
+    if first:
+        await db.execute(
+            Task.__table__.update()
+            .where(Task.team_id == team_id, Task.status == col.slug)
+            .values(status=first.slug)
+        )
+    await db.delete(col)
     await db.commit()
     return None
