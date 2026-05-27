@@ -1,12 +1,14 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useDroppable } from "@dnd-kit/core";
 import {
   SortableContext,
   verticalListSortingStrategy,
+  useSortable,
 } from "@dnd-kit/sortable";
-import { Plus, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { CSS } from "@dnd-kit/utilities";
+import { Plus, MoreHorizontal, Pencil, Trash2, GripVertical } from "lucide-react";
+import { cn } from "@/lib/utils";
 import TeamTaskCard from "./TeamTaskCard";
 
 const COLUMN_TASK_LIMIT = 10;
@@ -34,7 +36,11 @@ export default function TeamKanbanColumn({
   onRename,
   onDelete,
 }: ColumnProps) {
-  const { setNodeRef } = useDroppable({ id });
+  // useSortable makes the column both draggable (reorder) and a droppable for
+  // tasks (id = slug). Drag is triggered only by the grip handle in the header.
+  const { setNodeRef, attributes, listeners, transform, transition, isDragging } =
+    useSortable({ id, data: { type: "Column" } });
+  const style = { transform: CSS.Transform.toString(transform), transition };
   const [menuOpen, setMenuOpen] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const visibleTasks = showAll ? tasks : tasks.slice(0, COLUMN_TASK_LIMIT);
@@ -49,11 +55,24 @@ export default function TeamKanbanColumn({
   return (
     <div
       ref={setNodeRef}
-      className="flex flex-col w-[256px] min-w-[256px] bg-card rounded-2xl p-3 border border-border min-h-[340px]"
+      style={style}
+      className={cn(
+        "flex flex-col w-[256px] min-w-[256px] bg-card rounded-2xl p-3 border border-border min-h-[340px]",
+        isDragging && "opacity-50 ring-2 ring-primary/30",
+      )}
     >
       <div className="flex items-center justify-between mb-3 px-1">
-        <div className="flex items-center gap-2">
-          <h3 className="font-bold text-sm tracking-tight">{title}</h3>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <button
+            type="button"
+            {...attributes}
+            {...listeners}
+            title="Geser untuk pindah kolom"
+            className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-foreground -ml-1 shrink-0 touch-none"
+          >
+            <GripVertical className="w-3.5 h-3.5" />
+          </button>
+          <h3 className="font-bold text-sm tracking-tight truncate">{title}</h3>
           <span className="text-[10px] font-medium bg-secondary/60 text-muted-foreground px-1.5 py-0.5 rounded-full shrink-0">
             {tasks.length}
           </span>

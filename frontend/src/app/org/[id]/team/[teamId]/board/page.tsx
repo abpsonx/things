@@ -17,11 +17,12 @@ import {
   DragOverEvent,
   DragEndEvent,
 } from "@dnd-kit/core";
-import { 
-  arrayMove, 
-  SortableContext, 
-  sortableKeyboardCoordinates, 
-  verticalListSortingStrategy 
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  horizontalListSortingStrategy
 } from "@dnd-kit/sortable";
 import {
   Plus,
@@ -214,7 +215,20 @@ export default function TeamBoardPage() {
     }
   };
 
+  const persistColumnOrder = async (ordered: BoardCol[]) => {
+    try {
+      await Promise.all(
+        ordered.map((c, i) => api.patch(`/organizations/${orgId}/teams/${teamId}/columns/${c.id}`, { position: i })),
+      );
+    } catch {
+      fetchData(); // revert from server on failure
+    }
+  };
+
   const onDragStart = (event: DragStartEvent) => {
+    if (event.active.data.current?.type === "Column") {
+      return;
+    }
     if (event.active.data.current?.type === "Task") {
       setActiveTask(event.active.data.current.task);
       return;
@@ -226,6 +240,7 @@ export default function TeamBoardPage() {
   const onDragOver = (event: DragOverEvent) => {
     const { active, over } = event;
     if (!over) return;
+    if (active.data.current?.type === "Column") return; // column reorder handled on drag end
 
     const activeId = active.id;
     const overId = over.id;
@@ -265,9 +280,25 @@ export default function TeamBoardPage() {
 
   const onDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
+    const wasColumn = active.data.current?.type === "Column";
     setActiveTask(null);
 
     if (!over) return;
+
+    // Column reorder (drag by header grip)
+    if (wasColumn) {
+      const overSlug = columns.some((c) => c.slug === over.id)
+        ? (over.id as string)
+        : tasks.find((t) => t.id === over.id)?.status;
+      if (!overSlug || active.id === overSlug) return;
+      const oldIndex = columns.findIndex((c) => c.slug === active.id);
+      const newIndex = columns.findIndex((c) => c.slug === overSlug);
+      if (oldIndex === -1 || newIndex === -1) return;
+      const reordered = arrayMove(columns, oldIndex, newIndex);
+      setColumns(reordered); // optimistic
+      persistColumnOrder(reordered);
+      return;
+    }
 
     const taskId = active.id as string;
     const overId = over.id as string;
@@ -395,18 +426,20 @@ export default function TeamBoardPage() {
       >
         <div className="flex-1 overflow-x-auto p-5 pt-2">
           <div className="flex gap-4 h-full min-w-max pb-4">
-            {columns.map((col) => (
-              <TeamKanbanColumn
-                key={col.id}
-                id={col.slug}
-                title={col.title}
-                tasks={filteredTasks.filter((t) => t.status === col.slug)}
-                onAddTask={() => handleAddTask(col.slug)}
-                onTaskClick={handleTaskClick}
-                onRename={() => renameColumn(col)}
-                onDelete={columns.length > 1 ? () => deleteColumn(col) : undefined}
-              />
-            ))}
+            <SortableContext items={columns.map((c) => c.slug)} strategy={horizontalListSortingStrategy}>
+              {columns.map((col) => (
+                <TeamKanbanColumn
+                  key={col.id}
+                  id={col.slug}
+                  title={col.title}
+                  tasks={filteredTasks.filter((t) => t.status === col.slug)}
+                  onAddTask={() => handleAddTask(col.slug)}
+                  onTaskClick={handleTaskClick}
+                  onRename={() => renameColumn(col)}
+                  onDelete={columns.length > 1 ? () => deleteColumn(col) : undefined}
+                />
+              ))}
+            </SortableContext>
             {/* Add custom column */}
             <button
               onClick={createColumn}

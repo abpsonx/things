@@ -19,11 +19,12 @@ import {
   DragEndEvent,
   defaultDropAnimationSideEffects
 } from "@dnd-kit/core";
-import { 
-  arrayMove, 
-  SortableContext, 
-  sortableKeyboardCoordinates, 
-  verticalListSortingStrategy 
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  horizontalListSortingStrategy
 } from "@dnd-kit/sortable";
 import { 
   Plus, 
@@ -291,8 +292,19 @@ export default function KanbanBoard() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
+  const persistColumnOrder = async (ordered: typeof columns) => {
+    try {
+      await Promise.all(
+        ordered.map((c, i) => api.patch(`/projects/${projectId}/columns/${c.id}`, { position: i })),
+      );
+    } catch {
+      fetchColumns();
+    }
+  };
+
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
+    if (active.data.current?.type === "Column") return;
     const task = tasks.find((t) => t.id === active.id);
     if (task) setActiveTask(task);
   };
@@ -300,6 +312,7 @@ export default function KanbanBoard() {
   const handleDragOver = (event: DragOverEvent) => {
     const { active, over } = event;
     if (!over) return;
+    if (active.data.current?.type === "Column") return; // column reorder handled on drag end
 
     const activeId = active.id as string;
     const overId = over.id as string;
@@ -330,11 +343,27 @@ export default function KanbanBoard() {
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
+    const wasColumn = active.data.current?.type === "Column";
     setActiveTask(null);
     if (!over) return;
 
     const activeId = active.id as string;
     const overId = over.id as string;
+
+    // Column reorder (drag by header grip)
+    if (wasColumn) {
+      const overSlug = columns.some((c) => c.slug === overId)
+        ? overId
+        : tasks.find((t) => t.id === overId)?.status;
+      if (!overSlug || activeId === overSlug) return;
+      const oldIndex = columns.findIndex((c) => c.slug === activeId);
+      const newIndex = columns.findIndex((c) => c.slug === overSlug);
+      if (oldIndex === -1 || newIndex === -1) return;
+      const reordered = arrayMove(columns, oldIndex, newIndex);
+      setColumns(reordered);
+      persistColumnOrder(reordered);
+      return;
+    }
 
     const finalTask = tasks.find(t => t.id === activeId);
     if (!finalTask) return;
@@ -418,6 +447,7 @@ export default function KanbanBoard() {
         <div className="flex gap-6 h-full w-full">
           {/* Columns */}
           <div className="flex-1 flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
+            <SortableContext items={columns.map((c) => c.slug)} strategy={horizontalListSortingStrategy}>
             {columns.map((col) => (
               <KanbanColumn
                 key={col.id}
@@ -438,6 +468,7 @@ export default function KanbanBoard() {
                 onToggleSelect={toggleSelect}
               />
             ))}
+            </SortableContext>
 
             {/* "Buat List" — create a new column */}
             <div className="w-[256px] min-w-[256px] shrink-0">

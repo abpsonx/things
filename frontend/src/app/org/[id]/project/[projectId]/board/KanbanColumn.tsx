@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { useDroppable } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import TaskCard from "./TaskCard";
-import { Plus, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { Plus, MoreHorizontal, Pencil, Trash2, GripVertical } from "lucide-react";
 import api from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -45,7 +45,9 @@ export default function KanbanColumn({
   const [editTitle, setEditTitle] = useState(title);
   const [showAll, setShowAll] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const { setNodeRef } = useDroppable({ id });
+  const { setNodeRef, attributes, listeners, transform, transition, isDragging } =
+    useSortable({ id, data: { type: "Column" } });
+  const dragStyle = { transform: CSS.Transform.toString(transform), transition };
 
   // Keep columns short: show the first 10, with a toggle for the rest.
   const visibleTasks = showAll ? tasks : tasks.slice(0, COLUMN_TASK_LIMIT);
@@ -86,10 +88,25 @@ export default function KanbanColumn({
   };
 
   return (
-    <div className="flex flex-col w-[256px] min-w-[256px] bg-card rounded-2xl p-3 border border-border">
+    <div
+      ref={setNodeRef}
+      style={dragStyle}
+      className={cn(
+        "flex flex-col w-[256px] min-w-[256px] bg-card rounded-2xl p-3 border border-border",
+        isDragging && "opacity-50 ring-2 ring-primary/30",
+      )}
+    >
       <div className="flex items-center justify-between mb-3 px-1">
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-          <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 shrink-0" aria-hidden />
+        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+          <button
+            type="button"
+            {...attributes}
+            {...listeners}
+            title="Geser untuk pindah kolom"
+            className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-foreground -ml-1 shrink-0 touch-none"
+          >
+            <GripVertical className="w-3.5 h-3.5" />
+          </button>
           {isRenaming ? (
             <input
               autoFocus
@@ -157,7 +174,7 @@ export default function KanbanColumn({
         </div>
       </div>
 
-      <div ref={setNodeRef} className="flex-1 overflow-y-auto min-h-[80px]">
+      <div className="flex-1 overflow-y-auto min-h-[80px]">
         <SortableContext items={visibleTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
           {visibleTasks.map((task) => (
             <TaskCard
