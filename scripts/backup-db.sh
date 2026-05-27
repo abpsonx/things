@@ -23,18 +23,28 @@ STAMP="$(date +%Y%m%d-%H%M)"
 OUT="$BACKUP_DIR/things-$STAMP.sql.gz"
 TMP="$OUT.partial"
 
-# Dump via the container's own env so user/db are always correct.
-docker compose exec -T db sh -c 'pg_dump --no-owner --clean -U "$POSTGRES_USER" "$POSTGRES_DB"' | gzip > "$TMP"
-
-# Only publish the file if the dump produced something non-trivial.
-if [ -s "$TMP" ]; then
-  mv "$TMP" "$OUT"
-  echo "[backup] wrote $OUT ($(du -h "$OUT" | cut -f1))"
-else
-  rm -f "$TMP"
-  echo "[backup] FAILED: empty dump" >&2
+# Find the running Postgres container by name (works even if it was recreated
+# with a hash-prefixed name, e.g. <hash>_things-db). `docker compose exec db`
+# can miss it when the container name drifts from the compose service.
+DB_CONTAINER="$(docker ps --filter 'name=things-db' --format '{{.Names}}' | head -n1)"
+if [ -z "$DB_CONTAINER" ]; then
+  echo "[backup] FAILED: Postgres container (name~things-db) tidak ditemukan/berjalan" >&2
   exit 1
 fi
+
+# Dump via the container's own env so user/db are always correct.
+docker exec -i "$DB_CONTAINER" sh -c 'pg_dump --no-owner --clean -U "$POSTGRES_USER" "$POSTGRES_DB"' | gzip > "$TMP"
+
+# Validate: a real dump carries the pg_dump header. This catches the silent
+# "empty 20-byte gzip" failure mode so we never publish a useless backup.
+if ! gzip -dc "$TMP" 2>/dev/null | head -c 500 | grep -q "PostgreSQL database dump"; then
+  rm -f "$TMP"
+  echo "[backup] FAILED: dump kosong/tidak valid (DB container: $DB_CONTAINER)" >&2
+  exit 1
+fi
+
+mv "$TMP" "$OUT"
+echo "[backup] wrote $OUT ($(du -h "$OUT" | cut -f1)) from $DB_CONTAINER"
 
 # Rotate local: drop dumps older than RETENTION_DAYS.
 find "$BACKUP_DIR" -name 'things-*.sql.gz' -mtime "+$RETENTION_DAYS" -delete
