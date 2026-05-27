@@ -8,6 +8,8 @@ import { Plus, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import api from "@/lib/api";
 import { cn } from "@/lib/utils";
 
+const COLUMN_TASK_LIMIT = 10;
+
 interface ColumnProps {
   id: string;          // slug used by tasks.status and as dnd droppable id
   columnId?: string;   // UUID for the BoardColumn row (for rename/delete API calls)
@@ -41,8 +43,12 @@ export default function KanbanColumn({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [editTitle, setEditTitle] = useState(title);
+  const [showAll, setShowAll] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const { setNodeRef } = useDroppable({ id });
+
+  // Keep columns short: show the first 10, with a toggle for the rest.
+  const visibleTasks = showAll ? tasks : tasks.slice(0, COLUMN_TASK_LIMIT);
 
   // close menu on outside click
   useEffect(() => {
@@ -80,8 +86,8 @@ export default function KanbanColumn({
   };
 
   return (
-    <div className="flex flex-col w-[300px] min-w-[300px] bg-card rounded-2xl p-4 border border-border">
-      <div className="flex items-center justify-between mb-4 px-1">
+    <div className="flex flex-col w-[256px] min-w-[256px] bg-card rounded-2xl p-3 border border-border">
+      <div className="flex items-center justify-between mb-3 px-1">
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 shrink-0" aria-hidden />
           {isRenaming ? (
@@ -151,9 +157,9 @@ export default function KanbanColumn({
         </div>
       </div>
 
-      <div ref={setNodeRef} className="flex-1 overflow-y-auto min-h-[100px]">
-        <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
-          {tasks.map((task) => (
+      <div ref={setNodeRef} className="flex-1 overflow-y-auto min-h-[80px]">
+        <SortableContext items={visibleTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
+          {visibleTasks.map((task) => (
             <TaskCard
               key={task.id}
               task={task}
@@ -164,6 +170,14 @@ export default function KanbanColumn({
             />
           ))}
         </SortableContext>
+        {tasks.length > COLUMN_TASK_LIMIT && (
+          <button
+            onClick={() => setShowAll((v) => !v)}
+            className="w-full mt-1 py-1.5 rounded-lg text-[11px] font-bold text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
+          >
+            {showAll ? "Ciutkan" : `Tampilkan ${tasks.length - COLUMN_TASK_LIMIT} lagi`}
+          </button>
+        )}
       </div>
 
       {isAdding && (

@@ -417,7 +417,7 @@ export default function KanbanBoard() {
       >
         <div className="flex gap-6 h-full w-full">
           {/* Columns */}
-          <div className="flex-1 flex gap-6 overflow-x-auto pb-4 scrollbar-hide">
+          <div className="flex-1 flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
             {columns.map((col) => (
               <KanbanColumn
                 key={col.id}
@@ -440,7 +440,7 @@ export default function KanbanBoard() {
             ))}
 
             {/* "Buat List" — create a new column */}
-            <div className="w-[280px] min-w-[280px] shrink-0">
+            <div className="w-[256px] min-w-[256px] shrink-0">
               {isAddingColumn ? (
                 <div className="bg-card p-3 rounded-2xl border border-primary/30 shadow-sm space-y-2 animate-in fade-in zoom-in-95 duration-200">
                   <input

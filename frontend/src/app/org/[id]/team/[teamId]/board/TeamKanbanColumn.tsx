@@ -9,6 +9,8 @@ import {
 import { Plus, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import TeamTaskCard from "./TeamTaskCard";
 
+const COLUMN_TASK_LIMIT = 10;
+
 interface ColumnProps {
   id: string;
   title: string;
@@ -34,6 +36,8 @@ export default function TeamKanbanColumn({
 }: ColumnProps) {
   const { setNodeRef } = useDroppable({ id });
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  const visibleTasks = showAll ? tasks : tasks.slice(0, COLUMN_TASK_LIMIT);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -97,11 +101,11 @@ export default function TeamKanbanColumn({
       <div className="flex-1">
         <SortableContext
           id={id}
-          items={tasks.map((t) => t.id)}
+          items={visibleTasks.map((t) => t.id)}
           strategy={verticalListSortingStrategy}
         >
           <div className="space-y-1">
-            {tasks.map((task) => (
+            {visibleTasks.map((task) => (
               <TeamTaskCard
                 key={task.id}
                 task={task}
@@ -110,6 +114,14 @@ export default function TeamKanbanColumn({
             ))}
           </div>
         </SortableContext>
+        {tasks.length > COLUMN_TASK_LIMIT && (
+          <button
+            onClick={() => setShowAll((v) => !v)}
+            className="w-full mt-1 py-1.5 rounded-lg text-[11px] font-bold text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
+          >
+            {showAll ? "Ciutkan" : `Tampilkan ${tasks.length - COLUMN_TASK_LIMIT} lagi`}
+          </button>
+        )}
       </div>
     </div>
   );

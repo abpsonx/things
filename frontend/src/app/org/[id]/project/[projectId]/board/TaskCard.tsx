@@ -80,7 +80,7 @@ export default function TaskCard({
       <div
         ref={setNodeRef}
         style={style}
-        className="h-28 bg-secondary/40 border-2 border-dashed border-border rounded-2xl mb-2"
+        className="h-20 bg-secondary/40 border-2 border-dashed border-border rounded-xl mb-2"
       />
     );
   }
@@ -133,7 +133,7 @@ export default function TaskCard({
         onClick?.();
       }}
       className={cn(
-        "relative p-4 bg-card rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] hover:shadow-[0_4px_16px_rgba(0,0,0,0.06)] hover:-translate-y-0.5 transition-all cursor-grab active:cursor-grabbing border border-border/70 mb-3 group",
+        "relative p-2.5 bg-card rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] hover:shadow-[0_4px_16px_rgba(0,0,0,0.06)] hover:-translate-y-0.5 transition-all cursor-grab active:cursor-grabbing border border-border/70 mb-2 group",
         isOverlay && "shadow-2xl scale-[1.02] rotate-1",
         selected && "ring-2 ring-primary border-primary",
       )}
@@ -158,7 +158,7 @@ export default function TaskCard({
       )}
 
       {/* Top row: priority + menu */}
-      <div className="flex items-start justify-between mb-2">
+      <div className="flex items-start justify-between mb-1">
         {priority ? (
           <span className={cn("inline-flex items-center gap-1.5 text-[10px] font-extrabold tracking-wider", priority.textColor)}>
             <Flag className={cn("w-3 h-3 fill-current", priority.flagColor)} />
@@ -189,7 +189,7 @@ export default function TaskCard({
           }}
           onClick={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
-          className="w-full text-[14px] font-extrabold leading-snug text-foreground mb-2 bg-background border border-primary/40 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary/20"
+          className="w-full text-[12.5px] font-bold leading-snug text-foreground mb-1.5 bg-background border border-primary/40 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary/20"
         />
       ) : (
         <h4
@@ -198,7 +198,7 @@ export default function TaskCard({
             setEditTitle(task.title);
             setIsEditingTitle(true);
           }}
-          className="text-[14px] font-extrabold leading-snug text-foreground mb-2 cursor-text"
+          className="text-[12.5px] font-bold leading-snug text-foreground mb-1.5 cursor-text"
           title="Klik dua kali untuk rename"
         >
           {task.title}
@@ -211,7 +211,7 @@ export default function TaskCard({
           {task.assignee ? (
             <div className="flex items-center gap-2 min-w-0">
               <div
-                className="w-6 h-6 rounded-full bg-secondary border border-border flex items-center justify-center text-[9px] font-bold overflow-hidden shrink-0"
+                className="w-5 h-5 rounded-full bg-secondary border border-border flex items-center justify-center text-[8px] font-bold overflow-hidden shrink-0"
                 title={task.assignee.name}
               >
                 {task.assignee.avatar_url ? (
@@ -236,14 +236,14 @@ export default function TaskCard({
 
       {/* Description */}
       {task.description && (
-        <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2 mb-3">
+        <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2 mb-2">
           {task.description}
         </p>
       )}
 
       {/* Footer: files / subtasks / comments / first label */}
       {(filesCount > 0 || commentsCount > 0 || subtasks.length > 0 || firstLabel) && (
-        <div className="flex items-center justify-between pt-3 border-t border-border/60 text-[11px] text-muted-foreground">
+        <div className="flex items-center justify-between pt-2 border-t border-border/60 text-[11px] text-muted-foreground">
           <div className="flex items-center gap-3">
             {filesCount > 0 && (
               <span className="inline-flex items-center gap-1">
