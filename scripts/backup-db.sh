@@ -36,5 +36,18 @@ else
   exit 1
 fi
 
-# Rotate: drop dumps older than RETENTION_DAYS.
+# Rotate local: drop dumps older than RETENTION_DAYS.
 find "$BACKUP_DIR" -name 'things-*.sql.gz' -mtime "+$RETENTION_DAYS" -delete
+
+# Offsite copy (optional): if RCLONE_REMOTE is set and rclone is installed,
+# upload the new dump and prune old ones on the remote too. Survives total
+# server loss. Example: RCLONE_REMOTE="gdrive:things-backups"
+if [ -n "${RCLONE_REMOTE:-}" ] && command -v rclone >/dev/null 2>&1; then
+  if rclone copy "$OUT" "$RCLONE_REMOTE" >/dev/null 2>&1; then
+    echo "[backup] uploaded to $RCLONE_REMOTE"
+    rclone delete "$RCLONE_REMOTE" --min-age "${RETENTION_DAYS}d" \
+      --include 'things-*.sql.gz' >/dev/null 2>&1 || true
+  else
+    echo "[backup] WARNING: rclone upload to $RCLONE_REMOTE failed" >&2
+  fi
+fi
