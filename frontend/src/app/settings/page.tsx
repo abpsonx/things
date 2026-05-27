@@ -20,6 +20,8 @@ import { useAuthStore } from "@/store/useAuthStore";
 
 export default function SettingsPage() {
   const { user: currentUser, updateUser } = useAuthStore();
+  // Platform registration codes are sensitive — only Super User / Developer see them.
+  const isSuperUser = ["super_user", "developer"].includes((currentUser as any)?.role);
   const [settings, setSettings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -51,12 +53,13 @@ export default function SettingsPage() {
 
   const fetchSettings = async () => {
     try {
-      const [res, statusRes] = await Promise.all([
-        api.get("/settings"),
-        api.get("/google/status")
-      ]);
-      setSettings(res.data);
+      // Google status is for everyone; platform codes are Super User only.
+      const statusRes = await api.get("/google/status");
       setGoogleConnected(statusRes.data.connected);
+      if (isSuperUser) {
+        const res = await api.get("/settings");
+        setSettings(res.data);
+      }
     } catch (err) {
       console.error("Failed to fetch settings", err);
       setError("Gagal mengambil pengaturan.");
@@ -67,7 +70,8 @@ export default function SettingsPage() {
 
   useEffect(() => {
     fetchSettings();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuperUser]);
 
   const handleUpdate = async (key: string, value: string) => {
     setSaving(true);
@@ -281,7 +285,8 @@ export default function SettingsPage() {
           </form>
         </section>
 
-        {/* Security Section */}
+        {/* Security Section — Super User / Developer only (platform-wide codes) */}
+        {isSuperUser && (
         <section className="p-6 border border-border rounded-2xl bg-card space-y-6 shadow-sm">
           <div className="flex items-center gap-3 border-b border-border pb-4">
             <div className="w-9 h-9 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
@@ -361,6 +366,7 @@ export default function SettingsPage() {
             </div>
           </div>
         </section>
+        )}
 
         {/* Notifications Section */}
         <section className="space-y-4">

@@ -5,6 +5,7 @@ from app.core.database import get_db
 from app.api.auth import get_current_user
 from app.models.user import User
 from app.models.system_setting import SystemSetting
+from app.core.permissions import is_superuser
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/settings", tags=["Settings"])
@@ -17,8 +18,10 @@ async def get_all_settings(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # Only allow owners of any org for now, or just let it be open for any authenticated user in this internal app
-    # In a real app, you'd check for a superadmin role
+    # Platform settings (incl. registration codes) are sensitive — Super User /
+    # Developer only.
+    if not is_superuser(current_user):
+        raise HTTPException(status_code=403, detail="Hanya Super User yang bisa mengakses pengaturan platform")
     result = await db.execute(select(SystemSetting))
     settings = result.scalars().all()
     
@@ -55,6 +58,8 @@ async def update_setting(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    if not is_superuser(current_user):
+        raise HTTPException(status_code=403, detail="Hanya Super User yang bisa mengubah pengaturan platform")
     result = await db.execute(select(SystemSetting).where(SystemSetting.key == key))
     setting = result.scalar_one_or_none()
     
