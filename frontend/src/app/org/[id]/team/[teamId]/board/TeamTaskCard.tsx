@@ -53,7 +53,7 @@ export default function TeamTaskCard({
       <div
         ref={setNodeRef}
         style={style}
-        className="h-28 bg-secondary/40 border-2 border-dashed border-border rounded-2xl mb-2"
+        className="h-20 bg-secondary/40 border-2 border-dashed border-border rounded-xl mb-2"
       />
     );
   }
@@ -72,12 +72,12 @@ export default function TeamTaskCard({
       {...listeners}
       onClick={onClick}
       className={cn(
-        "relative p-4 bg-card rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] hover:shadow-[0_4px_16px_rgba(0,0,0,0.06)] hover:-translate-y-0.5 transition-all cursor-grab active:cursor-grabbing border border-border/70 mb-3 group",
+        "relative p-2.5 bg-card rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] hover:shadow-[0_4px_16px_rgba(0,0,0,0.06)] hover:-translate-y-0.5 transition-all cursor-grab active:cursor-grabbing border border-border/70 mb-2 group",
         isOverlay && "shadow-2xl scale-[1.02] rotate-1",
       )}
     >
       {/* Top row: priority + menu */}
-      <div className="flex items-start justify-between mb-2">
+      <div className="flex items-start justify-between mb-1">
         {priority ? (
           <span className={cn("inline-flex items-center gap-1.5 text-[10px] font-extrabold tracking-wider", priority.textColor)}>
             <Flag className={cn("w-3 h-3 fill-current", priority.flagColor)} />
@@ -96,7 +96,7 @@ export default function TeamTaskCard({
       </div>
 
       {/* Title */}
-      <h4 className="text-[14px] font-extrabold leading-snug text-foreground mb-2">{task.title}</h4>
+      <h4 className="text-[12.5px] font-bold leading-snug text-foreground mb-1.5">{task.title}</h4>
 
       {/* Assignee + due date row */}
       {(() => {
@@ -112,7 +112,7 @@ export default function TeamTaskCard({
                 {people.slice(0, 3).map((a: any, i: number) => (
                   <div
                     key={a.id || i}
-                    className="w-6 h-6 rounded-full bg-secondary border border-background flex items-center justify-center text-[9px] font-bold overflow-hidden"
+                    className="w-5 h-5 rounded-full bg-secondary border border-background flex items-center justify-center text-[8px] font-bold overflow-hidden"
                     title={a.name}
                   >
                     {a.avatar_url ? (
@@ -123,7 +123,7 @@ export default function TeamTaskCard({
                   </div>
                 ))}
                 {people.length > 3 && (
-                  <div className="w-6 h-6 rounded-full bg-secondary border border-background flex items-center justify-center text-[8px] font-bold text-muted-foreground">
+                  <div className="w-5 h-5 rounded-full bg-secondary border border-background flex items-center justify-center text-[7px] font-bold text-muted-foreground">
                     +{people.length - 3}
                   </div>
                 )}
@@ -147,14 +147,14 @@ export default function TeamTaskCard({
 
       {/* Description */}
       {task.description && (
-        <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2 mb-3">
+        <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2 mb-2">
           {task.description}
         </p>
       )}
 
       {/* Footer: files / comments */}
       {(filesCount > 0 || commentsCount > 0) && (
-        <div className="flex items-center justify-between pt-3 border-t border-border/60 text-[11px] text-muted-foreground">
+        <div className="flex items-center justify-between pt-2 border-t border-border/60 text-[11px] text-muted-foreground">
           <div className="flex items-center gap-3">
             {filesCount > 0 && (
               <span className="inline-flex items-center gap-1">

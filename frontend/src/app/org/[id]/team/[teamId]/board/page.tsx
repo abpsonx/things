@@ -307,7 +307,7 @@ export default function TeamBoardPage() {
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-background">
       {/* Header */}
-      <div className="border-b border-border px-8 py-5 flex items-center justify-between bg-card/80 backdrop-blur-md sticky top-0 z-30">
+      <div className="border-b border-border px-6 py-3 flex items-center justify-between bg-card/80 backdrop-blur-md sticky top-0 z-30">
         <div className="flex items-center gap-4">
           <button
             onClick={() => router.back()}
@@ -393,8 +393,8 @@ export default function TeamBoardPage() {
         onDragOver={onDragOver}
         onDragEnd={onDragEnd}
       >
-        <div className="flex-1 overflow-x-auto p-8 pt-2">
-          <div className="flex gap-6 h-full min-w-max pb-4">
+        <div className="flex-1 overflow-x-auto p-5 pt-2">
+          <div className="flex gap-4 h-full min-w-max pb-4">
             {columns.map((col) => (
               <TeamKanbanColumn
                 key={col.id}
@@ -410,7 +410,7 @@ export default function TeamBoardPage() {
             {/* Add custom column */}
             <button
               onClick={createColumn}
-              className="flex flex-col items-center justify-center w-[280px] min-w-[280px] min-h-[120px] rounded-2xl border-2 border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-secondary/20 transition-all gap-2 self-start"
+              className="flex flex-col items-center justify-center w-[256px] min-w-[256px] min-h-[100px] rounded-2xl border-2 border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-secondary/20 transition-all gap-2 self-start"
             >
               <Plus className="w-5 h-5" />
               <span className="text-xs font-bold">Tambah Kolom</span>

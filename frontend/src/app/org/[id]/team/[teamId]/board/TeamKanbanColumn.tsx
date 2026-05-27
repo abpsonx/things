@@ -45,9 +45,9 @@ export default function TeamKanbanColumn({
   return (
     <div
       ref={setNodeRef}
-      className="flex flex-col w-[300px] min-w-[300px] bg-card rounded-2xl p-4 border border-border min-h-[500px]"
+      className="flex flex-col w-[256px] min-w-[256px] bg-card rounded-2xl p-3 border border-border min-h-[340px]"
     >
-      <div className="flex items-center justify-between mb-4 px-1">
+      <div className="flex items-center justify-between mb-3 px-1">
         <div className="flex items-center gap-2">
           <h3 className="font-bold text-sm tracking-tight">{title}</h3>
           <span className="text-[10px] font-medium bg-secondary/60 text-muted-foreground px-1.5 py-0.5 rounded-full shrink-0">
