@@ -10,3 +10,6 @@ __pycache__/
 project.tar.gz
 backend/uploads/*
 !backend/uploads/.gitkeep
+
+# DB backup dumps (server-side, not committed)
+backups/
