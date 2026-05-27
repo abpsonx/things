@@ -80,11 +80,11 @@ export default function FileCenterPage() {
     <div className="space-y-8 w-full">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="space-y-2">
-          <h1 className="text-4xl font-bold tracking-tight flex items-center gap-3">
-            <Folder className="w-10 h-10 text-primary" />
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <Folder className="w-8 h-8 text-primary" />
             File Center
           </h1>
-          <p className="text-muted-foreground text-lg">
+          <p className="text-muted-foreground text-sm">
             Akses semua dokumen, gambar, dan aset tim dalam satu tempat.
           </p>
         </div>
@@ -215,17 +215,17 @@ export default function FileCenterPage() {
       <div className="grid md:grid-cols-3 gap-6">
         <div className="p-6 border border-border rounded-3xl bg-emerald-500/5 space-y-2">
           <h4 className="text-xs font-bold uppercase tracking-widest text-emerald-600">Total File</h4>
-          <p className="text-3xl font-bold">{files.length}</p>
+          <p className="text-2xl font-bold">{files.length}</p>
           <p className="text-[10px] text-muted-foreground">Aset dari Task, Chat, & DM.</p>
         </div>
         <div className="p-6 border border-border rounded-3xl bg-blue-500/5 space-y-2">
           <h4 className="text-xs font-bold uppercase tracking-widest text-blue-600">Total Ukuran</h4>
-          <p className="text-3xl font-bold">{formatSize(files.reduce((acc, f) => acc + (f.file_size || 0), 0))}</p>
+          <p className="text-2xl font-bold">{formatSize(files.reduce((acc, f) => acc + (f.file_size || 0), 0))}</p>
           <p className="text-[10px] text-muted-foreground">Penggunaan ruang penyimpanan saat ini.</p>
         </div>
         <div className="p-6 border border-border rounded-3xl bg-orange-500/5 space-y-2">
           <h4 className="text-xs font-bold uppercase tracking-widest text-orange-600">Sumber Aktif</h4>
-          <p className="text-3xl font-bold">{new Set(files.map(f => f.context.parent)).size}</p>
+          <p className="text-2xl font-bold">{new Set(files.map(f => f.context.parent)).size}</p>
           <p className="text-[10px] text-muted-foreground">Kontribusi dari Proyek & Chat.</p>
         </div>
       </div>

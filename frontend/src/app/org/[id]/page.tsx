@@ -125,8 +125,8 @@ export default function OrgPage() {
           
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-4xl font-bold tracking-tight">{org?.name}</h1>
-              <p className="text-muted-foreground mt-1">Kelola proyek dan tim kamu di sini.</p>
+              <h1 className="text-3xl font-bold tracking-tight">{org?.name}</h1>
+              <p className="text-muted-foreground text-sm mt-1">Kelola proyek dan tim kamu di sini.</p>
             </div>
             <div className="flex items-center gap-3">
               <button 

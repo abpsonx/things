@@ -78,6 +78,11 @@
   * {
     @apply border-border;
   }
+  /* Slightly denser base so the whole app feels less oversized. Tailwind
+     sizing is rem-based, so this scales text + spacing uniformly everywhere. */
+  html {
+    font-size: 15px;
+  }
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
