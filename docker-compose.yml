@@ -48,6 +48,7 @@ services:
         NEXT_PUBLIC_API_URL: https://dothings.id/api
         NEXT_PUBLIC_SOCKET_URL: https://dothings.id
         NEXT_PUBLIC_GIPHY_API_KEY: ${NEXT_PUBLIC_GIPHY_API_KEY:-}
+        NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
     container_name: things-frontend
     restart: always
     depends_on:
