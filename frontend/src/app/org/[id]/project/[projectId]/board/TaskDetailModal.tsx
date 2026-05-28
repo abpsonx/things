@@ -355,7 +355,17 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
   if (!task && loading) return null;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={task?.title || "Detail Tugas"}>
+    <Modal isOpen={isOpen} onClose={onClose} title={
+      <input
+        key={task?.id /* re-mount with fresh defaultValue when task switches */}
+        defaultValue={task?.title || ""}
+        placeholder="Judul tugas..."
+        disabled={!canEdit}
+        onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== (task?.title || "")) updateTask({ title: v }); }}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLInputElement).blur(); } }}
+        className="bg-transparent border-none focus:outline-none focus:ring-0 w-full font-bold text-xl p-0 disabled:opacity-70 disabled:cursor-not-allowed"
+      />
+    }>
       <div className="relative">
         {isDragging && (
           <div className="fixed inset-0 z-[60] bg-primary/20 backdrop-blur-sm flex items-center justify-center pointer-events-none">
