@@ -167,7 +167,7 @@ export default function TeamChatPage() {
     const pendingMsg: Message = {
       id: tempId,
       user_id: currentUser?.id || "",
-      user: { name: currentUser?.name || "Me", avatar_url: currentUser?.avatar_url },
+      user: { name: currentUser?.name || "Me", avatar_url: currentUser?.avatar_url ?? undefined },
       content: newMessage,
       created_at: new Date().toISOString(),
       parent_id: replyTo?.id || null,

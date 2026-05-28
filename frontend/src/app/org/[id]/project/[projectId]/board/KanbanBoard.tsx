@@ -60,6 +60,7 @@ interface Task {
   assignees?: { id?: string; name: string; avatar_url?: string }[];
   position: number;
   due_date?: string;
+  created_at: string;
   comments_count?: number;
   attachments_count?: number;
 }
