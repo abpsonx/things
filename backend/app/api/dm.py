@@ -26,6 +26,11 @@ class DMMessageCreate(BaseModel):
     content: str
     temp_id: Optional[str] = None
     parent_id: Optional[UUID] = None
+    # Optional remote attachment (e.g. Giphy sticker URL) — when set, the
+    # message renders as an image without uploading anything to our server.
+    attachment_url: Optional[str] = None
+    attachment_name: Optional[str] = None
+    is_sticker: Optional[bool] = False
 
 class ReactionCreate(BaseModel):
     emoji: str
@@ -163,6 +168,9 @@ async def send_dm_message(
         dm_channel_id=channel_id,
         user_id=current_user.id,
         content=data.content,
+        attachment_url=data.attachment_url,
+        attachment_name=data.attachment_name,
+        is_sticker=bool(data.is_sticker),
         is_delivered=False,
         is_read=False,
         delivered_at=None,
@@ -222,8 +230,15 @@ async def send_dm_message(
             "user_id": str(current_user.id),
             "dm_channel_id": str(channel_id),
             "created_at": message.created_at.isoformat(),
-            "attachment_url": None,
-            "attachment_name": None,
+            "attachment_url": message.attachment_url,
+            "attachment_name": message.attachment_name,
+            "is_sticker": message.is_sticker,
+            "is_image": bool(
+                message.attachment_url and (
+                    message.attachment_url.lower().endswith((".gif", ".png", ".jpg", ".jpeg", ".webp"))
+                    or "giphy" in (message.attachment_url or "").lower()
+                )
+            ),
             "is_read": False,
             "is_delivered": False,
             "read_at": None,

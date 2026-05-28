@@ -40,6 +40,7 @@ import PollBubble, { PollData } from "@/components/poll/PollBubble";
 import Reactions, { ReactionBucket } from "@/components/reactions/Reactions";
 import VoiceRecorder from "@/components/chat/VoiceRecorder";
 import VoiceNotePlayer, { isAudioFile } from "@/components/chat/VoiceNotePlayer";
+import StickerPicker from "@/components/chat/StickerPicker";
 
 // Format an edited_at timestamp into "DD/MM HH.MM" Indonesian style.
 const fmtEdited = (iso?: string | null) => {
@@ -78,6 +79,7 @@ export default function ChatPage() {
   const [sendAsSticker, setSendAsSticker] = useState(false);
   const attachmentIsImage = !!attachment && attachment.type.startsWith("image/");
   const [isPollModalOpen, setIsPollModalOpen] = useState(false);
+  const [isStickerPickerOpen, setIsStickerPickerOpen] = useState(false);
 
   // /file slash command — picker dropdown state
   const [fileQuery, setFileQuery] = useState<string | null>(null); // null = not active, "" = picker open without typed search
@@ -665,6 +667,21 @@ export default function ChatPage() {
     }
   };
 
+  const sendStickerFromGiphy = async (url: string) => {
+    if (!activeChannel) return;
+    try {
+      const res = await api.post(`/projects/${projectId}/channels/${activeChannel.id}/messages`, {
+        content: "",
+        attachment_url: url,
+        attachment_name: "sticker.gif",
+        is_sticker: true,
+      });
+      setMessages((prev) => (prev.find((m) => m.id === res.data.id) ? prev : [...prev, res.data]));
+    } catch (err) {
+      console.error("Failed to send sticker", err);
+    }
+  };
+
   const sendVoiceNote = async (file: File) => {
     if (!activeChannel) return;
     try {
@@ -953,7 +970,7 @@ export default function ChatPage() {
                           <div className={cn("mb-1", !msg.content || msg.content === "🎤 Voice note" ? "mb-0" : "")}>
                             {isAudioFile(msg.attachment_url, msg.attachment_name) ? (
                               <VoiceNotePlayer url={msg.attachment_url} onDark={isMe} />
-                            ) : msg.attachment_url.match(/\.(jpeg|jpg|gif|png|webp)$/i) ? (
+                            ) : (msg.is_sticker || msg.attachment_url.split('?')[0].match(/\.(jpeg|jpg|gif|png|webp)$/i)) ? (
                               <a href={msg.attachment_url} target="_blank" rel="noreferrer">
                                 <img src={msg.attachment_url} alt="attachment" className={cn(
                                   "h-auto cursor-pointer hover:opacity-90 transition-opacity",
@@ -1183,6 +1200,14 @@ export default function ChatPage() {
                         title="Buat polling"
                       >
                         <BarChart3 className="w-5 h-5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsStickerPickerOpen(true)}
+                        className="p-2.5 text-muted-foreground hover:text-foreground transition-all"
+                        title="Pilih sticker GIPHY"
+                      >
+                        <Sticker className="w-5 h-5" />
                       </button>
                       <VoiceRecorder onSend={sendVoiceNote} />
                     </div>
@@ -1597,6 +1622,11 @@ export default function ChatPage() {
         isOpen={isPollModalOpen}
         onClose={() => setIsPollModalOpen(false)}
         channelId={activeChannel?.id}
+      />
+      <StickerPicker
+        isOpen={isStickerPickerOpen}
+        onClose={() => setIsStickerPickerOpen(false)}
+        onPick={sendStickerFromGiphy}
       />
     </div>
   );

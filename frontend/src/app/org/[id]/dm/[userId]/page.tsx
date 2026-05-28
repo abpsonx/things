@@ -11,6 +11,7 @@ import {
   FileText, File, Image, Video, Music, Download, Eye, Clock, Sticker
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import StickerPicker from "@/components/chat/StickerPicker";
 import FileViewerModal from "@/components/ui/FileViewerModal";
 import VoiceRecorder from "@/components/chat/VoiceRecorder";
 import VoiceNotePlayer from "@/components/chat/VoiceNotePlayer";
@@ -94,6 +95,7 @@ export default function DMChatPage() {
   const [un, setUn] = useState("");
   // When ON, the next image upload is sent as a sticker (resets after upload).
   const [sm, setSm] = useState(false);
+  const [spr, setSpr] = useState(false); // GIPHY sticker picker open
   const [rm, setRm] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<any | null>(null);
   const [tp, setTp] = useState<string | null>(null); // other person's name while they're typing
@@ -257,6 +259,20 @@ export default function DMChatPage() {
     finally { setUp(null); setUn(""); }
   };
   const onFP = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) upload(f); if (fi.current) fi.current.value = ""; };
+
+  const sendStickerFromGiphy = async (url: string) => {
+    if (!ch) return;
+    try {
+      await api.post(`/dm/channels/${ch.id}/messages`, {
+        content: "",
+        attachment_url: url,
+        attachment_name: "sticker.gif",
+        is_sticker: true,
+      });
+    } catch (err) {
+      console.error("Failed to send sticker", err);
+    }
+  };
 
   // ─── Render ──────────────────────────────────────────────────────────────
   if (ld) return <div className="flex flex-col items-center justify-center h-[calc(100vh-160px)]"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>;
@@ -461,7 +477,8 @@ export default function DMChatPage() {
         <form onSubmit={sendMsg} className="flex gap-2 items-end">
           <input type="file" ref={fi} onChange={onFP} className="hidden" accept="*/*" />
           <button type="button" onClick={() => fi.current?.click()} disabled={up !== null} title={sm ? "Pilih gambar (akan dikirim sebagai sticker)" : "Lampirkan file"} className="p-3 bg-secondary/50 rounded-xl hover:bg-secondary transition-colors disabled:opacity-40"><Paperclip className="w-5 h-5 text-muted-foreground" /></button>
-          <button type="button" onClick={() => setSm(v => !v)} title={sm ? "Mode sticker AKTIF — pilih gambar buat dijadikan sticker" : "Mode sticker: kirim gambar berikutnya sebagai sticker"} className={cn("p-3 rounded-xl transition-colors", sm ? "bg-primary text-primary-foreground" : "bg-secondary/50 hover:bg-secondary text-muted-foreground")}><Sticker className="w-5 h-5" /></button>
+          <button type="button" onClick={() => setSm(v => !v)} title={sm ? "Mode sticker AKTIF — pilih gambar buat dijadikan sticker" : "Mode sticker (gambar sendiri jadi sticker)"} className={cn("p-3 rounded-xl transition-colors", sm ? "bg-primary text-primary-foreground" : "bg-secondary/50 hover:bg-secondary text-muted-foreground")}><Sticker className="w-5 h-5" /></button>
+          <button type="button" onClick={() => setSpr(true)} title="Pilih sticker GIPHY" className="p-3 rounded-xl transition-colors bg-secondary/50 hover:bg-secondary text-muted-foreground"><Image className="w-5 h-5" /></button>
           <div className="bg-secondary/50 rounded-xl flex items-center"><VoiceRecorder onSend={upload} /></div>
           <button type="button" onClick={() => setSe2(!se2)} className="p-3 bg-secondary/50 rounded-xl hover:bg-secondary transition-colors"><Smile className="w-5 h-5 text-muted-foreground" /></button>
           <div className="flex-1 relative">
@@ -472,6 +489,7 @@ export default function DMChatPage() {
       </div>
 
       {vf && <FileViewerModal isOpen={!!vf} onClose={() => setVf(null)} fileUrl={vf.url} fileName={vf.name} isImage={vf.isImage} isVideo={vf.isVideo} isAudio={vf.isAudio} isPdf={vf.isPdf} />}
+      <StickerPicker isOpen={spr} onClose={() => setSpr(false)} onPick={sendStickerFromGiphy} />
     </div>
   );
 }

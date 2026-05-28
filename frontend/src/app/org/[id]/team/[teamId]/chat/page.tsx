@@ -24,6 +24,7 @@ import {
   Sticker,
 } from "lucide-react";
 import CreatePollModal from "@/components/poll/CreatePollModal";
+import StickerPicker from "@/components/chat/StickerPicker";
 import PollBubble, { PollData } from "@/components/poll/PollBubble";
 import Reactions, { ReactionBucket } from "@/components/reactions/Reactions";
 import VoiceRecorder from "@/components/chat/VoiceRecorder";
@@ -81,6 +82,7 @@ export default function TeamChatPage() {
   const [uploadingFiles, setUploadingFiles] = useState<{id: string, file: File, previewUrl?: string}[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isPollModalOpen, setIsPollModalOpen] = useState(false);
+  const [isStickerPickerOpen, setIsStickerPickerOpen] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -271,6 +273,20 @@ export default function TeamChatPage() {
     } catch (err) {
       console.error("Failed to send voice note", err);
       alert("Gagal mengirim voice note");
+    }
+  };
+
+  const sendStickerFromGiphy = async (url: string) => {
+    try {
+      await api.post(`/organizations/${orgId}/teams/${teamId}/chat/messages`, {
+        content: "",
+        file_url: url,
+        file_name: "sticker.gif",
+        file_type: "image/gif",
+        is_sticker: true,
+      });
+    } catch (err) {
+      console.error("Failed to send sticker", err);
     }
   };
 
@@ -786,6 +802,14 @@ export default function TeamChatPage() {
               >
                 <BarChart3 className="w-5 h-5" />
               </button>
+              <button
+                type="button"
+                onClick={() => setIsStickerPickerOpen(true)}
+                title="Pilih sticker GIPHY"
+                className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-xl transition-all"
+              >
+                <Sticker className="w-5 h-5" />
+              </button>
               <VoiceRecorder onSend={sendVoiceNote} />
               <button
                 type="button"
@@ -810,6 +834,11 @@ export default function TeamChatPage() {
         isOpen={isPollModalOpen}
         onClose={() => setIsPollModalOpen(false)}
         teamId={teamId}
+      />
+      <StickerPicker
+        isOpen={isStickerPickerOpen}
+        onClose={() => setIsStickerPickerOpen(false)}
+        onPick={sendStickerFromGiphy}
       />
     </div>
   );
