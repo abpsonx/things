@@ -33,6 +33,30 @@ export default function SettingsPage() {
   const [pwConfirm, setPwConfirm] = useState("");
   const [pwBusy, setPwBusy] = useState(false);
   const [pwMsg, setPwMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // Platform users (SU only) — for promoting/demoting platform roles.
+  const [platformUsers, setPlatformUsers] = useState<any[]>([]);
+  const [roleBusyId, setRoleBusyId] = useState<string | null>(null);
+
+  const setPlatformRole = async (uid: string, newRole: string, oldRole: string, name: string) => {
+    if (newRole === oldRole) return;
+    const isElevate = (newRole === "super_user" || newRole === "developer");
+    const isDemote = (oldRole === "super_user" || oldRole === "developer") && !isElevate;
+    const msg = isElevate
+      ? `Yakin jadikan ${name} sebagai ${newRole === "super_user" ? "Super User" : "Developer"}? Mereka akan punya akses penuh ke semua workspace & platform.`
+      : isDemote
+        ? `Yakin turunkan ${name} dari ${oldRole === "super_user" ? "Super User" : "Developer"}? Akses platform-tier mereka akan hilang.`
+        : `Ubah role ${name} jadi ${newRole}?`;
+    if (!window.confirm(msg)) return;
+    setRoleBusyId(uid);
+    try {
+      const res = await api.patch(`/platform-users/${uid}/role`, { role: newRole });
+      setPlatformUsers((prev) => prev.map((u) => (u.id === uid ? res.data : u)));
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || "Gagal mengubah role.");
+    } finally {
+      setRoleBusyId(null);
+    }
+  };
 
   const changePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,8 +81,12 @@ export default function SettingsPage() {
       const statusRes = await api.get("/google/status");
       setGoogleConnected(statusRes.data.connected);
       if (isSuperUser) {
-        const res = await api.get("/settings");
+        const [res, usersRes] = await Promise.all([
+          api.get("/settings"),
+          api.get("/platform-users").catch(() => ({ data: [] })),
+        ]);
         setSettings(res.data);
+        setPlatformUsers(Array.isArray(usersRes.data) ? usersRes.data : []);
       }
     } catch (err) {
       console.error("Failed to fetch settings", err);
@@ -284,6 +312,94 @@ export default function SettingsPage() {
             </button>
           </form>
         </section>
+
+        {/* Akses Platform (SU only) — promote/demote platform roles */}
+        {isSuperUser && (
+        <section className="p-6 border border-border rounded-2xl bg-card space-y-4 shadow-sm">
+          <div className="flex items-center gap-3 border-b border-border pb-4">
+            <div className="w-9 h-9 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
+              <ShieldCheck className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold">Akses Platform</h2>
+              <p className="text-xs text-muted-foreground">Kelola siapa yang punya akses <b>Super User / Developer</b> (god-mode lintas workspace).</p>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="text-[10px] uppercase tracking-widest text-muted-foreground border-b border-border">
+                  <th className="py-2 pr-2">User</th>
+                  <th className="py-2 pr-2">Role saat ini</th>
+                  <th className="py-2">Ubah</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {platformUsers.map((u) => {
+                  const isMe = u.id === (currentUser as any)?.id;
+                  const roleLabel: Record<string, string> = {
+                    super_user: "Super User",
+                    developer: "Developer",
+                    staff: "Staff",
+                    admin: "Admin (legacy)",
+                  };
+                  const roleCls: Record<string, string> = {
+                    super_user: "bg-amber-500/15 text-amber-600 border-amber-500/30",
+                    developer: "bg-violet-500/15 text-violet-600 border-violet-500/30",
+                    staff: "bg-secondary text-muted-foreground border-border",
+                    admin: "bg-secondary text-muted-foreground border-border",
+                  };
+                  return (
+                    <tr key={u.id} className="hover:bg-secondary/30 transition-colors">
+                      <td className="py-2 pr-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-7 h-7 rounded-full bg-secondary border border-border flex items-center justify-center text-[10px] font-bold overflow-hidden shrink-0">
+                            {u.avatar_url ? <img src={u.avatar_url} alt={u.name} className="w-full h-full object-cover" /> : (u.name || "?").charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-bold truncate flex items-center gap-1.5">
+                              {u.name}
+                              {isMe && <span className="px-1.5 py-0.5 bg-primary/10 text-primary text-[9px] rounded-full font-bold">Kamu</span>}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground truncate">{u.email}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-2 pr-2">
+                        <span className={cn("inline-block text-[10px] font-bold px-2 py-0.5 rounded-full border", roleCls[u.role] || roleCls.staff)}>
+                          {roleLabel[u.role] || u.role}
+                        </span>
+                      </td>
+                      <td className="py-2">
+                        <select
+                          value={u.role}
+                          disabled={roleBusyId === u.id}
+                          onChange={(e) => setPlatformRole(u.id, e.target.value, u.role, u.name)}
+                          className="bg-secondary/50 border border-border rounded-lg px-2 py-1 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
+                        >
+                          <option value="staff">Staff</option>
+                          <option value="developer">Developer</option>
+                          <option value="super_user">Super User</option>
+                        </select>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {platformUsers.length === 0 && (
+                  <tr><td colSpan={3} className="py-6 text-center text-muted-foreground italic">Belum ada user terdaftar.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="p-3 bg-secondary/30 rounded-xl border border-border/50 text-[11px] leading-relaxed text-muted-foreground">
+            <span className="font-bold text-foreground">Catatan:</span> Super User & Developer = akses penuh ke semua workspace + setting platform.
+            Akses workspace per-anggota (Admin / Manager / Member) tetap diatur di halaman <b>Members</b> tiap workspace.
+            Sistem akan menolak demote kalau jadinya nggak ada Super User / Developer tersisa.
+          </div>
+        </section>
+        )}
 
         {/* Security Section — Super User / Developer only (platform-wide codes) */}
         {isSuperUser && (

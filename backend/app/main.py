@@ -454,6 +454,8 @@ from app.api import media
 app.include_router(media.router, prefix="/api")
 from app.api import task_links
 app.include_router(task_links.router, prefix="/api")
+from app.api import platform_users
+app.include_router(platform_users.router, prefix="/api")
 
 
 # Static Files
