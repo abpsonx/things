@@ -84,6 +84,20 @@ class Task(Base):
     )
 
 
+class TaskLink(Base):
+    """URL attached to a task (separate from file Attachments)."""
+    __tablename__ = "task_links"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    task_id = Column(UUID(as_uuid=True), ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False)
+    url = Column(String(2048), nullable=False)
+    title = Column(String(255), nullable=True)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    task = relationship("Task")
+
+
 class TaskDependency(Base):
     """Edge in the task-dependency graph. blocker_id must finish before blocked_id can proceed."""
     __tablename__ = "task_dependencies"

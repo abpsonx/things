@@ -6,6 +6,7 @@ import CustomSelect from "@/components/ui/Select";
 import Popover from "@/components/ui/Popover";
 import api from "@/lib/api";
 import MentionTextarea from "@/components/ui/MentionTextarea";
+import TaskLinksSection, { DescriptionLinkChips } from "@/components/board/TaskLinksSection";
 import TaskActivityLog from "@/components/board/TaskActivityLog";
 import TaskEditBanner from "@/components/board/TaskEditBanner";
 import { useTaskEditAccess } from "@/lib/useTaskEditAccess";
@@ -310,7 +311,9 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
               placeholder="Tambahkan deskripsi tugas... ketik @ untuk tag orang"
               className="w-full text-sm text-foreground leading-relaxed bg-secondary/20 border border-transparent hover:border-border focus:bg-background focus:border-primary p-3 rounded-xl transition-all min-h-[160px] resize-none focus:outline-none"
             />
+            <DescriptionLinkChips text={description} />
           </div>
+          <TaskLinksSection taskId={taskId} canEdit={canEdit} />
 
           {/* Subtasks */}
           <div className="space-y-4">

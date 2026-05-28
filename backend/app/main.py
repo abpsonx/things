@@ -452,6 +452,8 @@ app.include_router(org_announcements.router, prefix="/api")
 app.include_router(org_events.router, prefix="/api")
 from app.api import media
 app.include_router(media.router, prefix="/api")
+from app.api import task_links
+app.include_router(task_links.router, prefix="/api")
 
 
 # Static Files
