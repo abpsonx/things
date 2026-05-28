@@ -13,17 +13,9 @@ import PushAutoPrompt from "@/components/notifications/PushAutoPrompt";
 import { usePresenceStore } from "@/store/usePresenceStore";
 import { Menu } from "lucide-react";
 
-import { initSentry } from "@/lib/sentry";
-
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, setAuth, user } = useAuthStore();
+  const { isAuthenticated, setAuth } = useAuthStore();
   const router = useRouter();
-
-  // Error monitoring (no-op unless NEXT_PUBLIC_SENTRY_DSN is set).
-  useEffect(() => {
-    initSentry(user?.id, (user as any)?.email);
-  }, [user?.id]);
-
   const pathname = usePathname();
   const [checking, setChecking] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);

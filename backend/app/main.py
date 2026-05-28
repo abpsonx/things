@@ -390,25 +390,6 @@ async def lifespan(app: FastAPI):
     # Clean up
     scheduler_task.cancel()
 
-# Error monitoring — only initialized when SENTRY_DSN_BACKEND is set, so
-# local/dev runs without the env var are a no-op.
-_sentry_dsn = os.environ.get("SENTRY_DSN_BACKEND", "").strip()
-if _sentry_dsn:
-    try:
-        import sentry_sdk
-        from sentry_sdk.integrations.fastapi import FastApiIntegration
-        from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
-        sentry_sdk.init(
-            dsn=_sentry_dsn,
-            environment=os.environ.get("ENVIRONMENT", "production"),
-            traces_sample_rate=0.0,  # tracing off — only error capture, keep quota lean
-            send_default_pii=False,
-            integrations=[FastApiIntegration(), SqlalchemyIntegration()],
-        )
-        print("[sentry] backend error monitoring initialized")
-    except Exception as e:  # noqa: BLE001
-        print(f"[sentry] backend init skipped: {e}")
-
 app = FastAPI(
     title="Cicle API",
     description="Backend API for Cicle Project Management App",
