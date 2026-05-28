@@ -268,7 +268,14 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         </button>
       </div>
 
-      <nav className="flex-1 px-2.5 space-y-5 overflow-y-auto">
+      <nav
+        className="flex-1 px-2.5 space-y-5 overflow-y-auto"
+        onClick={(e) => {
+          // Auto-close the mobile drawer when any link inside is tapped.
+          // Harmless on desktop (sidebar is sticky/forced visible by md: classes).
+          if ((e.target as HTMLElement).closest("a")) onClose?.();
+        }}
+      >
         {!activeOrgId && (
           <div className="px-3 py-5 bg-primary/5 border-2 border-dashed border-primary/20 rounded-3xl space-y-4 animate-pulse">
             <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center mx-auto text-primary">

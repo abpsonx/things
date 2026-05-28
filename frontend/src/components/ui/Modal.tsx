@@ -44,8 +44,8 @@ export default function Modal({ isOpen, onClose, title, children, className }: M
             )}
           >
             {/* Header */}
-            <div className="flex items-center justify-between gap-3 p-6 border-b border-border bg-secondary/20">
-              <h2 className="text-xl font-bold tracking-tight flex-1 min-w-0">{title}</h2>
+            <div className="flex items-center justify-between gap-3 p-4 md:p-6 border-b border-border bg-secondary/20">
+              <h2 className="text-base md:text-xl font-bold tracking-tight flex-1 min-w-0">{title}</h2>
               <button
                 onClick={onClose}
                 className="p-2 rounded-full hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground shrink-0"
@@ -55,7 +55,7 @@ export default function Modal({ isOpen, onClose, title, children, className }: M
             </div>
 
             {/* Body */}
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 overflow-y-auto p-4 md:p-6">
               {children}
             </div>
           </motion.div>
