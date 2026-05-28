@@ -8,7 +8,7 @@ import { useNotificationsStore } from "@/store/useNotificationsStore";
 import {
   Send, Loader2, User as UserIcon, ShieldCheck, Paperclip,
   Trash2, Edit2, X, Check, CheckCheck, Smile, Wifi, WifiOff, Reply, CornerDownRight,
-  FileText, File, Image, Video, Music, Download, Eye, Clock
+  FileText, File, Image, Video, Music, Download, Eye, Clock, Sticker
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import FileViewerModal from "@/components/ui/FileViewerModal";
@@ -92,6 +92,8 @@ export default function DMChatPage() {
   const [vf, setVf] = useState<any>(null);
   const [up, setUp] = useState<number | null>(null);
   const [un, setUn] = useState("");
+  // When ON, the next image upload is sent as a sticker (resets after upload).
+  const [sm, setSm] = useState(false);
   const [rm, setRm] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<any | null>(null);
   const [tp, setTp] = useState<string | null>(null); // other person's name while they're typing
@@ -245,7 +247,9 @@ export default function DMChatPage() {
     const fd = new FormData(); fd.append("file", file);
     try {
       const pi2 = setInterval(() => { setUp(p => { const n = Math.min((p || 0) + Math.random() * 15 + 5, 90); setMs(ms2 => ms2.map(m => m.id === id ? { ...m, _upP: n } : m)); return n; }); }, 300);
-      const r = await api.post(`/dm/channels/${ch.id}/attachments`, fd, { params: { temp_id: id }, headers: { "Content-Type": "multipart/form-data" } });
+      const asStk = sm && fi2.isImage;
+      const r = await api.post(`/dm/channels/${ch.id}/attachments`, fd, { params: asStk ? { temp_id: id, is_sticker: true } : { temp_id: id }, headers: { "Content-Type": "multipart/form-data" } });
+      if (asStk) setSm(false); // one-shot
       clearInterval(pi2); setUp(100); setMs(ms2 => ms2.map(m => m.id === id ? { ...m, _upP: 100 } : m));
       const rd = { ...r.data, reactions: r.data.reactions || {}, id: r.data.id || r.data.message?.id, user: { id: uid, name: cu?.name, avatar_url: cu?.avatar_url } };
       setTimeout(() => { setMs(p2 => p2.map(m2 => m2.id === id ? rd : m2)); URL.revokeObjectURL(ul); }, 500);
@@ -315,7 +319,7 @@ export default function DMChatPage() {
                       {av && <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold">{(ou?.name || "?").charAt(0).toUpperCase()}</div>}
                     </div>
                     <div className={cn("flex flex-col", me ? "items-end" : "items-start")}>
-                      <div className={cn("relative px-3 py-1.5 text-sm shadow-sm transition-all", me ? "bg-[#3D4F6B] text-white rounded-[16px] rounded-br-[4px]" : "bg-card text-foreground border border-border rounded-[16px] rounded-bl-[4px]", opt && "opacity-70", up2 && "min-w-[160px]")}>
+                      <div className={cn("relative text-sm transition-all", msg.is_sticker && msg.attachment_url ? "bg-transparent" : cn("px-3 py-1.5 shadow-sm", me ? "bg-[#3D4F6B] text-white rounded-[16px] rounded-br-[4px]" : "bg-card text-foreground border border-border rounded-[16px] rounded-bl-[4px]"), opt && "opacity-70", up2 && "min-w-[160px]")}>
                         {msg.parent && (
                           <div
                             onClick={() => {
@@ -342,7 +346,12 @@ export default function DMChatPage() {
                         )}
                         {msg.attachment_url ? (
                           <div className="space-y-1.5">
-                            {(msg.is_image || GI(msg.attachment_name || "").isImage) && !up2 &&
+                            {msg.is_sticker && (msg.is_image || GI(msg.attachment_name || "").isImage) && !up2 && (
+                              <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer" className="inline-block">
+                                <img src={msg.attachment_url} alt={msg.attachment_name || "sticker"} className="max-h-[150px] w-auto object-contain drop-shadow hover:opacity-90 transition-opacity" loading="lazy" />
+                              </a>
+                            )}
+                            {!msg.is_sticker && (msg.is_image || GI(msg.attachment_name || "").isImage) && !up2 &&
                               <div className="relative group/img cursor-pointer rounded-lg overflow-hidden max-w-[240px]" onClick={() => setVf({ id: msg.id, name: msg.attachment_name || "file", url: msg.attachment_url, ...GI(msg.attachment_name || ""), size: msg.file_size })}>
                                 <img src={msg.attachment_url} alt={msg.attachment_name || "img"} className="w-full rounded-lg max-h-[200px] object-cover" loading="lazy" />
                                 <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/10 transition-all flex items-center justify-center"><div className="opacity-0 group-hover/img:opacity-100 transition-opacity bg-black/50 text-white p-1.5 rounded-full"><Eye className="w-4 h-4" /></div></div>
@@ -451,7 +460,8 @@ export default function DMChatPage() {
         <div className="h-5"><TypingIndicator names={tp ? [tp] : []} /></div>
         <form onSubmit={sendMsg} className="flex gap-2 items-end">
           <input type="file" ref={fi} onChange={onFP} className="hidden" accept="*/*" />
-          <button type="button" onClick={() => fi.current?.click()} disabled={up !== null} className="p-3 bg-secondary/50 rounded-xl hover:bg-secondary transition-colors disabled:opacity-40"><Paperclip className="w-5 h-5 text-muted-foreground" /></button>
+          <button type="button" onClick={() => fi.current?.click()} disabled={up !== null} title={sm ? "Pilih gambar (akan dikirim sebagai sticker)" : "Lampirkan file"} className="p-3 bg-secondary/50 rounded-xl hover:bg-secondary transition-colors disabled:opacity-40"><Paperclip className="w-5 h-5 text-muted-foreground" /></button>
+          <button type="button" onClick={() => setSm(v => !v)} title={sm ? "Mode sticker AKTIF — pilih gambar buat dijadikan sticker" : "Mode sticker: kirim gambar berikutnya sebagai sticker"} className={cn("p-3 rounded-xl transition-colors", sm ? "bg-primary text-primary-foreground" : "bg-secondary/50 hover:bg-secondary text-muted-foreground")}><Sticker className="w-5 h-5" /></button>
           <div className="bg-secondary/50 rounded-xl flex items-center"><VoiceRecorder onSend={upload} /></div>
           <button type="button" onClick={() => setSe2(!se2)} className="p-3 bg-secondary/50 rounded-xl hover:bg-secondary transition-colors"><Smile className="w-5 h-5 text-muted-foreground" /></button>
           <div className="flex-1 relative">

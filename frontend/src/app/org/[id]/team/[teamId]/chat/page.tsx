@@ -21,6 +21,7 @@ import {
   Search,
   Reply,
   BarChart3,
+  Sticker,
 } from "lucide-react";
 import CreatePollModal from "@/components/poll/CreatePollModal";
 import PollBubble, { PollData } from "@/components/poll/PollBubble";
@@ -44,6 +45,7 @@ interface Message {
   file_url?: string;
   file_name?: string;
   file_type?: string;
+  is_sticker?: boolean;
   created_at: string;
   edited_at?: string;
   parent_id?: string | null;
@@ -73,6 +75,8 @@ export default function TeamChatPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  // When ON, the next image upload is sent as a sticker (resets after upload).
+  const [stickerMode, setStickerMode] = useState(false);
   const [replyTo, setReplyTo] = useState<{ id: string; content?: string; user?: { id?: string; name?: string } | null } | null>(null);
   const [uploadingFiles, setUploadingFiles] = useState<{id: string, file: File, previewUrl?: string}[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -238,21 +242,22 @@ export default function TeamChatPage() {
 
     const formData = new FormData();
     formData.append("file", file);
+    const sendAsSticker = stickerMode && file.type.startsWith("image/");
 
     try {
       await api.post(`/organizations/${orgId}/teams/${teamId}/chat/upload`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+        headers: { 'Content-Type': 'multipart/form-data' },
+        params: sendAsSticker ? { is_sticker: true } : undefined,
       });
       if (previewUrl) URL.revokeObjectURL(previewUrl);
       setUploadingFiles(prev => prev.filter(f => f.id !== tempId));
+      if (sendAsSticker) setStickerMode(false); // one-shot
     } catch (err) {
       console.error("Failed to upload file", err);
       if (previewUrl) URL.revokeObjectURL(previewUrl);
       setUploadingFiles(prev => prev.filter(f => f.id !== tempId));
     }
-    
+
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -313,6 +318,13 @@ export default function TeamChatPage() {
     }
     if (msg.file_url) {
       const isImage = msg.file_type?.startsWith('image/');
+      if (msg.is_sticker && isImage) {
+        return (
+          <a href={msg.file_url} target="_blank" rel="noopener noreferrer" className="inline-block">
+            <img src={msg.file_url} alt={msg.file_name} className="max-h-[150px] w-auto object-contain drop-shadow hover:opacity-90 transition-opacity" />
+          </a>
+        );
+      }
       return (
         <div className="flex flex-col gap-2">
           {isImage ? (
@@ -473,10 +485,10 @@ export default function TeamChatPage() {
                       </div>
                     )}
 
-                    {/* Bubble — transparent wrapper for polls so PollBubble owns its styling */}
+                    {/* Bubble — transparent for polls/stickers so they own their styling */}
                     <div
                       className={`relative text-[14px] leading-relaxed ${
-                        msg.poll
+                        msg.poll || (msg.is_sticker && msg.file_url && msg.file_type?.startsWith('image/'))
                           ? 'bg-transparent'
                           : isMe
                             ? 'p-4 rounded-2xl shadow-sm bg-[#3D4F6B] text-white rounded-tr-none shadow-slate-300/50'
@@ -754,8 +766,17 @@ export default function TeamChatPage() {
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-xl transition-all"
+                title={stickerMode ? "Pilih gambar (akan dikirim sebagai sticker)" : "Lampirkan file"}
               >
                 <Paperclip className="w-5 h-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setStickerMode((v) => !v)}
+                title={stickerMode ? "Mode sticker AKTIF — pilih gambar buat dijadikan sticker" : "Mode sticker: kirim gambar berikutnya sebagai sticker"}
+                className={`p-2 rounded-xl transition-all ${stickerMode ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-primary hover:bg-primary/10"}`}
+              >
+                <Sticker className="w-5 h-5" />
               </button>
               <button
                 type="button"

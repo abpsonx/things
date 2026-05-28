@@ -664,7 +664,7 @@ async def delete_team_task(
 import os
 import shutil
 from datetime import datetime, timezone
-from fastapi import UploadFile, File
+from fastapi import UploadFile, File, Query
 
 @router.post("/{team_id}/chat/messages", response_model=dict)
 async def send_team_message(
@@ -809,6 +809,7 @@ async def delete_team_message(
 @router.post("/{team_id}/chat/upload")
 async def upload_chat_file(
     org_id: str, team_id: str, file: UploadFile = File(None),
+    is_sticker: bool = Query(False),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -817,13 +818,13 @@ async def upload_chat_file(
 
     upload_dir = f"uploads/teams/{team_id}/chat"
     os.makedirs(upload_dir, exist_ok=True)
-    
+
     file_path = f"{upload_dir}/{datetime.now().timestamp()}_{file.filename}"
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
     file_url = f"/api/{file_path}" # Assuming Nginx/FastAPI serves /api/uploads
-    
+
     # Send a message automatically with the file
     msg = TeamMessage(
         team_id=team_id,
@@ -831,7 +832,8 @@ async def upload_chat_file(
         content=f"Sent a file: {file.filename}",
         file_url=file_url,
         file_name=file.filename,
-        file_type=file.content_type
+        file_type=file.content_type,
+        is_sticker=bool(is_sticker),
     )
     db.add(msg)
     await db.commit()
@@ -846,6 +848,7 @@ async def upload_chat_file(
         "file_url": msg.file_url,
         "file_name": msg.file_name,
         "file_type": msg.file_type,
+        "is_sticker": msg.is_sticker,
         "created_at": msg.created_at.isoformat(),
         "user": {
             "name": current_user.name,
@@ -854,7 +857,7 @@ async def upload_chat_file(
         }
     }, room=f"team_{team_id}")
 
-    return {"file_url": file_url}
+    return {"file_url": file_url, "is_sticker": msg.is_sticker}
 
 
 @router.get("/{team_id}/chat/messages", response_model=List[dict])
