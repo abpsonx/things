@@ -262,15 +262,27 @@ export default function DMChatPage() {
 
   const sendStickerFromGiphy = async (url: string) => {
     if (!ch) return;
+    // Optimistic insert so the sender sees it immediately (mirrors upload flow).
+    const id = `o${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const o: any = {
+      id, content: "", user_id: uid, dm_channel_id: ch.id,
+      created_at: new Date().toISOString(),
+      attachment_url: url, attachment_name: "sticker.gif",
+      is_sticker: true, is_image: true,
+      is_read: false, is_delivered: false, reactions: {},
+      user: { id: uid, name: cu?.name, avatar_url: cu?.avatar_url },
+      _opt: true,
+    };
+    setMs(p => [...p, o]); scrollDown();
     try {
-      await api.post(`/dm/channels/${ch.id}/messages`, {
-        content: "",
-        attachment_url: url,
-        attachment_name: "sticker.gif",
-        is_sticker: true,
+      const r = await api.post(`/dm/channels/${ch.id}/messages`, {
+        content: "", attachment_url: url, attachment_name: "sticker.gif", is_sticker: true,
       });
+      const real = { ...r.data, user: o.user, is_sticker: true, is_image: true };
+      setMs(p => p.map(m => m.id === id ? real : m));
     } catch (err) {
       console.error("Failed to send sticker", err);
+      setMs(p => p.filter(m => m.id !== id));
     }
   };
 

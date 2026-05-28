@@ -278,13 +278,16 @@ export default function TeamChatPage() {
 
   const sendStickerFromGiphy = async (url: string) => {
     try {
-      await api.post(`/organizations/${orgId}/teams/${teamId}/chat/messages`, {
+      const res = await api.post(`/organizations/${orgId}/teams/${teamId}/chat/messages`, {
         content: "",
         file_url: url,
         file_name: "sticker.gif",
         file_type: "image/gif",
         is_sticker: true,
       });
+      // Push locally so the sender sees it immediately (de-duped if the
+      // socket echo also arrives).
+      setMessages(prev => prev.find(m => m.id === res.data.id) ? prev : [...prev, res.data]);
     } catch (err) {
       console.error("Failed to send sticker", err);
     }
