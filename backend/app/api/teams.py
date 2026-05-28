@@ -51,11 +51,11 @@ async def _is_team_member(db: AsyncSession, team_id, user_id) -> bool:
 
 
 async def _require_team_access(db: AsyncSession, org_id: str, team_id: str, user: User) -> OrgMember:
-    """Gate access to a specific team. Workspace Admin/Manager/Super User see
-    every team (they manage the workspace); everyone else must actually be a
-    member of THIS team. Returns the caller's OrgMember (synthetic for SU)."""
+    """Gate access to a specific team. Workspace Admin (owner) / Super User /
+    Developer see every team; everyone else (Manager + Member) must actually
+    be a member of THIS team. Returns the caller's OrgMember (synthetic for SU)."""
     member = await _check_org_membership(db, org_id, user.id)
-    if member.role in ("owner", "manager"):
+    if member.role == "owner":  # Admin workspace bypass; SU gets synthetic 'owner' via _check_org_membership
         return member
     if await _is_team_member(db, team_id, user.id):
         return member
@@ -104,13 +104,14 @@ async def list_teams(
 ):
     """List teams in an organization.
 
-    Workspace Admin/Manager/Super User see every team; regular members only
-    see the teams they actually belong to (teams are private to their members).
+    Workspace Admin (owner) + Super User / Developer see every team; Manager
+    and regular Members only see teams they actually belong to (teams are
+    private to their members — including Managers).
     """
     member = await _check_org_membership(db, org_id, current_user.id)
 
     query = select(Team).where(Team.org_id == org_id)
-    if member.role not in ("owner", "manager"):
+    if member.role != "owner":  # Admin bypass; SU gets synthetic 'owner'
         query = query.where(
             Team.id.in_(
                 select(TeamMember.team_id).where(TeamMember.user_id == current_user.id)
