@@ -343,10 +343,12 @@ async def list_activity_logs(
     offset: int = 0,
     start_date: str | None = None,
     end_date: str | None = None,
+    user_id: str | None = None,
+    action: str | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Paginated activity logs, optionally filtered by date range (YYYY-MM-DD)."""
+    """Paginated activity logs, optionally filtered by date, user, and action."""
     from datetime import datetime, timedelta
     from sqlalchemy import func as safunc
 
@@ -361,6 +363,10 @@ async def list_activity_logs(
             conds.append(ActivityLog.created_at < datetime.fromisoformat(end_date) + timedelta(days=1))
         except ValueError:
             pass
+    if user_id:
+        conds.append(ActivityLog.user_id == user_id)
+    if action:
+        conds.append(ActivityLog.action == action)
 
     total = (await db.execute(
         select(safunc.count()).select_from(ActivityLog).where(*conds)
@@ -375,9 +381,20 @@ async def list_activity_logs(
         .offset(max(offset, 0))
     )
     logs = result.scalars().all()
+
+    # Distinct actions seen for THIS org — feeds the frontend's action dropdown
+    # so we only show filter options that actually exist in the data.
+    action_rows = (await db.execute(
+        select(ActivityLog.action)
+        .where(ActivityLog.org_id == org_id)
+        .distinct()
+        .order_by(ActivityLog.action)
+    )).all()
+
     return {
         "items": [ActivityLogResponse.model_validate(log) for log in logs],
         "total": total,
+        "available_actions": [r[0] for r in action_rows],
     }
 
 

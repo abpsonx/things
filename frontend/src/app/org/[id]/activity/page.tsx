@@ -26,12 +26,44 @@ interface Log {
   id: string;
   action: string;
   entity_type: string;
+  entity_id: string | null;
+  project_id: string | null;
+  team_id: string | null;
   created_at: string;
-  user: { name: string; email: string };
+  user: { id: string; name: string; email: string };
   metadata: any;
 }
 
 const PAGE_SIZE = 30;
+
+// Human-readable label for each action key — shown in the filter dropdown.
+const ACTION_LABELS: Record<string, string> = {
+  task_created: "Tugas dibuat",
+  task_moved: "Tugas dipindah",
+  task_deleted: "Tugas dihapus",
+  task_archived: "Tugas diarsipkan",
+  task_restored: "Tugas dipulihkan",
+  task_bulk_deleted: "Tugas dihapus massal",
+  task_bulk_updated: "Tugas diubah massal",
+  comment_added: "Komentar ditambah",
+  attachment_uploaded: "Lampiran diunggah",
+  attachment_deleted: "Lampiran dihapus",
+  project_created: "Proyek dibuat",
+  project_updated: "Proyek diubah",
+  project_deleted: "Proyek dihapus",
+  team_created: "Tim dibuat",
+  team_updated: "Tim diubah",
+  team_deleted: "Tim dihapus",
+  member_added: "Member ditambah",
+  member_removed: "Member dihapus",
+  member_invited: "Member diundang",
+  member_added_to_team: "Member ditambah ke tim",
+  member_removed_from_team: "Member dihapus dari tim",
+  announcement_created: "Pengumuman dibuat",
+  event_created: "Event dibuat",
+  org_created: "Workspace dibuat",
+  org_updated: "Workspace diubah",
+};
 
 export default function ActivityLogPage() {
   const { id: orgId } = useParams();
@@ -40,10 +72,29 @@ export default function ActivityLogPage() {
   const [page, setPage] = useState(0);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [filterUserId, setFilterUserId] = useState("");
+  const [filterAction, setFilterAction] = useState("");
+  const [members, setMembers] = useState<Array<{ user_id: string; user: { name: string } }>>([]);
+  const [availableActions, setAvailableActions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  // Build a clickable URL for a log entry when the referenced entity has
+  // a viewable page (task → its project board, project → board, team → board).
+  const entityHref = (log: Log): string | null => {
+    if (log.entity_type === "task" && log.project_id) {
+      return `/org/${orgId}/project/${log.project_id}/board?task=${log.entity_id}`;
+    }
+    if (log.entity_type === "project" && log.entity_id) {
+      return `/org/${orgId}/project/${log.entity_id}/board`;
+    }
+    if (log.entity_type === "team" && log.entity_id) {
+      return `/org/${orgId}/team/${log.entity_id}/board`;
+    }
+    return null;
+  };
 
   const handleExport = async () => {
     setExporting(true);
@@ -68,8 +119,16 @@ export default function ActivityLogPage() {
     }
   };
 
-  // Reset to first page whenever the date filter changes.
-  useEffect(() => { setPage(0); }, [dateFrom, dateTo]);
+  // Reset to first page whenever any filter changes.
+  useEffect(() => { setPage(0); }, [dateFrom, dateTo, filterUserId, filterAction]);
+
+  // Load workspace members once for the user-filter dropdown.
+  useEffect(() => {
+    if (!orgId) return;
+    api.get(`/organizations/${orgId}`).then((res) => {
+      setMembers(res.data?.members || []);
+    }).catch(() => {});
+  }, [orgId]);
 
   useEffect(() => {
     const fetchLogs = async () => {
@@ -81,10 +140,15 @@ export default function ActivityLogPage() {
             offset: page * PAGE_SIZE,
             start_date: dateFrom || undefined,
             end_date: dateTo || undefined,
+            user_id: filterUserId || undefined,
+            action: filterAction || undefined,
           },
         });
         setLogs(response.data.items || []);
         setTotal(response.data.total || 0);
+        if (response.data.available_actions) {
+          setAvailableActions(response.data.available_actions);
+        }
       } catch (err) {
         console.error("Failed to fetch logs", err);
       } finally {
@@ -92,7 +156,7 @@ export default function ActivityLogPage() {
       }
     };
     if (orgId) fetchLogs();
-  }, [orgId, page, dateFrom, dateTo]);
+  }, [orgId, page, dateFrom, dateTo, filterUserId, filterAction]);
 
   const getActionIcon = (action: string) => {
     if (action.includes("task")) return <Layout className="w-4 h-4" />;
@@ -145,7 +209,7 @@ export default function ActivityLogPage() {
           </div>
         </div>
 
-        {/* Date filter */}
+        {/* Filters */}
         <div className="flex flex-wrap items-end gap-3 p-3 rounded-2xl border border-border bg-card">
           <div className="space-y-1">
             <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Dari Tanggal</label>
@@ -159,8 +223,28 @@ export default function ActivityLogPage() {
               onChange={(e) => setDateTo(e.target.value)}
               className="block px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" />
           </div>
-          {(dateFrom || dateTo) && (
-            <button onClick={() => { setDateFrom(""); setDateTo(""); }}
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Pengguna</label>
+            <select value={filterUserId} onChange={(e) => setFilterUserId(e.target.value)}
+              className="block px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20 min-w-[160px]">
+              <option value="">Semua pengguna</option>
+              {members.map((m) => (
+                <option key={m.user_id} value={m.user_id}>{m.user.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Aksi</label>
+            <select value={filterAction} onChange={(e) => setFilterAction(e.target.value)}
+              className="block px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20 min-w-[180px]">
+              <option value="">Semua aksi</option>
+              {availableActions.map((a) => (
+                <option key={a} value={a}>{ACTION_LABELS[a] || a}</option>
+              ))}
+            </select>
+          </div>
+          {(dateFrom || dateTo || filterUserId || filterAction) && (
+            <button onClick={() => { setDateFrom(""); setDateTo(""); setFilterUserId(""); setFilterAction(""); }}
               className="px-3 py-2 text-xs font-semibold rounded-xl border border-border hover:bg-secondary transition-colors">
               Reset
             </button>
@@ -175,29 +259,42 @@ export default function ActivityLogPage() {
           </div>
         ) : logs.length > 0 ? (
           <div className="space-y-4">
-            {logs.map((log) => (
-              <div key={log.id} className="group p-4 bg-card border border-border rounded-2xl hover:border-primary/20 transition-all flex items-start gap-4 shadow-sm hover:shadow-md">
-                <div className="w-10 h-10 rounded-xl bg-secondary border border-border flex items-center justify-center flex-shrink-0 group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-300">
-                  {getActionIcon(log.action)}
-                </div>
-                <div className="flex-1 space-y-1">
-                  <p className="text-sm leading-relaxed">
-                    {getActionMessage(log)}
-                  </p>
-                  <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {formatDate(log.created_at)}
-                    </span>
-                    <span className="w-1 h-1 bg-muted-foreground/30 rounded-full"></span>
-                    <span className="uppercase tracking-widest font-bold">Ref ID: {log.id.slice(0, 8)}</span>
+            {logs.map((log) => {
+              const href = entityHref(log);
+              const body = (
+                <>
+                  <div className="w-10 h-10 rounded-xl bg-secondary border border-border flex items-center justify-center flex-shrink-0 group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-300">
+                    {getActionIcon(log.action)}
                   </div>
+                  <div className="flex-1 space-y-1">
+                    <p className="text-sm leading-relaxed">
+                      {getActionMessage(log)}
+                    </p>
+                    <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {formatDate(log.created_at)}
+                      </span>
+                      <span className="w-1 h-1 bg-muted-foreground/30 rounded-full"></span>
+                      <span className="uppercase tracking-widest font-bold">Ref ID: {log.id.slice(0, 8)}</span>
+                    </div>
+                  </div>
+                  {href && (
+                    <ArrowUpRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 group-hover:text-primary transition-all self-center" />
+                  )}
+                </>
+              );
+              const cardCls = "group p-4 bg-card border border-border rounded-2xl hover:border-primary/20 transition-all flex items-start gap-4 shadow-sm hover:shadow-md";
+              return href ? (
+                <Link key={log.id} href={href} className={cardCls}>
+                  {body}
+                </Link>
+              ) : (
+                <div key={log.id} className={cardCls}>
+                  {body}
                 </div>
-                <button className="opacity-0 group-hover:opacity-100 p-2 text-muted-foreground hover:text-primary transition-all">
-                  <ArrowUpRight className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
+              );
+            })}
 
             {/* Pagination */}
             {totalPages > 1 && (
