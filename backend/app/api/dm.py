@@ -262,6 +262,15 @@ async def send_dm_message(
         "user_id": str(current_user.id),
         "dm_channel_id": str(channel_id),
         "created_at": message.created_at.isoformat(),
+        "attachment_url": message.attachment_url,
+        "attachment_name": message.attachment_name,
+        "is_sticker": message.is_sticker,
+        "is_image": bool(
+            message.attachment_url and (
+                message.attachment_url.lower().endswith((".gif", ".png", ".jpg", ".jpeg", ".webp"))
+                or "giphy" in (message.attachment_url or "").lower()
+            )
+        ),
         "is_read": False,
         "is_delivered": False,
         "read_at": None,

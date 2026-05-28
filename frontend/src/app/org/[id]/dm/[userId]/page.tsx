@@ -278,7 +278,16 @@ export default function DMChatPage() {
       const r = await api.post(`/dm/channels/${ch.id}/messages`, {
         content: "", attachment_url: url, attachment_name: "sticker.gif", is_sticker: true,
       });
-      const real = { ...r.data, user: o.user, is_sticker: true, is_image: true };
+      // Preserve sticker fields even if backend response omits them (defense
+      // in depth — backend should return them, but don't lose the sticker if not).
+      const real = {
+        ...r.data,
+        user: o.user,
+        attachment_url: r.data.attachment_url || url,
+        attachment_name: r.data.attachment_name || "sticker.gif",
+        is_sticker: true,
+        is_image: true,
+      };
       setMs(p => p.map(m => m.id === id ? real : m));
     } catch (err) {
       console.error("Failed to send sticker", err);
