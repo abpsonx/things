@@ -57,6 +57,7 @@ interface Task {
   status: string;
   priority: "low" | "medium" | "high";
   assignee_id?: string;
+  assignees?: { id?: string; name: string; avatar_url?: string }[];
   position: number;
   due_date?: string;
   comments_count?: number;

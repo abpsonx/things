@@ -8,7 +8,7 @@ from app.core.database import get_db
 from app.models.user import User
 from app.models.organization import OrgMember
 from app.models.project import Project
-from app.models.task import Task, SubTask, TaskDependency
+from app.models.task import Task, SubTask, TaskDependency, TaskAssignee
 from app.models.label import Label, TaskLabel
 from app.schemas import (
     TaskCreate, TaskUpdate, TaskMoveRequest, TaskResponse, 
@@ -90,6 +90,23 @@ def _dep_brief(t):
     if not t:
         return None
     return {"id": str(t.id), "title": t.title, "status": t.status}
+
+
+async def _sync_task_assignees(db, task, ids):
+    """Replace a task's assignees with `ids`. Keeps legacy single
+    `assignee_id` in sync (= first id) for back-compat single-assignee UIs."""
+    from sqlalchemy import delete as _sa_delete
+    norm, seen = [], set()
+    for i in (ids or []):
+        s = str(i)
+        if s not in seen:
+            seen.add(s)
+            norm.append(s)
+    await db.execute(_sa_delete(TaskAssignee).where(TaskAssignee.task_id == task.id))
+    for uid in norm:
+        db.add(TaskAssignee(task_id=task.id, user_id=uid))
+    task.assignee_id = norm[0] if norm else None
+    return norm
 
 
 @router.get("/{task_id}/dependencies")
@@ -204,6 +221,13 @@ async def create_task(
     db.add(task)
     await db.flush()
 
+    # Multi-assignee (preferred). Fall back to mirroring legacy assignee_id
+    # into the M2M so the multi UI shows it too.
+    if data.assignee_ids is not None:
+        await _sync_task_assignees(db, task, data.assignee_ids)
+    elif data.assignee_id is not None:
+        db.add(TaskAssignee(task_id=task.id, user_id=data.assignee_id))
+
     await log_activity(
         db, org_id=project.org_id, user_id=current_user.id,
         action="task_created", entity_type="task", entity_id=task.id,
@@ -217,7 +241,7 @@ async def create_task(
             selectinload(Task.subtasks),
             selectinload(Task.comments),
             selectinload(Task.attachments),
-            selectinload(Task.assignee),
+            selectinload(Task.assignee), selectinload(Task.assignee_links).selectinload(TaskAssignee.user),
         )
         .where(Task.id == task.id)
     )
@@ -250,7 +274,9 @@ async def list_tasks(
                  selectinload(Task.task_labels).selectinload(TaskLabel.label),
                  selectinload(Task.subtasks),
                  selectinload(Task.comments),
-                 selectinload(Task.attachments)
+                 selectinload(Task.attachments),
+                 selectinload(Task.assignee),
+                 selectinload(Task.assignee_links).selectinload(TaskAssignee.user),
              )
              .where(Task.project_id == project_id)
              .order_by(Task.position))
@@ -277,7 +303,7 @@ async def list_archived_tasks(
             selectinload(Task.subtasks),
             selectinload(Task.comments),
             selectinload(Task.attachments),
-            selectinload(Task.assignee),
+            selectinload(Task.assignee), selectinload(Task.assignee_links).selectinload(TaskAssignee.user),
         )
         .where(Task.project_id == project_id, Task.archived_at.isnot(None))
         .order_by(Task.archived_at.desc())
@@ -318,7 +344,7 @@ async def archive_task(
             selectinload(Task.subtasks),
             selectinload(Task.comments),
             selectinload(Task.attachments),
-            selectinload(Task.assignee),
+            selectinload(Task.assignee), selectinload(Task.assignee_links).selectinload(TaskAssignee.user),
         ).where(Task.id == task_id)
     )
     return _task_to_response(result.scalar_one())
@@ -355,7 +381,7 @@ async def restore_task(
             selectinload(Task.subtasks),
             selectinload(Task.comments),
             selectinload(Task.attachments),
-            selectinload(Task.assignee),
+            selectinload(Task.assignee), selectinload(Task.assignee_links).selectinload(TaskAssignee.user),
         ).where(Task.id == task_id)
     )
     return _task_to_response(result.scalar_one())
@@ -396,16 +422,20 @@ async def update_task(
         raise HTTPException(status_code=404, detail="Task tidak ditemukan")
 
     update_data = data.model_dump(exclude_unset=True)
+    # assignee_ids isn't a Task column — handle it separately via the M2M table.
+    assignee_ids = update_data.pop("assignee_ids", None)
 
     # Edit permission: status/position changes are free for everyone; any other
-    # field change requires being the creator, a manager/owner, or having an
-    # approved edit grant.
-    if not set(update_data.keys()) <= {"status", "position"}:
+    # field change (incl. assignees) requires being the creator, a manager/
+    # owner, or having an approved edit grant.
+    free_only = set(update_data.keys()) <= {"status", "position"} and assignee_ids is None
+    if not free_only:
         from app.services.task_permissions import user_can_edit_task
         if not await user_can_edit_task(db, task, current_user):
             raise HTTPException(status_code=403, detail="Kamu belum punya izin mengedit task ini. Minta izin ke pembuat task.")
 
     old_status = task.status
+    old_assignee_ids = {str(l.user_id) for l in (task.__dict__.get("assignee_links") or [])}
     old_values = {
         "title": task.title, "description": task.description, "priority": task.priority,
         "status": task.status, "assignee_id": task.assignee_id, "due_date": task.due_date,
@@ -413,6 +443,9 @@ async def update_task(
 
     for key, value in update_data.items():
         setattr(task, key, value)
+
+    if assignee_ids is not None:
+        await _sync_task_assignees(db, task, assignee_ids)
 
     # Clone recurring task when transitioning to "done"
     if old_status != "done" and task.status == "done" and task.recurrence:
@@ -433,13 +466,29 @@ async def update_task(
     if "assignee_id" in update_data and update_data["assignee_id"] and str(update_data["assignee_id"]) != str(current_user.id):
         from app.services.notification import notify_user
         await notify_user(
-            db, 
+            db,
             user_id=str(update_data["assignee_id"]),
             type="task_assigned",
             content=f"{current_user.name} memberikan kamu tugas: {task.title}",
             ref_id=str(task.id),
             org_id=str(project.org_id)
         )
+
+    # Multi-assignee: ping every NEWLY-added assignee (skip self & the legacy
+    # single id we already notified above, to avoid double-pinging).
+    if assignee_ids is not None:
+        from app.services.notification import notify_user
+        new_set = {str(i) for i in (assignee_ids or [])}
+        added = new_set - old_assignee_ids - {str(current_user.id)}
+        legacy = str(update_data.get("assignee_id") or "")
+        for uid in added:
+            if uid == legacy:
+                continue
+            await notify_user(
+                db, user_id=uid, type="task_assigned",
+                content=f"{current_user.name} menambahkan kamu sebagai assignee: {task.title}",
+                ref_id=str(task.id), org_id=str(project.org_id),
+            )
 
     await db.commit()
 
@@ -449,7 +498,7 @@ async def update_task(
             selectinload(Task.subtasks),
             selectinload(Task.comments),
             selectinload(Task.attachments),
-            selectinload(Task.assignee),
+            selectinload(Task.assignee), selectinload(Task.assignee_links).selectinload(TaskAssignee.user),
         )
         .where(Task.id == task_id)
     )
@@ -501,7 +550,7 @@ async def move_task(
             selectinload(Task.subtasks),
             selectinload(Task.comments),
             selectinload(Task.attachments),
-            selectinload(Task.assignee),
+            selectinload(Task.assignee), selectinload(Task.assignee_links).selectinload(TaskAssignee.user),
         )
         .where(Task.id == task_id)
     )
@@ -535,7 +584,7 @@ async def delete_task(
     project = await _get_project(db, project_id)
     result = await db.execute(
         select(Task)
-        .options(selectinload(Task.assignee))
+        .options(selectinload(Task.assignee), selectinload(Task.assignee_links).selectinload(TaskAssignee.user))
         .where(Task.id == task_id, Task.project_id == project_id)
     )
     task = result.scalar_one_or_none()
