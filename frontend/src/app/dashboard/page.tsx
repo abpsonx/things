@@ -19,7 +19,7 @@ import {
   AlertCircle,
   Briefcase,
 } from "lucide-react";
-import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
+import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip } from "recharts";
 
 interface Organization {
   id: string;
@@ -371,6 +371,83 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      {/* Trend + Priority Breakdown */}
+      {(() => {
+        const weekly = (stats?.weekly_completion || []) as { week_start: string; completed: number }[];
+        const prio = (stats?.priority_breakdown || { high: 0, medium: 0, low: 0 }) as { high: number; medium: number; low: number };
+        const prioTotal = prio.high + prio.medium + prio.low;
+        const weeklyChart = weekly.map((w) => {
+          const d = new Date(w.week_start);
+          const label = `${d.getDate()}/${d.getMonth() + 1}`;
+          return { label, completed: w.completed };
+        });
+        const maxWeekly = Math.max(1, ...weekly.map((w) => w.completed));
+        return (
+        <div className="grid lg:grid-cols-2 gap-4">
+          {/* Weekly trend */}
+          <div className="p-5 bg-card border border-border rounded-2xl flex flex-col">
+            <div className="mb-3">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Tren Mingguan</p>
+              <h2 className="text-base font-bold mt-1">Task selesai 8 minggu terakhir</h2>
+            </div>
+            <div className="flex-1 min-h-[180px]">
+              {weekly.length > 0 && maxWeekly > 0 ? (
+                <ResponsiveContainer width="100%" height={180}>
+                  <BarChart data={weeklyChart} margin={{ top: 5, right: 5, bottom: 0, left: -20 }}>
+                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} allowDecimals={false} />
+                    <RTooltip
+                      cursor={{ fill: "rgba(148,163,184,0.1)" }}
+                      contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
+                      formatter={(v: any) => [`${v} task`, "Selesai"]}
+                    />
+                    <Bar dataKey="completed" fill="#22c55e" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-xs text-muted-foreground italic">Belum cukup data untuk tren mingguan.</div>
+              )}
+            </div>
+          </div>
+
+          {/* Priority breakdown */}
+          <div className="p-5 bg-card border border-border rounded-2xl flex flex-col">
+            <div className="mb-3">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Breakdown Prioritas</p>
+              <h2 className="text-base font-bold mt-1">Task aktif berdasarkan prioritas</h2>
+            </div>
+            <div className="flex-1 flex flex-col justify-center gap-3 min-h-[180px]">
+              {prioTotal === 0 ? (
+                <div className="text-xs text-muted-foreground italic text-center py-8">Tidak ada task aktif. 🎉</div>
+              ) : (
+                <>
+                  {[
+                    { key: "high", label: "High", val: prio.high, cls: "bg-red-500", text: "text-red-600" },
+                    { key: "medium", label: "Medium", val: prio.medium, cls: "bg-amber-500", text: "text-amber-600" },
+                    { key: "low", label: "Low", val: prio.low, cls: "bg-emerald-500", text: "text-emerald-600" },
+                  ].map((row) => {
+                    const pct = Math.round((row.val / prioTotal) * 100);
+                    return (
+                      <div key={row.key} className="space-y-1">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className={`font-bold ${row.text}`}>{row.label}</span>
+                          <span className="font-bold tabular-nums">{row.val} <span className="text-muted-foreground font-normal">({pct}%)</span></span>
+                        </div>
+                        <div className="h-2 bg-secondary/50 rounded-full overflow-hidden">
+                          <div className={`h-full ${row.cls} rounded-full transition-all`} style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div className="text-[10px] text-muted-foreground text-center pt-1">Total {prioTotal} task aktif (belum selesai)</div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+        );
+      })()}
 
       {/* Workspaces */}
       <div className="space-y-4">

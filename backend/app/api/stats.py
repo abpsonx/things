@@ -81,6 +81,56 @@ async def get_dashboard_stats(
                             ((await db.execute(overdue_team_q)).scalar() or 0)
     task_stats["completion_rate"] = round(task_stats["completed"] / task_stats["total"] * 100) if task_stats["total"] else 0
 
+    # 2b. Priority breakdown (non-done tasks across project + team)
+    priority_breakdown = {"high": 0, "medium": 0, "low": 0}
+    for q in (
+        select(Task.priority, func.count(Task.id))
+        .join(Project, Task.project_id == Project.id)
+        .join(Organization, Project.org_id == Organization.id)
+        .join(OrgMember, OrgMember.org_id == Organization.id)
+        .where(OrgMember.user_id == current_user.id, Task.status != "done")
+        .group_by(Task.priority),
+        select(Task.priority, func.count(Task.id))
+        .join(TeamMember, TeamMember.team_id == Task.team_id)
+        .where(TeamMember.user_id == current_user.id, Task.status != "done")
+        .group_by(Task.priority),
+    ):
+        for prio, count in (await db.execute(q)).all():
+            if prio in priority_breakdown:
+                priority_breakdown[prio] += count
+
+    # 2c. Weekly completion trend — last 8 weeks (Mon-Sun, using updated_at as
+    # proxy for completion timestamp since we don't track a separate column).
+    from datetime import timedelta
+    weeks: list = []
+    # Anchor "this week" to the Monday of `now`.
+    today_local = now.date()
+    monday_this_week = today_local - timedelta(days=today_local.weekday())
+    for w in range(7, -1, -1):  # oldest first → newest last
+        wk_start = monday_this_week - timedelta(weeks=w)
+        wk_end = wk_start + timedelta(days=7)
+        wk_start_dt = datetime(wk_start.year, wk_start.month, wk_start.day, tzinfo=timezone.utc)
+        wk_end_dt = datetime(wk_end.year, wk_end.month, wk_end.day, tzinfo=timezone.utc)
+        proj_done = (await db.execute(
+            select(func.count(Task.id))
+            .join(Project, Task.project_id == Project.id)
+            .join(Organization, Project.org_id == Organization.id)
+            .join(OrgMember, OrgMember.org_id == Organization.id)
+            .where(OrgMember.user_id == current_user.id,
+                   Task.status == "done",
+                   Task.updated_at >= wk_start_dt,
+                   Task.updated_at < wk_end_dt)
+        )).scalar() or 0
+        team_done = (await db.execute(
+            select(func.count(Task.id))
+            .join(TeamMember, TeamMember.team_id == Task.team_id)
+            .where(TeamMember.user_id == current_user.id,
+                   Task.status == "done",
+                   Task.updated_at >= wk_start_dt,
+                   Task.updated_at < wk_end_dt)
+        )).scalar() or 0
+        weeks.append({"week_start": wk_start.isoformat(), "completed": proj_done + team_done})
+
     # 3. Recent Activity (Last 5)
     from app.models.activity_log import ActivityLog
     activity_query = (
@@ -185,7 +235,9 @@ async def get_dashboard_stats(
             {"name": "To Do", "value": task_stats["todo"], "fill": "#94a3b8"},
             {"name": "In Progress", "value": task_stats["in_progress"], "fill": "#3b82f6"},
             {"name": "Completed", "value": task_stats["completed"], "fill": "#22c55e"},
-        ]
+        ],
+        "priority_breakdown": priority_breakdown,
+        "weekly_completion": weeks,
     }
 
 
