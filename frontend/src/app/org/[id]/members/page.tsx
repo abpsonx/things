@@ -164,10 +164,16 @@ export default function MembersPage() {
               {members.map((member) => {
                 const isMe = member.user_id === currentUser?.id;
                 const isTargetOwner = member.role === "owner";
+                const isTargetManager = member.role === "manager";
                 const isCreator = !!ownerId && member.user_id === ownerId;
-                // Can act on this member: managers handle non-owners; owners
-                // handle anyone — but nobody can touch the workspace creator.
-                const canActOn = canManage && !isMe && !isCreator && (isOwner || !isTargetOwner);
+                // Removal hierarchy:
+                //  - owner can remove anyone (except the workspace creator)
+                //  - manager can only remove "member" tier
+                // Role editing is owner-only — see roleEditable below.
+                const canRemove = canManage && !isMe && !isCreator
+                  && (isOwner || (!isTargetOwner && !isTargetManager));
+                // Owner is the only role that can promote/demote.
+                const roleEditable = isOwner && !isMe && !isCreator;
 
                 return (
                   <tr key={member.id} className="hover:bg-secondary/10 transition-colors group">
@@ -190,7 +196,7 @@ export default function MembersPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      {canActOn ? (
+                      {roleEditable ? (
                         <select
                           value={member.role}
                           disabled={actionLoading === member.id}
@@ -222,7 +228,7 @@ export default function MembersPage() {
                     </td>
                     {canManage && (
                       <td className="px-6 py-4 text-right">
-                        {canActOn && (
+                        {canRemove && (
                           <button
                             onClick={() => handleRemoveMember(member.id, member.user.name)}
                             disabled={actionLoading === member.id}
@@ -287,18 +293,19 @@ export default function MembersPage() {
           <h4 className="font-bold text-sm">Informasi Role</h4>
           <ul className="text-xs text-muted-foreground space-y-2">
             <li><span className="font-bold text-foreground">Admin:</span> Kelola workspace, anggota, & role (s/d Manager). Tidak bisa menghapus workspace.</li>
-            <li><span className="font-bold text-foreground">Manager:</span> Pimpin proyek/tim yang dibuatnya, atur task & moderasi chat di situ.</li>
+            <li><span className="font-bold text-foreground">Manager:</span> Pimpin proyek/tim yang dibuatnya, undang Member baru, & atur task/chat di situ.</li>
             <li><span className="font-bold text-foreground">Member:</span> Berkontribusi di proyek/tim yang diikuti — task, chat, dokumen.</li>
             <li className="opacity-70"><span className="font-bold text-foreground">Super User / Developer:</span> Kontrol penuh semua workspace (termasuk buat & hapus workspace).</li>
           </ul>
         </div>
       </div>
 
-      <InviteMemberModal 
+      <InviteMemberModal
         orgId={orgId as string}
         isOpen={isInviting}
         onClose={() => setIsInviting(false)}
         onSuccess={fetchMembers}
+        currentRole={currentUserMember?.role}
       />
     </div>
   );

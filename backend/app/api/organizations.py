@@ -250,7 +250,9 @@ async def invite_member(
     """Invite a user to the organization (by existing user or pending invite)."""
     from app.models.invitation import Invitation
 
-    # Check if current user is owner/manager (developers bypass)
+    # Check if current user is owner/manager (developers bypass).
+    # Managers may only invite at the "member" tier — promoting / inviting
+    # peers is owner-only so role escalation stays in one place.
     if not is_superuser(current_user):
         result = await db.execute(
             select(OrgMember).where(
@@ -259,8 +261,11 @@ async def invite_member(
                 OrgMember.role.in_(["owner", "manager"]),
             )
         )
-        if not result.scalar_one_or_none():
+        caller = result.scalar_one_or_none()
+        if not caller:
             raise HTTPException(status_code=403, detail="Hanya owner/manager yang bisa invite member")
+        if caller.role == "manager" and data.role != "member":
+            raise HTTPException(status_code=403, detail="Manager hanya bisa mengundang sebagai Member")
 
     # Find user by email
     result = await db.execute(select(User).where(User.email == data.email))
@@ -464,7 +469,7 @@ async def update_member_role(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Update a member's role (owner/manager only)."""
+    """Update a member's role (owner only — managers can't promote/demote)."""
     # Check permissions (developers bypass)
     dev_bypass = is_superuser(current_user)
     admin = None
@@ -473,12 +478,12 @@ async def update_member_role(
             select(OrgMember).where(
                 OrgMember.org_id == org_id,
                 OrgMember.user_id == current_user.id,
-                OrgMember.role.in_(["owner", "manager"]),
+                OrgMember.role == "owner",
             )
         )
         admin = result.scalar_one_or_none()
         if not admin:
-            raise HTTPException(status_code=403, detail="Hanya owner/manager yang bisa edit role")
+            raise HTTPException(status_code=403, detail="Hanya Admin yang bisa mengubah role member")
 
     # Get target member
     result = await db.execute(select(OrgMember).where(OrgMember.id == member_id))
@@ -506,7 +511,7 @@ async def remove_member(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Remove a member from organization (owner/manager only)."""
+    """Remove a member from organization (owner removes anyone; manager removes members)."""
     # Check permissions (developers bypass)
     dev_bypass = is_superuser(current_user)
     admin = None
@@ -533,6 +538,10 @@ async def remove_member(
 
     if member.role == "owner" and not dev_bypass and admin.role != "owner":
         raise HTTPException(status_code=403, detail="Hanya owner yang bisa hapus owner lain")
+
+    # Manager can only remove members — peer managers are off-limits.
+    if not dev_bypass and admin.role == "manager" and member.role != "member":
+        raise HTTPException(status_code=403, detail="Manager hanya bisa mengeluarkan Member")
 
     # The workspace creator can't be removed (except by a developer).
     org = await _load_org_or_404(db, org_id)

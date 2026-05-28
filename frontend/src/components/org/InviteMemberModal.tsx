@@ -10,9 +10,13 @@ interface InviteMemberModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  // The caller's role in this workspace. Managers can only invite as Member,
+  // so we hide the Manager tile for them.
+  currentRole?: "owner" | "manager" | "member" | string;
 }
 
-export default function InviteMemberModal({ orgId, isOpen, onClose, onSuccess }: InviteMemberModalProps) {
+export default function InviteMemberModal({ orgId, isOpen, onClose, onSuccess, currentRole }: InviteMemberModalProps) {
+  const isManagerOnly = currentRole === "manager";
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("member");
   const [loading, setLoading] = useState(false);
@@ -87,10 +91,10 @@ export default function InviteMemberModal({ orgId, isOpen, onClose, onSuccess }:
 
               <div className="space-y-2">
                 <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Role / Jabatan</label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className={cn("grid gap-3", isManagerOnly ? "grid-cols-1" : "grid-cols-2") }>
                   {[
                     { id: "member", label: "Member", icon: User, desc: "Bisa edit tugas" },
-                    { id: "manager", label: "Manager", icon: Shield, desc: "Bisa undang orang" }
+                    ...(isManagerOnly ? [] : [{ id: "manager", label: "Manager", icon: Shield, desc: "Bisa undang orang" }]),
                   ].map((r) => (
                     <button
                       key={r.id}
