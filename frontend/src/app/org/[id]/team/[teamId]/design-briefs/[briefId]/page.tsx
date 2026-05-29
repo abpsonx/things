@@ -685,9 +685,11 @@ export default function DesignBriefDetailPage() {
         </div>
       </div>
 
-      {/* Active annotation drawer (mobile-friendly) */}
+      {/* Active annotation drawer (mobile-friendly). Posisi sengaja
+          digeser ke atas chat widget bubble (fixed bottom-8 right-8,
+          w-16 h-16) supaya gak ke-overlap. */}
       {active && (
-        <div className="fixed bottom-4 right-4 z-40 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-border bg-card shadow-2xl p-4 space-y-2 animate-in slide-in-from-bottom-4">
+        <div className="fixed bottom-28 right-4 z-40 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-border bg-card shadow-2xl p-4 space-y-2 animate-in slide-in-from-bottom-4">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <MessageCircle className="w-4 h-4 text-primary" />
