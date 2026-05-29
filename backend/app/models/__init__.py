@@ -23,6 +23,7 @@ from app.models.team_file import TeamFile
 from app.models.task_edit_request import TaskEditRequest
 from app.models.social_account import SocialAccount, SocialMetric
 from app.models.content_brief import ContentBrief, BriefScene
+from app.models.design_brief import DesignBrief, DesignBriefAnnotation
 
 __all__ = [
     "User",
@@ -49,4 +50,5 @@ __all__ = [
     "TaskEditRequest",
     "SocialAccount", "SocialMetric",
     "ContentBrief", "BriefScene",
+    "DesignBrief", "DesignBriefAnnotation",
 ]

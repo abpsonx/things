@@ -14,6 +14,7 @@ import {
   Calendar,
   Settings,
   Clapperboard,
+  Image as ImageIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -35,6 +36,7 @@ export default function TeamNav({ orgId, teamId }: TeamNavProps) {
     { name: "Aktivitas", href: `/org/${orgId}/team/${teamId}/activities`, icon: Activity },
     { name: "Dokumen", href: `/org/${orgId}/team/${teamId}/files`, icon: FileText },
     { name: "Brief Konten", href: `/org/${orgId}/team/${teamId}/briefs`, icon: Clapperboard },
+    { name: "Brief Design", href: `/org/${orgId}/team/${teamId}/design-briefs`, icon: ImageIcon },
     { name: "Settings", href: `/org/${orgId}/team/${teamId}/settings`, icon: Settings },
   ];
 

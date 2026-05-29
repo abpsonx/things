@@ -614,3 +614,93 @@ class TaskBriefLinksUpdate(BaseModel):
     """Replace the full set of brief links on a task."""
     brief_ids: List[UUID]
 
+
+# ============ Design Brief Schemas ============
+
+class DesignBriefBase(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
+    brand: Optional[str] = None
+    visual_text: Optional[str] = None
+    caption: Optional[str] = None
+    publish_date: Optional[date] = None
+    hashtag: Optional[str] = None
+    reference_url: Optional[str] = None
+    final_image_url: Optional[str] = None
+    status: str = "draft"  # draft | onprogress | review | published
+
+
+class DesignBriefCreate(DesignBriefBase):
+    pass
+
+
+class DesignBriefUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    brand: Optional[str] = None
+    visual_text: Optional[str] = None
+    caption: Optional[str] = None
+    publish_date: Optional[date] = None
+    hashtag: Optional[str] = None
+    reference_url: Optional[str] = None
+    final_image_url: Optional[str] = None
+    status: Optional[str] = None
+
+
+class DesignBriefAnnotationCreate(BaseModel):
+    x_pct: float = Field(..., ge=0, le=100)
+    y_pct: float = Field(..., ge=0, le=100)
+    content: str = Field(..., min_length=1)
+
+
+class DesignBriefAnnotationUpdate(BaseModel):
+    content: Optional[str] = None
+    resolved: Optional[bool] = None
+
+
+class DesignBriefAnnotationResponse(BaseModel):
+    id: UUID
+    brief_id: UUID
+    creator_id: Optional[UUID] = None
+    creator: Optional[UserResponse] = None
+    x_pct: float
+    y_pct: float
+    content: str
+    resolved: bool = False
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class DesignBriefResponse(DesignBriefBase):
+    id: UUID
+    org_id: UUID
+    team_id: UUID
+    creator_id: Optional[UUID] = None
+    creator: Optional[UserResponse] = None
+    created_at: datetime
+    updated_at: datetime
+    annotations: List[DesignBriefAnnotationResponse] = []
+
+    class Config:
+        from_attributes = True
+
+
+class DesignBriefListItem(BaseModel):
+    id: UUID
+    org_id: UUID
+    team_id: UUID
+    title: str
+    brand: Optional[str] = None
+    status: str
+    publish_date: Optional[date] = None
+    final_image_url: Optional[str] = None
+    creator: Optional[UserResponse] = None
+    annotation_count: int = 0
+    open_annotation_count: int = 0  # belum resolved
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
