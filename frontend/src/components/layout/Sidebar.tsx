@@ -79,6 +79,10 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   // banget untuk workspace yang anggotanya banyak.
   const [dmExpanded, setDmExpanded] = useState(false);
   const [dmQuery, setDmQuery] = useState("");
+  // DM channel metadata keyed by the OTHER user's id, gives us last_message
+  // preview + unread_count so we can render "sampai mana terakhir obrolan"
+  // di sidebar tanpa fetch per kontak.
+  const [dmChannelByUser, setDmChannelByUser] = useState<Record<string, { last_message: any; unread_count: number }>>({});
 
   const fetchContext = async () => {
     try {
@@ -107,9 +111,29 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         // Fetch teams
         const teamsRes = await api.get(`/organizations/${currentId}/teams`);
         setTeams(Array.isArray(teamsRes.data) ? teamsRes.data : []);
+
+        // Fetch DM channels supaya bisa render last_message di sidebar.
+        try {
+          const dmRes = await api.get(`/dm/channels?org_id=${currentId}`);
+          const channels = Array.isArray(dmRes.data) ? dmRes.data : [];
+          const map: Record<string, { last_message: any; unread_count: number }> = {};
+          for (const ch of channels) {
+            const other = ch.user1_id === user?.id ? ch.user2_id : ch.user1_id;
+            if (other) {
+              map[String(other)] = {
+                last_message: ch.last_message || null,
+                unread_count: ch.unread_count || 0,
+              };
+            }
+          }
+          setDmChannelByUser(map);
+        } catch {
+          setDmChannelByUser({});
+        }
       } else {
         setTeams([]);
         setMembers([]);
+        setDmChannelByUser({});
       }
     } catch (err) {
       console.error("Sidebar fetch failed", err);
@@ -156,19 +180,31 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     (a, b) => (pinnedTeamIds.includes(a.id) ? 0 : 1) - (pinnedTeamIds.includes(b.id) ? 0 : 1)
   );
   const sortedMembers = useMemo(() => {
-    // Sort priority: pinned → has unread DM → recent DM activity → alphabetical
+    // Sort priority:
+    //   1. pinned
+    //   2. has unread DM (notification store) — paling penting
+    //   3. recent DM activity (last_message dari API channels)
+    //   4. alphabetical
+    const lastAtFor = (uid: string): number => {
+      const sum = dmBySender[uid];
+      if (sum) return new Date(sum.lastAt).getTime();
+      const ch = dmChannelByUser[uid];
+      if (ch?.last_message?.created_at) return new Date(ch.last_message.created_at).getTime();
+      return 0;
+    };
     return [...members].sort((a, b) => {
       const aPinned = pinnedDmIds.includes(a.user_id) ? 1 : 0;
       const bPinned = pinnedDmIds.includes(b.user_id) ? 1 : 0;
       if (aPinned !== bPinned) return bPinned - aPinned;
-      const aSum = dmBySender[a.user_id];
-      const bSum = dmBySender[b.user_id];
-      if (aSum && !bSum) return -1;
-      if (!aSum && bSum) return 1;
-      if (aSum && bSum) return new Date(bSum.lastAt).getTime() - new Date(aSum.lastAt).getTime();
+      const aUnread = dmBySender[a.user_id] ? 1 : 0;
+      const bUnread = dmBySender[b.user_id] ? 1 : 0;
+      if (aUnread !== bUnread) return bUnread - aUnread;
+      const aLast = lastAtFor(a.user_id);
+      const bLast = lastAtFor(b.user_id);
+      if (aLast !== bLast) return bLast - aLast;
       return (a.user?.name || "").localeCompare(b.user?.name || "");
     });
-  }, [members, pinnedDmIds, dmBySender]);
+  }, [members, pinnedDmIds, dmBySender, dmChannelByUser]);
 
   const DM_COLLAPSED_LIMIT = 6;
   const filteredDmMembers = useMemo(() => {
@@ -574,20 +610,32 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
               const summary = dmBySender[member.user_id];
               const hasUnread = !!summary;
               const pinned = pinnedDmIds.includes(member.user_id);
+              // Preview prioritas: snippet dari unread notif (lebih real-time)
+              // → fallback ke last_message dari channel API. Tambah prefix
+              // "Kamu:" kalau pesan terakhir dari diri sendiri biar tahu
+              // bola ada di pihak lawan.
+              const chanMeta = dmChannelByUser[member.user_id];
+              const lastMsg = chanMeta?.last_message;
+              const fromMe = lastMsg && String(lastMsg.user_id) === String(user?.id);
+              const preview = hasUnread
+                ? summary!.lastSnippet
+                : lastMsg
+                  ? `${fromMe ? "Kamu: " : ""}${lastMsg.content || (lastMsg.is_attachment ? "📎 Lampiran" : "")}`
+                  : null;
               return (
                 <div key={member.id} className="relative group">
                   <Link
                     href={`/org/${activeOrgId}/dm/${member.user_id}`}
                     onClick={() => markDMsFromSenderRead(member.user_id)}
                     className={cn(
-                      "flex items-center gap-3 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+                      "flex items-start gap-2.5 px-2.5 py-1.5 rounded-md transition-colors",
                       pathname.includes(member.user_id)
                         ? "bg-primary/10 text-primary"
                         : "text-muted-foreground hover:text-foreground hover:bg-secondary"
                     )}
                   >
-                    <div className="relative">
-                      <div className="w-6 h-6 rounded-full bg-secondary border border-border flex items-center justify-center overflow-hidden text-[8px] font-bold">
+                    <div className="relative shrink-0 mt-0.5">
+                      <div className="w-7 h-7 rounded-full bg-secondary border border-border flex items-center justify-center overflow-hidden text-[9px] font-bold">
                         {member.user.avatar_url ? (
                           <img src={member.user.avatar_url} alt="" className="w-full h-full object-cover" />
                         ) : (
@@ -598,12 +646,26 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                         <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 border-2 border-card" />
                       )}
                     </div>
-                    <span className={cn("truncate flex-1", hasUnread && "font-bold text-foreground")}>{member.user.name}</span>
-                    {hasUnread && (
-                      <span className="shrink-0 min-w-[18px] h-[18px] px-1 mr-4 bg-destructive text-destructive-foreground text-[10px] font-extrabold rounded-full flex items-center justify-center">
-                        {summary.count > 9 ? "9+" : summary.count}
-                      </span>
-                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-1.5">
+                        <span className={cn("text-xs truncate", hasUnread ? "font-extrabold text-foreground" : "font-medium")}>
+                          {member.user.name}
+                        </span>
+                        {hasUnread && (
+                          <span className="shrink-0 min-w-[16px] h-[16px] px-1 mr-4 bg-destructive text-destructive-foreground text-[9px] font-extrabold rounded-full flex items-center justify-center">
+                            {summary!.count > 9 ? "9+" : summary!.count}
+                          </span>
+                        )}
+                      </div>
+                      {preview && (
+                        <p className={cn(
+                          "text-[10px] truncate leading-tight",
+                          hasUnread ? "text-foreground/80 font-semibold" : "text-muted-foreground/70",
+                        )}>
+                          {preview}
+                        </p>
+                      )}
+                    </div>
                   </Link>
                   <button
                     onClick={() => togglePin("dm", member.user_id, !pinned)}

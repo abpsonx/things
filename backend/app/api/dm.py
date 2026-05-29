@@ -44,7 +44,12 @@ async def list_dm_channels(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List all DM channels for the current user in an organization."""
+    """List all DM channels for the current user in an organization.
+
+    Returns each channel + lightweight `last_message` preview (content +
+    created_at + sender_id) so the sidebar can show "Sampai mana terakhir
+    obrolan" tanpa fetch terpisah. Juga `unread_count` per channel."""
+    from sqlalchemy import func as safunc
     result = await db.execute(
         select(DMChannel)
         .options(selectinload(DMChannel.user1), selectinload(DMChannel.user2))
@@ -55,7 +60,71 @@ async def list_dm_channels(
             )
         )
     )
-    return result.scalars().all()
+    channels = result.scalars().all()
+    if not channels:
+        return []
+
+    ch_ids = [c.id for c in channels]
+
+    # Bulk-fetch latest message id per channel via window function.
+    last_msgs_q = await db.execute(
+        select(DMMessage)
+        .where(DMMessage.dm_channel_id.in_(ch_ids))
+        .order_by(DMMessage.dm_channel_id, DMMessage.created_at.desc())
+    )
+    last_per_channel: dict = {}
+    for m in last_msgs_q.scalars().all():
+        cid = str(m.dm_channel_id)
+        if cid not in last_per_channel:  # first row per channel = latest
+            last_per_channel[cid] = m
+
+    # Unread count per channel (messages from the OTHER user that aren't read).
+    unread_q = await db.execute(
+        select(DMMessage.dm_channel_id, safunc.count(DMMessage.id))
+        .where(
+            DMMessage.dm_channel_id.in_(ch_ids),
+            DMMessage.user_id != current_user.id,
+            DMMessage.is_read == False,
+        )
+        .group_by(DMMessage.dm_channel_id)
+    )
+    unread_per_channel = {str(cid): int(n) for cid, n in unread_q.all()}
+
+    out = []
+    for ch in channels:
+        last = last_per_channel.get(str(ch.id))
+        last_preview = None
+        if last:
+            snippet = (last.content or "").strip()
+            if last.attachment_url and not snippet:
+                snippet = "📎 Lampiran"
+            if len(snippet) > 80:
+                snippet = snippet[:77] + "..."
+            last_preview = {
+                "content": snippet,
+                "user_id": str(last.user_id),
+                "created_at": last.created_at.isoformat(),
+                "is_attachment": bool(last.attachment_url),
+            }
+        out.append({
+            "id": str(ch.id),
+            "org_id": str(ch.org_id),
+            "user1_id": str(ch.user1_id),
+            "user2_id": str(ch.user2_id),
+            "user1": {
+                "id": str(ch.user1.id),
+                "name": ch.user1.name,
+                "avatar_url": ch.user1.avatar_url,
+            } if ch.user1 else None,
+            "user2": {
+                "id": str(ch.user2.id),
+                "name": ch.user2.name,
+                "avatar_url": ch.user2.avatar_url,
+            } if ch.user2 else None,
+            "last_message": last_preview,
+            "unread_count": unread_per_channel.get(str(ch.id), 0),
+        })
+    return out
 
 @router.post("/channels", status_code=status.HTTP_201_CREATED)
 async def get_or_create_dm_channel(
@@ -164,7 +233,21 @@ async def send_dm_message(
     current_user: User = Depends(get_current_user),
 ):
     """Send a message in a DM channel."""
+    from app.sockets.manager import online_user_ids
     now = datetime.now(timezone.utc)
+
+    # Optimisme delivery: kalau recipient sedang online (punya socket aktif),
+    # tandai is_delivered=True langsung — bukan menunggu mereka buka chat.
+    # Ini bikin UI sender bisa show ✓✓ abu-abu (delivered) sebelum lawan
+    # membaca, mirror behaviour WhatsApp / Telegram.
+    channel_res = await db.execute(select(DMChannel).where(DMChannel.id == channel_id))
+    channel = channel_res.scalar_one_or_none()
+    recipient_id = None
+    delivered_now = False
+    if channel:
+        recipient_id = channel.user2_id if channel.user1_id == current_user.id else channel.user1_id
+        delivered_now = str(recipient_id) in online_user_ids()
+
     message = DMMessage(
         dm_channel_id=channel_id,
         user_id=current_user.id,
@@ -172,9 +255,9 @@ async def send_dm_message(
         attachment_url=data.attachment_url,
         attachment_name=data.attachment_name,
         is_sticker=bool(data.is_sticker),
-        is_delivered=False,
+        is_delivered=delivered_now,
         is_read=False,
-        delivered_at=None,
+        delivered_at=now if delivered_now else None,
         read_at=None,
         parent_id=data.parent_id,
     )
@@ -200,11 +283,9 @@ async def send_dm_message(
                 "user": {"id": str(pr.user.id), "name": pr.user.name} if pr.user else None,
             }
 
-    # Notify the OTHER party (web push + socket.io toast)
-    channel_res = await db.execute(select(DMChannel).where(DMChannel.id == channel_id))
-    channel = channel_res.scalar_one_or_none()
-    if channel:
-        recipient_id = channel.user2_id if channel.user1_id == current_user.id else channel.user1_id
+    # Notify the OTHER party (web push + socket.io toast) — channel +
+    # recipient_id sudah di-resolve di awal handler.
+    if channel and recipient_id:
         from app.services.notification import notify_user
         snippet = (data.content or "").strip()
         if len(snippet) > 80:
@@ -241,9 +322,9 @@ async def send_dm_message(
                 )
             ),
             "is_read": False,
-            "is_delivered": False,
+            "is_delivered": message.is_delivered,
             "read_at": None,
-            "delivered_at": None,
+            "delivered_at": message.delivered_at.isoformat() if message.delivered_at else None,
             "reactions": {},
             "user": {
                 "id": str(current_user.id),
@@ -256,6 +337,17 @@ async def send_dm_message(
         }
     }
     await dm_ws_manager.broadcast(channel_id, payload)
+
+    # Beritahu SENDER (tab/window lain milik sender, plus ack delivered)
+    # bahwa pesan ini sudah delivered — penting agar UI mereka langsung
+    # update single ✓ → double ✓ tanpa menunggu refresh atau bukan-read.
+    if message.is_delivered:
+        await dm_ws_manager.broadcast(channel_id, {
+            "type": "dm_delivered",
+            "channel_id": str(channel_id),
+            "message_ids": [str(message.id)],
+            "delivered_at": message.delivered_at.isoformat() if message.delivered_at else None,
+        })
 
     return {
         "id": str(message.id),
@@ -273,9 +365,9 @@ async def send_dm_message(
             )
         ),
         "is_read": False,
-        "is_delivered": False,
+        "is_delivered": message.is_delivered,
         "read_at": None,
-        "delivered_at": None,
+        "delivered_at": message.delivered_at.isoformat() if message.delivered_at else None,
         "reactions": {},
         "user": {"id": str(current_user.id), "name": current_user.name, "avatar_url": current_user.avatar_url},
         "parent_id": str(message.parent_id) if message.parent_id else None,
@@ -372,7 +464,17 @@ async def upload_dm_attachment(
         shutil.copyfileobj(file.file, buffer)
     
     file_size = os.path.getsize(file_path)
-    
+
+    from app.sockets.manager import online_user_ids
+    now = datetime.now(timezone.utc)
+    channel_res = await db.execute(select(DMChannel).where(DMChannel.id == channel_id))
+    channel = channel_res.scalar_one_or_none()
+    recipient_id = None
+    delivered_now = False
+    if channel:
+        recipient_id = channel.user2_id if channel.user1_id == current_user.id else channel.user1_id
+        delivered_now = str(recipient_id) in online_user_ids()
+
     message = DMMessage(
         dm_channel_id=channel_id,
         user_id=current_user.id,
@@ -380,18 +482,16 @@ async def upload_dm_attachment(
         attachment_url=f"/api/uploads/{unique_filename}",
         attachment_name=file.filename or "file",
         is_sticker=bool(is_sticker),
-        is_delivered=False,
+        is_delivered=delivered_now,
         is_read=False,
+        delivered_at=now if delivered_now else None,
     )
     db.add(message)
     await db.commit()
     await db.refresh(message)
 
     # Notify the recipient of the attachment
-    channel_res = await db.execute(select(DMChannel).where(DMChannel.id == channel_id))
-    channel = channel_res.scalar_one_or_none()
-    if channel:
-        recipient_id = channel.user2_id if channel.user1_id == current_user.id else channel.user1_id
+    if channel and recipient_id:
         from app.services.notification import notify_user
         await notify_user(
             db,
@@ -429,9 +529,9 @@ async def upload_dm_attachment(
             "is_audio": is_audio,
             "is_pdf": is_pdf,
             "is_read": False,
-            "is_delivered": False,
+            "is_delivered": message.is_delivered,
             "read_at": None,
-            "delivered_at": None,
+            "delivered_at": message.delivered_at.isoformat() if message.delivered_at else None,
             "reactions": {},
             "user": {
                 "id": str(current_user.id),
@@ -441,7 +541,16 @@ async def upload_dm_attachment(
             "temp_id": temp_id
         }
     })
-    
+
+    # Beritahu sender (tab lain) bahwa pesan ini sudah delivered.
+    if message.is_delivered:
+        await dm_ws_manager.broadcast(str(channel_id), {
+            "type": "dm_delivered",
+            "channel_id": str(channel_id),
+            "message_ids": [str(message.id)],
+            "delivered_at": message.delivered_at.isoformat() if message.delivered_at else None,
+        })
+
     return {
         "id": str(message.id),
         "content": message.content,
@@ -457,9 +566,9 @@ async def upload_dm_attachment(
         "is_audio": is_audio,
         "is_pdf": is_pdf,
         "is_read": False,
-        "is_delivered": False,
+        "is_delivered": message.is_delivered,
         "read_at": None,
-        "delivered_at": None,
+        "delivered_at": message.delivered_at.isoformat() if message.delivered_at else None,
         "reactions": {},
         "user": {
             "id": str(current_user.id),

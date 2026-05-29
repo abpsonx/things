@@ -145,6 +145,10 @@ export default function DMChatPage() {
           });
         } else if (d.type === "dm_read") {
           setMs(prev => prev.map(m => d.message_ids?.includes(m.id) ? { ...m, is_read: true, read_at: d.read_at, is_delivered: true } : m));
+        } else if (d.type === "dm_delivered") {
+          // Sender's view: pesan yang baru kita kirim sudah sampai ke
+          // device recipient (online). Update is_delivered → bubble dapat ✓✓ abu-abu.
+          setMs(prev => prev.map(m => d.message_ids?.includes(m.id) ? { ...m, is_delivered: true, delivered_at: d.delivered_at || m.delivered_at } : m));
         } else if (d.type === "dm_reacted") {
           setMs(prev => prev.map(m => m.id === d.message_id ? { ...m, reactions: d.reactions || {} } : m));
         } else if (d.type === "dm_edited") {
