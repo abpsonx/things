@@ -21,6 +21,7 @@ import {
   X,
   UserPlus,
   Trash2,
+  Clapperboard,
 } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import Modal from "@/components/ui/Modal";
@@ -95,6 +96,7 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
     { label: "Chat", icon: MessageSquare, href: `/org/${orgId}/project/${projectId}/chat` },
     { label: "Kalender", icon: Calendar, href: `/org/${orgId}/project/${projectId}/calendar` },
     { label: "Wiki", icon: FileText, href: `/org/${orgId}/project/${projectId}/docs` },
+    { label: "Brief Iklan", icon: Clapperboard, href: `/org/${orgId}/project/${projectId}/briefs` },
     { label: "Aktivitas", icon: Activity, href: `/org/${orgId}/project/${projectId}/activity` },
     { label: "Laporan", icon: BarChart3, href: `/org/${orgId}/project/${projectId}/reports` },
     { label: "Pengumuman", icon: Megaphone, href: `/org/${orgId}/project/${projectId}/announcements` },

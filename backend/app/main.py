@@ -468,7 +468,9 @@ app.include_router(media.router, prefix="/api")
 from app.api import task_links
 app.include_router(task_links.router, prefix="/api")
 from app.api import platform_users
+from app.api import content_briefs
 app.include_router(platform_users.router, prefix="/api")
+app.include_router(content_briefs.router, prefix="/api")
 
 
 # Static Files

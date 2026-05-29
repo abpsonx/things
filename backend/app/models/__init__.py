@@ -22,6 +22,7 @@ from app.models.reaction import Reaction
 from app.models.team_file import TeamFile
 from app.models.task_edit_request import TaskEditRequest
 from app.models.social_account import SocialAccount, SocialMetric
+from app.models.content_brief import ContentBrief, BriefScene
 
 __all__ = [
     "User",
@@ -47,4 +48,5 @@ __all__ = [
     "AnnouncementRecipient", "AnnouncementComment",
     "TaskEditRequest",
     "SocialAccount", "SocialMetric",
+    "ContentBrief", "BriefScene",
 ]

@@ -1,7 +1,7 @@
 """Pydantic schemas for API request/response validation."""
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List, Any
-from datetime import datetime
+from datetime import datetime, date
 from uuid import UUID
 
 
@@ -491,4 +491,100 @@ class AnnouncementResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ============ Content Brief Schemas ============
+
+class BriefSceneBase(BaseModel):
+    scene_type: Optional[str] = None
+    time_range: Optional[str] = None
+    location: Optional[str] = None
+    shoot_time: Optional[str] = None
+    script_vo: Optional[str] = None
+    footage: Optional[str] = None
+    talent: Optional[str] = None
+    duration: Optional[str] = None
+
+
+class BriefSceneCreate(BriefSceneBase):
+    pass
+
+
+class BriefSceneUpdate(BriefSceneBase):
+    pass
+
+
+class BriefSceneResponse(BriefSceneBase):
+    id: UUID
+    brief_id: UUID
+    position: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ContentBriefBase(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
+    location: Optional[str] = None
+    shoot_date: Optional[date] = None
+    shoot_time: Optional[str] = None
+    video_duration: Optional[str] = None
+    video_format: Optional[str] = None
+    platforms: List[str] = []
+    tone: Optional[str] = None
+    status: str = "draft"  # draft | review | approved | published
+
+
+class ContentBriefCreate(ContentBriefBase):
+    pass
+
+
+class ContentBriefUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    location: Optional[str] = None
+    shoot_date: Optional[date] = None
+    shoot_time: Optional[str] = None
+    video_duration: Optional[str] = None
+    video_format: Optional[str] = None
+    platforms: Optional[List[str]] = None
+    tone: Optional[str] = None
+    status: Optional[str] = None
+
+
+class ContentBriefResponse(ContentBriefBase):
+    id: UUID
+    project_id: UUID
+    creator_id: Optional[UUID] = None
+    creator: Optional[UserResponse] = None
+    created_at: datetime
+    updated_at: datetime
+    scenes: List[BriefSceneResponse] = []
+
+    class Config:
+        from_attributes = True
+
+
+class ContentBriefListItem(BaseModel):
+    """Lightweight shape for the index page — no scenes payload."""
+    id: UUID
+    project_id: UUID
+    title: str
+    status: str
+    shoot_date: Optional[date] = None
+    video_format: Optional[str] = None
+    platforms: List[str] = []
+    creator: Optional[UserResponse] = None
+    scene_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class SceneReorderRequest(BaseModel):
+    """Bulk reorder — list of scene IDs in their new order."""
+    scene_ids: List[UUID]
 
