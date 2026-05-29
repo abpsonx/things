@@ -19,6 +19,10 @@ export default function ChatWidget() {
   const [orgName, setOrgName] = useState<string>("");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
+  // DM channel metadata keyed by partner user_id — last_message snippet
+  // supaya bisa tampilkan "siapa yang ngomong terakhir" walaupun pesan
+  // sudah dibaca (notification store cuma punya snippet untuk unread).
+  const [dmChannelByUser, setDmChannelByUser] = useState<Record<string, { last_message: any; unread_count: number }>>({});
   // Resolved org id used for navigation. Equals the URL :id when we're on
   // an /org/:id/* route, otherwise the user's first organization (looked
   // up in fetchData). Without this, opening a DM from non-org pages
@@ -40,17 +44,25 @@ export default function ChatWidget() {
   // Recompute DM summary whenever the notifications list changes.
   const dmBySender = useMemo(() => dmSummaryBySender(), [items, dmSummaryBySender]);
 
-  // Sort: unread DMs first (by latest), then alphabetical for the rest.
+  // Sort: unread DM first → recent activity (dari last_message) → alfabet.
   const sortedMembers = useMemo(() => {
+    const lastAtFor = (uid: string): number => {
+      const sum = dmBySender[uid];
+      if (sum) return new Date(sum.lastAt).getTime();
+      const ch = dmChannelByUser[uid];
+      if (ch?.last_message?.created_at) return new Date(ch.last_message.created_at).getTime();
+      return 0;
+    };
     return [...members].sort((a, b) => {
-      const aSum = dmBySender[a.user_id];
-      const bSum = dmBySender[b.user_id];
-      if (aSum && !bSum) return -1;
-      if (!aSum && bSum) return 1;
-      if (aSum && bSum) return new Date(bSum.lastAt).getTime() - new Date(aSum.lastAt).getTime();
+      const aUnread = dmBySender[a.user_id] ? 1 : 0;
+      const bUnread = dmBySender[b.user_id] ? 1 : 0;
+      if (aUnread !== bUnread) return bUnread - aUnread;
+      const aLast = lastAtFor(a.user_id);
+      const bLast = lastAtFor(b.user_id);
+      if (aLast !== bLast) return bLast - aLast;
       return (a.user?.name || "").localeCompare(b.user?.name || "");
     });
-  }, [members, dmBySender]);
+  }, [members, dmBySender, dmChannelByUser]);
 
   useEffect(() => {
     if (isOpen) {
@@ -70,14 +82,27 @@ export default function ChatWidget() {
       }
       if (targetOrgId) {
         setActiveOrgId(targetOrgId);
-        // Parallel fetch: workspace detail (members + name) + projects in workspace.
-        const [detailRes, projectsRes] = await Promise.all([
+        // Parallel: workspace detail + projects + DM channels (last_message preview).
+        const [detailRes, projectsRes, dmRes] = await Promise.all([
           api.get(`/organizations/${targetOrgId}`),
           api.get(`/organizations/${targetOrgId}/projects`).catch(() => ({ data: [] })),
+          api.get(`/dm/channels?org_id=${targetOrgId}`).catch(() => ({ data: [] })),
         ]);
         setMembers(detailRes.data.members.filter((m: any) => m.user_id !== currentUser?.id));
         setOrgName(detailRes.data.name || "");
         setProjects(Array.isArray(projectsRes.data) ? projectsRes.data : []);
+        const dmChannels = Array.isArray(dmRes.data) ? dmRes.data : [];
+        const map: Record<string, { last_message: any; unread_count: number }> = {};
+        for (const ch of dmChannels) {
+          const other = ch.user1_id === currentUser?.id ? ch.user2_id : ch.user1_id;
+          if (other) {
+            map[String(other)] = {
+              last_message: ch.last_message || null,
+              unread_count: ch.unread_count || 0,
+            };
+          }
+        }
+        setDmChannelByUser(map);
       }
     } catch (err) {
       console.error("Failed to fetch chat data", err);
@@ -211,6 +236,20 @@ export default function ChatWidget() {
                 filteredMembers.map((member) => {
                   const summary = dmBySender[member.user_id];
                   const hasUnread = !!summary;
+                  // Preview: snippet unread (paling real-time) → fallback
+                  // last_message dari channel API. Prefix "Kamu: " kalau
+                  // pesan terakhir dari user sendiri biar tau siapa yang
+                  // mengakhiri obrolan. Tetap kasih role kalau belum ada
+                  // chat sama sekali.
+                  const chanMeta = dmChannelByUser[member.user_id];
+                  const lastMsg = chanMeta?.last_message;
+                  const fromMe = lastMsg && String(lastMsg.user_id) === String(currentUser?.id);
+                  const previewText = hasUnread
+                    ? summary!.lastSnippet
+                    : lastMsg
+                      ? `${fromMe ? "Kamu: " : ""}${lastMsg.content || (lastMsg.is_attachment ? "📎 Lampiran" : "")}`
+                      : null;
+                  const previewTime = summary?.lastAt || lastMsg?.created_at;
                   return (
                     <button
                       key={member.id}
@@ -242,15 +281,18 @@ export default function ChatWidget() {
                           )}>
                             {member.user.name}
                           </p>
-                          {summary && (
+                          {previewTime && (
                             <span className="text-[9px] text-muted-foreground shrink-0">
-                              {formatDistanceToNow(new Date(summary.lastAt), { addSuffix: false, locale: idLocale })}
+                              {formatDistanceToNow(new Date(previewTime), { addSuffix: false, locale: idLocale })}
                             </span>
                           )}
                         </div>
-                        {summary ? (
-                          <p className="text-[11px] text-foreground/70 truncate mt-0.5">
-                            {summary.lastSnippet}
+                        {previewText ? (
+                          <p className={cn(
+                            "text-[11px] truncate mt-0.5",
+                            hasUnread ? "text-foreground/80 font-semibold" : "text-muted-foreground/80",
+                          )}>
+                            {previewText}
                           </p>
                         ) : (
                           <p className="text-[10px] text-muted-foreground capitalize">{member.role}</p>
