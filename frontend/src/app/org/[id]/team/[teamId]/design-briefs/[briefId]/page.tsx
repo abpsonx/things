@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   Image as ImageIcon, ChevronLeft, Loader2, Trash2, Upload, MapPin,
-  Check, X, MessageCircle,
+  Check, X, MessageCircle, Plus, Square as SquareIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -22,10 +22,14 @@ interface Annotation {
   creator: { id: string; name: string; avatar_url?: string } | null;
   x_pct: number;
   y_pct: number;
+  w_pct?: number | null;
+  h_pct?: number | null;
   content: string;
   resolved: boolean;
   created_at: string;
 }
+
+interface CustomProp { name: string; value: string }
 
 interface Brief {
   id: string;
@@ -38,6 +42,7 @@ interface Brief {
   hashtag: string | null;
   reference_url: string | null;
   final_image_url: string | null;
+  custom_properties: CustomProp[];
   status: string;
   annotations: Annotation[];
   creator: { id: string; name: string; avatar_url?: string } | null;
@@ -64,12 +69,18 @@ export default function DesignBriefDetailPage() {
     hashtag: "", reference_url: "", status: "draft",
   });
 
-  // Annotation state
+  // Annotation state — drag-to-box. pendingPin sekarang berbentuk:
+  //   { x, y, w?, h? } — saat mousedown set anchor, drag bikin width/height,
+  //   release minimal threshold dibawah ini dianggap pin titik (w/h undef).
   const imgRef = useRef<HTMLImageElement>(null);
-  const [pendingPin, setPendingPin] = useState<{ x: number; y: number } | null>(null);
+  const dragStart = useRef<{ x: number; y: number } | null>(null);
+  const [pendingPin, setPendingPin] = useState<{ x: number; y: number; w?: number; h?: number } | null>(null);
   const [pendingNote, setPendingNote] = useState("");
   const [activeAnnotation, setActiveAnnotation] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Custom properties draft (Notion-style add row)
+  const [propDraftName, setPropDraftName] = useState("");
+  const [propDraftValue, setPropDraftValue] = useState("");
 
   const fetchBrief = useCallback(async () => {
     try {
@@ -85,6 +96,11 @@ export default function DesignBriefDetailPage() {
         reference_url: res.data.reference_url || "",
         status: res.data.status || "draft",
       });
+      // Pastikan custom_properties bentuknya selalu array (backend bisa
+      // return null kalau row dibuat sebelum migrasi).
+      if (!Array.isArray(res.data.custom_properties)) {
+        res.data.custom_properties = [];
+      }
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || "Gagal memuat brief");
     } finally {
@@ -129,13 +145,56 @@ export default function DesignBriefDetailPage() {
     }
   };
 
-  const onImageClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!brief?.final_image_url || activeAnnotation || pendingPin) return;
+  // ─── Drag-to-box annotation handlers ────────────────────────────────────
+  const pctFromEvent = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * 100;
     const y = ((e.clientY - rect.top) / rect.height) * 100;
-    if (x < 0 || x > 100 || y < 0 || y > 100) return;
-    setPendingPin({ x, y });
+    return { x: Math.max(0, Math.min(100, x)), y: Math.max(0, Math.min(100, y)) };
+  };
+  const onImageMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!brief?.final_image_url || activeAnnotation || pendingPin) return;
+    if (e.button !== 0) return;
+    const { x, y } = pctFromEvent(e);
+    dragStart.current = { x, y };
+  };
+  const onImageMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!dragStart.current) return;
+    const { x, y } = pctFromEvent(e);
+    const dx = x - dragStart.current.x;
+    const dy = y - dragStart.current.y;
+    // Live preview pakai pendingPin sementara — kalau drag sudah > 1.5%
+    // di salah satu axis, render box, else tetap pin.
+    const w = Math.abs(dx);
+    const h = Math.abs(dy);
+    if (w > 1.5 || h > 1.5) {
+      setPendingPin({
+        x: dx >= 0 ? dragStart.current.x : x,
+        y: dy >= 0 ? dragStart.current.y : y,
+        w,
+        h,
+      });
+    }
+  };
+  const onImageMouseUp = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!dragStart.current) return;
+    const start = dragStart.current;
+    dragStart.current = null;
+    const { x, y } = pctFromEvent(e);
+    const dx = x - start.x;
+    const dy = y - start.y;
+    const w = Math.abs(dx);
+    const h = Math.abs(dy);
+    // Threshold: drag < 1.5% di kedua axis dianggap pin titik.
+    if (w < 1.5 && h < 1.5) {
+      setPendingPin({ x: start.x, y: start.y });
+    } else {
+      setPendingPin({
+        x: dx >= 0 ? start.x : x,
+        y: dy >= 0 ? start.y : y,
+        w, h,
+      });
+    }
     setPendingNote("");
   };
 
@@ -143,17 +202,49 @@ export default function DesignBriefDetailPage() {
     e.preventDefault();
     if (!pendingPin || !pendingNote.trim()) return;
     try {
-      const res = await api.post(`${base}/${briefId}/annotations`, {
+      const payload: any = {
         x_pct: pendingPin.x,
         y_pct: pendingPin.y,
         content: pendingNote.trim(),
-      });
+      };
+      if (pendingPin.w !== undefined && pendingPin.h !== undefined) {
+        payload.w_pct = pendingPin.w;
+        payload.h_pct = pendingPin.h;
+      }
+      const res = await api.post(`${base}/${briefId}/annotations`, payload);
       setBrief((prev) => prev ? { ...prev, annotations: [...prev.annotations, res.data] } : prev);
       setPendingPin(null);
       setPendingNote("");
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || "Gagal menyimpan annotation");
     }
+  };
+
+  // ─── Custom properties ──────────────────────────────────────────────────
+  const saveCustomProps = async (next: CustomProp[]) => {
+    setBrief((prev) => prev ? { ...prev, custom_properties: next } : prev);
+    try {
+      await api.patch(`${base}/${briefId}`, { custom_properties: next });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || "Gagal menyimpan properti");
+      fetchBrief();
+    }
+  };
+  const addCustomProp = () => {
+    if (!brief || !propDraftName.trim()) return;
+    const next = [...(brief.custom_properties || []), { name: propDraftName.trim(), value: propDraftValue }];
+    setPropDraftName(""); setPropDraftValue("");
+    saveCustomProps(next);
+  };
+  const updateCustomProp = (idx: number, patch: Partial<CustomProp>) => {
+    if (!brief) return;
+    const next = brief.custom_properties.map((p, i) => i === idx ? { ...p, ...patch } : p);
+    saveCustomProps(next);
+  };
+  const removeCustomProp = (idx: number) => {
+    if (!brief) return;
+    const next = brief.custom_properties.filter((_, i) => i !== idx);
+    saveCustomProps(next);
   };
 
   const toggleResolved = async (a: Annotation) => {
@@ -295,6 +386,66 @@ export default function DesignBriefDetailPage() {
               onChange={(v) => setForm({ ...form, reference_url: v })}
               onBlur={() => { if (form.reference_url !== (brief.reference_url || "")) saveHeader({ reference_url: form.reference_url }); }}
             />
+
+            {/* Custom properties — Notion-style ad-hoc field rows */}
+            <div className="space-y-1.5 pt-2 border-t border-border">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Properti Tambahan</label>
+              {brief.custom_properties.length > 0 && (
+                <div className="space-y-1.5">
+                  {brief.custom_properties.map((p, i) => (
+                    <div key={i} className="group flex items-center gap-1">
+                      <input
+                        value={p.name}
+                        onChange={(e) => updateCustomProp(i, { name: e.target.value })}
+                        onBlur={() => { if (!p.name.trim()) removeCustomProp(i); }}
+                        placeholder="Nama"
+                        className="w-28 px-2 py-1.5 text-[11px] font-bold bg-card border border-border rounded-lg outline-none focus:border-primary"
+                      />
+                      <input
+                        value={p.value}
+                        onChange={(e) => updateCustomProp(i, { value: e.target.value })}
+                        placeholder="Nilai"
+                        className="flex-1 min-w-0 px-2 py-1.5 text-xs bg-card border border-border rounded-lg outline-none focus:border-primary"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeCustomProp(i)}
+                        title="Hapus"
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded text-muted-foreground hover:text-destructive transition-opacity"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* Add row */}
+              <form
+                onSubmit={(e) => { e.preventDefault(); addCustomProp(); }}
+                className="flex items-center gap-1"
+              >
+                <input
+                  value={propDraftName}
+                  onChange={(e) => setPropDraftName(e.target.value)}
+                  placeholder="Nama properti"
+                  className="w-28 px-2 py-1.5 text-[11px] font-bold bg-secondary/30 border border-dashed border-border rounded-lg outline-none focus:border-primary focus:bg-card"
+                />
+                <input
+                  value={propDraftValue}
+                  onChange={(e) => setPropDraftValue(e.target.value)}
+                  placeholder="Nilai"
+                  className="flex-1 min-w-0 px-2 py-1.5 text-xs bg-secondary/30 border border-dashed border-border rounded-lg outline-none focus:border-primary focus:bg-card"
+                />
+                <button
+                  type="submit"
+                  disabled={!propDraftName.trim()}
+                  title="Tambah"
+                  className="p-1.5 rounded-lg bg-primary text-primary-foreground disabled:opacity-30 hover:shadow-md transition-all"
+                >
+                  <Plus className="w-3 h-3" />
+                </button>
+              </form>
+            </div>
           </div>
 
           {/* Image + annotation panel */}
@@ -302,45 +453,94 @@ export default function DesignBriefDetailPage() {
             {brief.final_image_url ? (
               <>
                 <div className="rounded-2xl border border-border bg-card overflow-hidden">
+                  {/* Image container: tinggi maks supaya artwork vertikal/
+                      ukuran besar tidak meluap. object-contain menjaga aspect
+                      ratio, bg-black-grid biar area kosong (letterbox) jelas. */}
                   <div
-                    className="relative cursor-crosshair select-none"
-                    onClick={onImageClick}
+                    className="relative cursor-crosshair select-none bg-secondary/40 flex items-center justify-center"
+                    style={{ maxHeight: "min(70vh, 720px)" }}
+                    onMouseDown={onImageMouseDown}
+                    onMouseMove={onImageMouseMove}
+                    onMouseUp={onImageMouseUp}
+                    onMouseLeave={() => { dragStart.current = null; }}
                   >
                     <img
                       ref={imgRef}
                       src={brief.final_image_url}
                       alt={brief.title}
-                      className="w-full h-auto block"
+                      className="block max-w-full object-contain"
+                      style={{ maxHeight: "min(70vh, 720px)" }}
                       draggable={false}
                     />
-                    {/* Existing pins */}
-                    {brief.annotations.map((a, idx) => (
-                      <button
-                        key={a.id}
-                        onClick={(e) => { e.stopPropagation(); setActiveAnnotation(a.id === activeAnnotation ? null : a.id); }}
-                        style={{ left: `${a.x_pct}%`, top: `${a.y_pct}%` }}
-                        className={cn(
-                          "absolute -translate-x-1/2 -translate-y-full w-7 h-7 rounded-full rounded-bl-none flex items-center justify-center text-[10px] font-extrabold text-white shadow-lg ring-2 ring-white transition-transform hover:scale-110",
-                          a.resolved ? "bg-emerald-500" : "bg-rose-500",
-                          activeAnnotation === a.id && "scale-125",
-                        )}
-                        title={a.content}
-                      >
-                        {idx + 1}
-                      </button>
-                    ))}
-                    {/* Pending pin */}
+                    {/* Existing annotations: pin atau box */}
+                    {brief.annotations.map((a, idx) => {
+                      const isBox = a.w_pct != null && a.h_pct != null && (Number(a.w_pct) > 0 || Number(a.h_pct) > 0);
+                      if (isBox) {
+                        return (
+                          <button
+                            key={a.id}
+                            onClick={(e) => { e.stopPropagation(); setActiveAnnotation(a.id === activeAnnotation ? null : a.id); }}
+                            style={{
+                              left: `${a.x_pct}%`,
+                              top: `${a.y_pct}%`,
+                              width: `${a.w_pct}%`,
+                              height: `${a.h_pct}%`,
+                            }}
+                            className={cn(
+                              "absolute border-2 rounded-md transition-all hover:bg-rose-500/10",
+                              a.resolved ? "border-emerald-500 bg-emerald-500/5" : "border-rose-500 bg-rose-500/5",
+                              activeAnnotation === a.id && "ring-2 ring-offset-1",
+                              activeAnnotation === a.id && (a.resolved ? "ring-emerald-500" : "ring-rose-500"),
+                            )}
+                            title={a.content}
+                          >
+                            <span className={cn(
+                              "absolute -top-2 -left-2 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-extrabold text-white shadow ring-2 ring-white",
+                              a.resolved ? "bg-emerald-500" : "bg-rose-500",
+                            )}>{idx + 1}</span>
+                          </button>
+                        );
+                      }
+                      return (
+                        <button
+                          key={a.id}
+                          onClick={(e) => { e.stopPropagation(); setActiveAnnotation(a.id === activeAnnotation ? null : a.id); }}
+                          style={{ left: `${a.x_pct}%`, top: `${a.y_pct}%` }}
+                          className={cn(
+                            "absolute -translate-x-1/2 -translate-y-full w-7 h-7 rounded-full rounded-bl-none flex items-center justify-center text-[10px] font-extrabold text-white shadow-lg ring-2 ring-white transition-transform hover:scale-110",
+                            a.resolved ? "bg-emerald-500" : "bg-rose-500",
+                            activeAnnotation === a.id && "scale-125",
+                          )}
+                          title={a.content}
+                        >
+                          {idx + 1}
+                        </button>
+                      );
+                    })}
+                    {/* Pending pin/box preview */}
                     {pendingPin && (
-                      <div
-                        style={{ left: `${pendingPin.x}%`, top: `${pendingPin.y}%` }}
-                        className="absolute -translate-x-1/2 -translate-y-full w-7 h-7 rounded-full rounded-bl-none flex items-center justify-center bg-primary text-white shadow-lg ring-2 ring-white animate-pulse"
-                      >
-                        <MapPin className="w-3 h-3" />
-                      </div>
+                      pendingPin.w !== undefined && pendingPin.h !== undefined ? (
+                        <div
+                          style={{
+                            left: `${pendingPin.x}%`,
+                            top: `${pendingPin.y}%`,
+                            width: `${pendingPin.w}%`,
+                            height: `${pendingPin.h}%`,
+                          }}
+                          className="absolute border-2 border-primary border-dashed bg-primary/10 rounded-md animate-pulse pointer-events-none"
+                        />
+                      ) : (
+                        <div
+                          style={{ left: `${pendingPin.x}%`, top: `${pendingPin.y}%` }}
+                          className="absolute -translate-x-1/2 -translate-y-full w-7 h-7 rounded-full rounded-bl-none flex items-center justify-center bg-primary text-white shadow-lg ring-2 ring-white animate-pulse pointer-events-none"
+                        >
+                          <MapPin className="w-3 h-3" />
+                        </div>
+                      )
                     )}
                   </div>
                   <div className="flex items-center justify-between gap-3 p-3 border-t border-border text-[11px] text-muted-foreground">
-                    <span>Klik di mana saja pada gambar untuk menambah pin revisi.</span>
+                    <span><strong>Klik</strong> = pin titik · <strong>Drag</strong> = kotak revisi area.</span>
                     <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary hover:bg-secondary/80 cursor-pointer text-xs font-bold transition-colors">
                       {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
                       Ganti Image
@@ -359,7 +559,12 @@ export default function DesignBriefDetailPage() {
                 {pendingPin && (
                   <form onSubmit={submitAnnotation} className="p-3 rounded-2xl border-2 border-primary border-dashed bg-primary/5 space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-primary">Pin baru ({pendingPin.x.toFixed(1)}%, {pendingPin.y.toFixed(1)}%)</span>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-primary inline-flex items-center gap-1.5">
+                        {pendingPin.w !== undefined ? <><SquareIcon className="w-3 h-3" />Kotak baru</> : <><MapPin className="w-3 h-3" />Pin baru</>}
+                        <span className="opacity-70">
+                          ({pendingPin.x.toFixed(1)}%, {pendingPin.y.toFixed(1)}%)
+                        </span>
+                      </span>
                       <button type="button" onClick={() => { setPendingPin(null); setPendingNote(""); }}
                         className="p-1 rounded text-muted-foreground hover:text-destructive">
                         <X className="w-3.5 h-3.5" />

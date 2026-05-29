@@ -65,6 +65,22 @@ async def lifespan(app: FastAPI):
             except Exception:
                 pass
 
+        # design brief — box annotation (w_pct/h_pct nullable) +
+        # custom_properties JSONB pada brief.
+        for col in ("w_pct", "h_pct"):
+            try:
+                await conn.execute(text(
+                    f"ALTER TABLE design_brief_annotations ADD COLUMN IF NOT EXISTS {col} NUMERIC(5,2)"
+                ))
+            except Exception:
+                pass
+        try:
+            await conn.execute(text(
+                "ALTER TABLE design_briefs ADD COLUMN IF NOT EXISTS custom_properties JSONB DEFAULT '[]'::jsonb"
+            ))
+        except Exception:
+            pass
+
         # brief brand / reference_url / final_url
         for col, col_type in [
             ("brand", "VARCHAR(255)"),

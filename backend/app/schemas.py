@@ -626,6 +626,8 @@ class DesignBriefBase(BaseModel):
     hashtag: Optional[str] = None
     reference_url: Optional[str] = None
     final_image_url: Optional[str] = None
+    # Notion-style: list of {name, value} ad-hoc properties.
+    custom_properties: List[dict] = []
     status: str = "draft"  # draft | onprogress | review | published
 
 
@@ -642,12 +644,17 @@ class DesignBriefUpdate(BaseModel):
     hashtag: Optional[str] = None
     reference_url: Optional[str] = None
     final_image_url: Optional[str] = None
+    custom_properties: Optional[List[dict]] = None
     status: Optional[str] = None
 
 
 class DesignBriefAnnotationCreate(BaseModel):
     x_pct: float = Field(..., ge=0, le=100)
     y_pct: float = Field(..., ge=0, le=100)
+    # Opsional: kalau ada, annotation berupa rectangle (drag-to-box).
+    # Kalau null → pin titik.
+    w_pct: Optional[float] = Field(None, ge=0, le=100)
+    h_pct: Optional[float] = Field(None, ge=0, le=100)
     content: str = Field(..., min_length=1)
 
 
@@ -663,6 +670,8 @@ class DesignBriefAnnotationResponse(BaseModel):
     creator: Optional[UserResponse] = None
     x_pct: float
     y_pct: float
+    w_pct: Optional[float] = None
+    h_pct: Optional[float] = None
     content: str
     resolved: bool = False
     created_at: datetime

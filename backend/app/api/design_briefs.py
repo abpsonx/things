@@ -236,6 +236,8 @@ async def add_annotation(
         creator_id=current_user.id,
         x_pct=data.x_pct,
         y_pct=data.y_pct,
+        w_pct=data.w_pct,
+        h_pct=data.h_pct,
         content=data.content,
     )
     db.add(ann)

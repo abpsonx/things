@@ -7,7 +7,7 @@ ber-pin di atas gambar untuk review/revisi (mirip Figma comments)."""
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import Column, String, Text, DateTime, Date, ForeignKey, Boolean, Numeric
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 
@@ -28,6 +28,9 @@ class DesignBrief(Base):
     hashtag = Column(Text, nullable=True)                 # daftar #tag, free text
     reference_url = Column(Text, nullable=True)           # mood/competitor link
     final_image_url = Column(Text, nullable=True)         # artwork hasil jadi (uploaded)
+    # Properti tambahan ad-hoc — list of {name, value}. Dipertahankan urutan
+    # supaya UI bisa render sesuai input user (Notion-style).
+    custom_properties = Column(JSONB, nullable=True, default=list)
 
     # 4-step status: draft → onprogress → review → published
     status = Column(String(20), default="draft", nullable=False)
@@ -55,9 +58,12 @@ class DesignBriefAnnotation(Base):
     creator_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     # Posisi pin dalam persentase (0-100). Numeric biar tidak hilang presisi
-    # ketika browser pakai sub-pixel coordinate.
+    # ketika browser pakai sub-pixel coordinate. w_pct/h_pct opsional: kalau
+    # null → annotation berupa pin titik, kalau ada → rectangle (drag-to-box).
     x_pct = Column(Numeric(5, 2), nullable=False)
     y_pct = Column(Numeric(5, 2), nullable=False)
+    w_pct = Column(Numeric(5, 2), nullable=True)
+    h_pct = Column(Numeric(5, 2), nullable=True)
     content = Column(Text, nullable=False)
     resolved = Column(Boolean, default=False, nullable=False)
 
