@@ -517,8 +517,26 @@ async def set_team_task_briefs(
     if not isinstance(incoming, list):
         raise HTTPException(status_code=400, detail="brief_ids harus berupa list")
 
-    # Drop duplicate + invalid IDs, restrict to briefs in this team.
     incoming_set = {str(i) for i in incoming if i}
+    current_set = {str(x) for x in (task.linked_brief_ids or [])}
+    added = incoming_set - current_set
+    removed = current_set - incoming_set
+
+    # Aturan: hanya pembuat brief yang boleh menautkan atau melepas
+    # brief-nya ke task. Superuser bypass untuk moderasi.
+    touched = added | removed
+    if touched and not is_superuser(current_user):
+        b_res = await db.execute(
+            select(ContentBrief).where(ContentBrief.id.in_(list(touched)))
+        )
+        for b in b_res.scalars().all():
+            if str(b.creator_id) != str(current_user.id):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Hanya pembuat brief '{b.title}' yang boleh menautkannya ke task",
+                )
+
+    # Validate all incoming IDs belong to this team (prevent cross-team links).
     if incoming_set:
         b_res = await db.execute(
             select(ContentBrief.id).where(

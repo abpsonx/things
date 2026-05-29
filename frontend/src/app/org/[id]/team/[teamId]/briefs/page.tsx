@@ -93,7 +93,7 @@ export default function BriefsListPage() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
               <Clapperboard className="w-8 h-8 text-primary" />
-              Brief Konten Iklan
+              Brief Konten
             </h1>
             <p className="text-muted-foreground mt-1 text-sm">Storyboard terstruktur per video iklan — gantikan spreadsheet.</p>
           </div>

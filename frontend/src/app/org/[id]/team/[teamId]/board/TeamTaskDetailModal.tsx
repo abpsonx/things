@@ -39,6 +39,7 @@ import {
   Clapperboard,
 } from "lucide-react";
 import { useParams } from "next/navigation";
+import { useAuthStore } from "@/store/useAuthStore";
 import { cn, formatDate } from "@/lib/utils";
 
 interface TeamTaskDetailProps {
@@ -73,6 +74,7 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
   const [newLabelName, setNewLabelName] = useState("");
   const [newLabelColor, setNewLabelColor] = useState("#3b82f6");
   const [teamBriefs, setTeamBriefs] = useState<any[]>([]);
+  const { user: currentUser } = useAuthStore();
 
   const statusOptions = [
     { value: "todo", label: "To Do" },
@@ -801,20 +803,22 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
           </div>
           </div>
 
-          {/* Brief Terkait — taut brief iklan ke task agar "link hasil jadi"
-              gampang diakses dari board. Hanya ditampilkan kalau tim punya
-              minimal satu brief (kalau belum ada, jangan kasih noise). */}
-          {teamBriefs.length > 0 && (
-            <div className="space-y-2 pt-2">
-              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1">
-                <Clapperboard className="w-3 h-3" /> Brief Terkait
-                {linkedBriefs.length > 0 && (
-                  <span className="text-primary">({linkedBriefs.length})</span>
-                )}
-              </label>
+          {/* Brief Konten Terkait — selalu tampil. Picker hanya menawarkan
+              brief yang dibuat oleh user ini (sesuai aturan: hanya pembuat
+              brief yang boleh menautkan brief-nya ke task). Tombol lepas
+              tautan juga hanya muncul untuk brief milik user sendiri. */}
+          <div className="space-y-2 pt-2">
+            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1">
+              <Clapperboard className="w-3 h-3" /> Brief Konten Terkait
+              {linkedBriefs.length > 0 && (
+                <span className="text-primary">({linkedBriefs.length})</span>
+              )}
+            </label>
 
-              <div className="space-y-1.5">
-                {linkedBriefs.map((b) => (
+            <div className="space-y-1.5">
+              {linkedBriefs.map((b) => {
+                const isMine = b.creator?.id && currentUser?.id && String(b.creator.id) === String(currentUser.id);
+                return (
                   <div key={b.id} className="p-2 rounded-lg border border-border bg-card space-y-1 group">
                     <div className="flex items-start justify-between gap-2">
                       <a
@@ -824,13 +828,15 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
                       >
                         {b.title}
                       </a>
-                      <button
-                        onClick={() => toggleBriefLink(b.id)}
-                        title="Lepas tautan"
-                        className="opacity-0 group-hover:opacity-100 p-0.5 text-muted-foreground hover:text-destructive transition-opacity"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
+                      {isMine && (
+                        <button
+                          onClick={() => toggleBriefLink(b.id)}
+                          title="Lepas tautan"
+                          className="opacity-0 group-hover:opacity-100 p-0.5 text-muted-foreground hover:text-destructive transition-opacity"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
                     </div>
                     {b.final_url ? (
                       <a
@@ -845,47 +851,67 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
                       <div className="text-[10px] italic text-muted-foreground">Belum ada link hasil jadi</div>
                     )}
                   </div>
-                ))}
+                );
+              })}
 
-                <Popover
-                  align="right"
-                  trigger={
-                    <button className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-bold text-muted-foreground rounded-lg border border-dashed border-border hover:border-primary hover:text-primary transition-all">
-                      <Plus className="w-3 h-3" /> Taut brief
-                    </button>
-                  }
-                >
-                  <div className="p-2 space-y-1 w-72 max-h-72 overflow-y-auto">
-                    <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">
-                      Pilih brief
+              {(() => {
+                const myBriefs = teamBriefs.filter((b) => b.creator?.id && currentUser?.id && String(b.creator.id) === String(currentUser.id));
+                if (teamBriefs.length === 0) {
+                  return (
+                    <a
+                      href={`/org/${orgId}/team/${teamId}/briefs`}
+                      className="block w-full text-center py-2 text-[10px] font-bold text-muted-foreground rounded-lg border border-dashed border-border hover:border-primary hover:text-primary transition-all"
+                    >
+                      Belum ada brief di tim ini · Buat brief
+                    </a>
+                  );
+                }
+                if (myBriefs.length === 0 && linkedBriefs.length === 0) {
+                  return (
+                    <div className="text-[10px] italic text-muted-foreground text-center py-2 border border-dashed border-border rounded-lg">
+                      Hanya pembuat brief yang bisa menautkan ke task. Buat brief sendiri dulu ya.
                     </div>
-                    {teamBriefs.length === 0 && (
-                      <div className="px-2 py-3 text-[10px] italic text-muted-foreground text-center">
-                        Belum ada brief di tim ini.
+                  );
+                }
+                if (myBriefs.length === 0) {
+                  return null; // sudah ada linked (oleh creator), tapi user ini bukan creator → no add button
+                }
+                return (
+                  <Popover
+                    align="right"
+                    trigger={
+                      <button className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-bold text-muted-foreground rounded-lg border border-dashed border-border hover:border-primary hover:text-primary transition-all">
+                        <Plus className="w-3 h-3" /> Taut brief
+                      </button>
+                    }
+                  >
+                    <div className="p-2 space-y-1 w-72 max-h-72 overflow-y-auto">
+                      <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">
+                        Brief buatanmu
                       </div>
-                    )}
-                    {teamBriefs.map((b) => {
-                      const linked = linkedBriefIds.includes(b.id);
-                      return (
-                        <button
-                          key={b.id}
-                          onClick={() => toggleBriefLink(b.id)}
-                          className={cn(
-                            "w-full flex items-center justify-between gap-2 p-2 rounded-md text-left text-xs transition-colors",
-                            linked ? "bg-primary/5 text-primary" : "hover:bg-secondary text-foreground",
-                          )}
-                        >
-                          <span className="truncate flex-1">{b.title}</span>
-                          {b.final_url && <span className="text-[9px] uppercase tracking-widest text-muted-foreground">link</span>}
-                          {linked && <Check className="w-3 h-3 shrink-0" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </Popover>
-              </div>
+                      {myBriefs.map((b) => {
+                        const linked = linkedBriefIds.includes(b.id);
+                        return (
+                          <button
+                            key={b.id}
+                            onClick={() => toggleBriefLink(b.id)}
+                            className={cn(
+                              "w-full flex items-center justify-between gap-2 p-2 rounded-md text-left text-xs transition-colors",
+                              linked ? "bg-primary/5 text-primary" : "hover:bg-secondary text-foreground",
+                            )}
+                          >
+                            <span className="truncate flex-1">{b.title}</span>
+                            {b.final_url && <span className="text-[9px] uppercase tracking-widest text-muted-foreground">link</span>}
+                            {linked && <Check className="w-3 h-3 shrink-0" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </Popover>
+                );
+              })()}
             </div>
-          )}
+          </div>
 
           <div className="pt-6 border-t border-border mt-4 space-y-2">
             <button
