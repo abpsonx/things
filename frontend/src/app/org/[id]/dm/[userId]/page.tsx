@@ -100,6 +100,7 @@ export default function DMChatPage() {
   const [rm, setRm] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<any | null>(null);
   const [tp, setTp] = useState<string | null>(null); // other person's name while they're typing
+  const [avatarOpen, setAvatarOpen] = useState(false);
 
   const sc = useRef<HTMLDivElement>(null);
   const ws = useRef<WebSocket | null>(null);
@@ -304,10 +305,20 @@ export default function DMChatPage() {
       {/* Header */}
       <div className="px-5 py-3.5 border-b border-border bg-secondary/10 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary relative">
-            <UserIcon className="w-5 h-5" />
+          <button
+            type="button"
+            onClick={() => { if (ou?.avatar_url) setAvatarOpen(true); }}
+            title={ou?.avatar_url ? "Lihat foto" : ou?.name || "Profil"}
+            disabled={!ou?.avatar_url}
+            className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary relative overflow-hidden ring-1 ring-border hover:ring-primary/40 transition-all disabled:cursor-default disabled:hover:ring-border"
+          >
+            {ou?.avatar_url ? (
+              <img src={ou.avatar_url} alt={ou?.name || "Avatar"} className="w-full h-full object-cover" />
+            ) : (
+              <UserIcon className="w-5 h-5" />
+            )}
             <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-card" />
-          </div>
+          </button>
           <div><h2 className="text-sm font-bold flex items-center gap-1">{ou?.name || "Chat"} <ShieldCheck className="w-3 h-3 text-emerald-500" /></h2><p className="text-[10px] text-muted-foreground">Aktif sekarang</p></div>
         </div>
         <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
@@ -513,6 +524,29 @@ export default function DMChatPage() {
 
       {vf && <FileViewerModal isOpen={!!vf} onClose={() => setVf(null)} fileUrl={vf.url} fileName={vf.name} isImage={vf.isImage} isVideo={vf.isVideo} isAudio={vf.isAudio} isPdf={vf.isPdf} />}
       <StickerPicker isOpen={spr} onClose={() => setSpr(false)} onPick={sendStickerFromGiphy} />
+
+      {/* Avatar lightbox — click backdrop or × to dismiss */}
+      {avatarOpen && ou?.avatar_url && (
+        <div
+          onClick={() => setAvatarOpen(false)}
+          className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-150"
+        >
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setAvatarOpen(false); }}
+            className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+            aria-label="Tutup"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <img
+            src={ou.avatar_url}
+            alt={ou.name || "Foto profil"}
+            onClick={(e) => e.stopPropagation()}
+            className="max-w-[90vw] max-h-[85vh] rounded-2xl shadow-2xl object-contain"
+          />
+        </div>
+      )}
     </div>
   );
 }
