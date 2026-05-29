@@ -19,6 +19,9 @@ class User(Base):
     is_verified = Column(Boolean, default=False)
     role = Column(String(20), default="staff") # "admin" or "staff"
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    # Updated saat user's last socket disconnects (no more active tabs).
+    # Dipakai DM header buat tampilkan "Online" vs "Terakhir online 5 menit lalu".
+    last_seen_at = Column(DateTime(timezone=True), nullable=True)
     
     # Google OAuth
     google_access_token = Column(Text, nullable=True)

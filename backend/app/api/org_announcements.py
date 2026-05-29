@@ -14,10 +14,11 @@ from typing import List
 from app.core.database import get_db
 from app.core.permissions import is_superuser, require_org_manager
 from app.dependencies import get_current_user
-from app.models.announcement import Announcement, AnnouncementRecipient
+from app.models.announcement import Announcement, AnnouncementRecipient, AnnouncementRead, AnnouncementComment
 from app.models.organization import OrgMember
+from app.models.reaction import Reaction
 from app.models.user import User
-from app.schemas import AnnouncementCreate, AnnouncementResponse, AnnouncementUpdate
+from app.schemas import AnnouncementCreate, AnnouncementResponse, AnnouncementUpdate, UserResponse
 from app.services import log_activity
 from app.services.notification import notify_user
 
@@ -68,6 +69,35 @@ async def list_org_announcements(
     # For SECRET announcements: hide the recipient list from everyone except
     # the creator + platform superusers (so even other recipients can't see
     # who else got it).
+
+    # Bulk counters — hindari N+1 untuk read/comment counts.
+    from sqlalchemy import func as safunc
+    visible_ids = [a.id for a in visible]
+    read_counts: dict = {}
+    comment_counts: dict = {}
+    my_reads: set = set()
+    if visible_ids:
+        rc_res = await db.execute(
+            select(AnnouncementRead.announcement_id, safunc.count(AnnouncementRead.id))
+            .where(AnnouncementRead.announcement_id.in_(visible_ids))
+            .group_by(AnnouncementRead.announcement_id)
+        )
+        read_counts = {str(aid): int(n) for aid, n in rc_res.all()}
+        cc_res = await db.execute(
+            select(AnnouncementComment.announcement_id, safunc.count(AnnouncementComment.id))
+            .where(AnnouncementComment.announcement_id.in_(visible_ids))
+            .group_by(AnnouncementComment.announcement_id)
+        )
+        comment_counts = {str(aid): int(n) for aid, n in cc_res.all()}
+        mr_res = await db.execute(
+            select(AnnouncementRead.announcement_id)
+            .where(
+                AnnouncementRead.announcement_id.in_(visible_ids),
+                AnnouncementRead.user_id == current_user.id,
+            )
+        )
+        my_reads = {str(r[0]) for r in mr_res.all()}
+
     out = []
     for a in visible:
         resp = AnnouncementResponse.model_validate(a)
@@ -76,6 +106,9 @@ async def list_org_announcements(
             resp.recipient_ids = []
         else:
             resp.recipient_ids = [r.user_id for r in (a.recipients or [])]
+        resp.read_count = read_counts.get(str(a.id), 0)
+        resp.comment_count = comment_counts.get(str(a.id), 0)
+        resp.has_read = str(a.id) in my_reads or is_creator
         out.append(resp)
     return out
 
@@ -238,5 +271,241 @@ async def delete_org_announcement(
     if announcement.creator_id != current_user.id and not is_superuser(current_user):
         raise HTTPException(status_code=403, detail="Hanya pembuat atau Admin yang bisa menghapus")
     await db.delete(announcement)
+    await db.commit()
+    return None
+
+
+# ─── Read receipts ────────────────────────────────────────────────────────────
+
+async def _load_announcement(db, oid: UUID, ann_id: str) -> Announcement:
+    """Cari announcement + cek user boleh akses (member workspace + masuk audiens)."""
+    res = await db.execute(
+        select(Announcement)
+        .options(selectinload(Announcement.recipients))
+        .where(Announcement.id == UUID(ann_id), Announcement.org_id == oid)
+    )
+    ann = res.scalar_one_or_none()
+    if not ann:
+        raise HTTPException(status_code=404, detail="Pengumuman tidak ditemukan")
+    return ann
+
+
+@router.post("/{announcement_id}/read", status_code=status.HTTP_204_NO_CONTENT)
+async def mark_announcement_read(
+    org_id: str,
+    announcement_id: str,
+    db=Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Idempotent: rekam bahwa user ini sudah baca pengumuman. Unique constraint
+    menjaga supaya retry / multi-tab tidak menggandakan row."""
+    oid = UUID(org_id)
+    await _require_member(db, oid, current_user.id)
+    ann = await _load_announcement(db, oid, announcement_id)
+
+    # Jangan record kalau user adalah creator-nya sendiri (tidak masuk hitungan).
+    if str(ann.creator_id) == str(current_user.id):
+        return None
+
+    # Audience check — kalau ada recipient list dan user tidak masuk, ignore.
+    rids = {str(r.user_id) for r in (ann.recipients or [])}
+    if rids and str(current_user.id) not in rids and not is_superuser(current_user):
+        raise HTTPException(status_code=403, detail="Pengumuman ini bukan untukmu")
+
+    existing = await db.execute(
+        select(AnnouncementRead).where(
+            AnnouncementRead.announcement_id == ann.id,
+            AnnouncementRead.user_id == current_user.id,
+        )
+    )
+    if existing.scalar_one_or_none():
+        return None
+    db.add(AnnouncementRead(announcement_id=ann.id, user_id=current_user.id))
+    await db.commit()
+    return None
+
+
+@router.get("/{announcement_id}/readers", response_model=List[UserResponse])
+async def list_announcement_readers(
+    org_id: str,
+    announcement_id: str,
+    db=Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Siapa saja yang sudah baca. Hanya pembuat + superuser yang boleh lihat
+    (privacy — anggota lain tidak perlu tahu siapa baca apa)."""
+    oid = UUID(org_id)
+    await _require_member(db, oid, current_user.id)
+    ann = await _load_announcement(db, oid, announcement_id)
+    if str(ann.creator_id) != str(current_user.id) and not is_superuser(current_user):
+        raise HTTPException(status_code=403, detail="Hanya pembuat yang bisa melihat daftar pembaca")
+    res = await db.execute(
+        select(User)
+        .join(AnnouncementRead, AnnouncementRead.user_id == User.id)
+        .where(AnnouncementRead.announcement_id == ann.id)
+        .order_by(AnnouncementRead.read_at.desc())
+    )
+    return res.scalars().all()
+
+
+# ─── Reactions ────────────────────────────────────────────────────────────────
+
+@router.post("/{announcement_id}/reactions/{emoji}", status_code=status.HTTP_204_NO_CONTENT)
+async def toggle_announcement_reaction(
+    org_id: str,
+    announcement_id: str,
+    emoji: str,
+    db=Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Toggle 1 emoji reaksi pada pengumuman. Pakai polymorphic Reaction
+    dengan target_type='announcement'."""
+    oid = UUID(org_id)
+    await _require_member(db, oid, current_user.id)
+    ann = await _load_announcement(db, oid, announcement_id)
+    existing = await db.execute(
+        select(Reaction).where(
+            Reaction.target_type == "announcement",
+            Reaction.target_id == ann.id,
+            Reaction.user_id == current_user.id,
+            Reaction.emoji == emoji,
+        )
+    )
+    row = existing.scalar_one_or_none()
+    if row:
+        await db.delete(row)
+    else:
+        db.add(Reaction(
+            target_type="announcement",
+            target_id=ann.id,
+            user_id=current_user.id,
+            emoji=emoji,
+        ))
+    await db.commit()
+    return None
+
+
+@router.get("/{announcement_id}/reactions")
+async def list_announcement_reactions(
+    org_id: str,
+    announcement_id: str,
+    db=Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Aggregated: { emoji: { count, mine: bool, users: [{id,name}] } }."""
+    oid = UUID(org_id)
+    await _require_member(db, oid, current_user.id)
+    ann = await _load_announcement(db, oid, announcement_id)
+    res = await db.execute(
+        select(Reaction)
+        .options(selectinload(Reaction.user))
+        .where(Reaction.target_type == "announcement", Reaction.target_id == ann.id)
+        .order_by(Reaction.created_at.asc())
+    )
+    buckets: dict = {}
+    for r in res.scalars().all():
+        b = buckets.setdefault(r.emoji, {"emoji": r.emoji, "count": 0, "mine": False, "users": []})
+        b["count"] += 1
+        if str(r.user_id) == str(current_user.id):
+            b["mine"] = True
+        if r.user:
+            b["users"].append({"id": str(r.user.id), "name": r.user.name})
+    return list(buckets.values())
+
+
+# ─── Comments ─────────────────────────────────────────────────────────────────
+
+@router.get("/{announcement_id}/comments")
+async def list_announcement_comments(
+    org_id: str,
+    announcement_id: str,
+    db=Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    oid = UUID(org_id)
+    await _require_member(db, oid, current_user.id)
+    ann = await _load_announcement(db, oid, announcement_id)
+    res = await db.execute(
+        select(AnnouncementComment)
+        .options(selectinload(AnnouncementComment.user))
+        .where(AnnouncementComment.announcement_id == ann.id)
+        .order_by(AnnouncementComment.created_at.asc())
+    )
+    out = []
+    for c in res.scalars().all():
+        out.append({
+            "id": str(c.id),
+            "announcement_id": str(c.announcement_id),
+            "content": c.content,
+            "created_at": c.created_at.isoformat(),
+            "user": {
+                "id": str(c.user.id),
+                "name": c.user.name,
+                "avatar_url": c.user.avatar_url,
+            } if c.user else None,
+        })
+    return out
+
+
+@router.post("/{announcement_id}/comments", status_code=status.HTTP_201_CREATED)
+async def add_announcement_comment(
+    org_id: str,
+    announcement_id: str,
+    data: dict,  # {"content": "..."}
+    db=Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    oid = UUID(org_id)
+    await _require_member(db, oid, current_user.id)
+    ann = await _load_announcement(db, oid, announcement_id)
+    content = (data.get("content") or "").strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="Komentar tidak boleh kosong")
+    c = AnnouncementComment(announcement_id=ann.id, user_id=current_user.id, content=content)
+    db.add(c)
+    await db.commit()
+    await db.refresh(c, ["user"])
+    return {
+        "id": str(c.id),
+        "announcement_id": str(c.announcement_id),
+        "content": c.content,
+        "created_at": c.created_at.isoformat(),
+        "user": {
+            "id": str(c.user.id),
+            "name": c.user.name,
+            "avatar_url": c.user.avatar_url,
+        } if c.user else None,
+    }
+
+
+@router.delete("/{announcement_id}/comments/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_announcement_comment(
+    org_id: str,
+    announcement_id: str,
+    comment_id: str,
+    db=Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Penulis komentar sendiri atau creator pengumuman boleh hapus."""
+    oid = UUID(org_id)
+    await _require_member(db, oid, current_user.id)
+    ann = await _load_announcement(db, oid, announcement_id)
+    res = await db.execute(
+        select(AnnouncementComment).where(
+            AnnouncementComment.id == UUID(comment_id),
+            AnnouncementComment.announcement_id == ann.id,
+        )
+    )
+    cm = res.scalar_one_or_none()
+    if not cm:
+        raise HTTPException(status_code=404, detail="Komentar tidak ditemukan")
+    can_delete = (
+        str(cm.user_id) == str(current_user.id)
+        or str(ann.creator_id) == str(current_user.id)
+        or is_superuser(current_user)
+    )
+    if not can_delete:
+        raise HTTPException(status_code=403, detail="Tidak boleh menghapus komentar ini")
+    await db.delete(cm)
     await db.commit()
     return None

@@ -58,3 +58,20 @@ class AnnouncementComment(Base):
 
     announcement = relationship("Announcement", back_populates="comments")
     user = relationship("User")
+
+
+class AnnouncementRead(Base):
+    """Read receipt — one row per (announcement, user). Idempotent insert
+    via unique constraint sehingga klien bisa POST-spam tanpa dobel-counted."""
+    __tablename__ = "announcement_reads"
+    __table_args__ = (
+        UniqueConstraint("announcement_id", "user_id", name="uq_announcement_read"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    announcement_id = Column(UUID(as_uuid=True), ForeignKey("announcements.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    read_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    announcement = relationship("Announcement")
+    user = relationship("User")

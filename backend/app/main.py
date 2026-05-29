@@ -44,6 +44,12 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
 
+        # last_seen_at on users — for DM header "last online" display
+        try:
+            await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMP WITH TIME ZONE"))
+        except Exception:
+            pass
+
         # brief brand / reference_url / final_url
         for col, col_type in [
             ("brand", "VARCHAR(255)"),

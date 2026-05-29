@@ -5,6 +5,9 @@ import { useParams } from "next/navigation";
 import api from "@/lib/api";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useNotificationsStore } from "@/store/useNotificationsStore";
+import { usePresenceStore } from "@/store/usePresenceStore";
+import { formatDistanceToNow } from "date-fns";
+import { id as idLocale } from "date-fns/locale";
 import {
   Send, Loader2, User as UserIcon, ShieldCheck, Paperclip,
   Edit2, X, Check, CheckCheck, Smile, Wifi, WifiOff, Reply, CornerDownRight,
@@ -74,6 +77,10 @@ export default function DMChatPage() {
   const oid = p?.id as string, tid = p?.userId as string;
   const { user: cu } = useAuthStore(); const uid = cu?.id;
   const markDMsFromSenderRead = useNotificationsStore((s) => s.markDMsFromSenderRead);
+  // Live presence — subscribe to set so dot re-renders on presence_update.
+  const isOnline = usePresenceStore((s) => s.isOnline);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _online = usePresenceStore((s) => s.online);
 
   // Clear unread DM badges (bell + floating chat + sidebar) for this sender
   // whenever the conversation is open, however it was reached.
@@ -304,6 +311,23 @@ export default function DMChatPage() {
   if (ld) return <div className="flex flex-col items-center justify-center h-[calc(100vh-160px)]"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>;
   const ou = ch?.user1_id === uid ? ch?.user2 : ch?.user1;
 
+  // Presence label: ngetik > online > terakhir online > offline
+  const ouOnline = !!(ou?.id && isOnline(String(ou.id)));
+  let presenceLabel: string;
+  if (tp) {
+    presenceLabel = `${tp}…`;
+  } else if (ouOnline) {
+    presenceLabel = "Online";
+  } else if (ou?.last_seen_at) {
+    try {
+      presenceLabel = `Terakhir online ${formatDistanceToNow(new Date(ou.last_seen_at), { addSuffix: false, locale: idLocale })} lalu`;
+    } catch {
+      presenceLabel = "Offline";
+    }
+  } else {
+    presenceLabel = "Offline";
+  }
+
   return (
     <div className="flex flex-col h-[calc(100vh-160px)] bg-card border border-border rounded-3xl overflow-hidden shadow-sm">
       {/* Header */}
@@ -321,9 +345,21 @@ export default function DMChatPage() {
             ) : (
               <UserIcon className="w-5 h-5" />
             )}
-            <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-card" />
+            {ouOnline && (
+              <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-card" />
+            )}
           </button>
-          <div><h2 className="text-sm font-bold flex items-center gap-1">{ou?.name || "Chat"} <ShieldCheck className="w-3 h-3 text-emerald-500" /></h2><p className="text-[10px] text-muted-foreground">Aktif sekarang</p></div>
+          <div>
+            <h2 className="text-sm font-bold flex items-center gap-1">
+              {ou?.name || "Chat"} <ShieldCheck className="w-3 h-3 text-emerald-500" />
+            </h2>
+            <p className={cn(
+              "text-[10px]",
+              ouOnline ? "text-emerald-600 font-semibold" : tp ? "text-primary italic" : "text-muted-foreground",
+            )}>
+              {presenceLabel}
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
           {wsS === "connected" ? <><Wifi className="w-3 h-3 text-emerald-500" /><span className="text-emerald-500">Live</span></> : wsS === "connecting" ? <><Loader2 className="w-3 h-3 animate-spin" /><span>Connecting...</span></> : <><WifiOff className="w-3 h-3 text-destructive" /><span className="text-destructive">Offline</span></>}

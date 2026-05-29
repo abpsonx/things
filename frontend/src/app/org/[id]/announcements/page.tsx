@@ -7,16 +7,21 @@ import { Megaphone, Plus, Loader2, Trash2, Edit, Clock, User, X, Users, Lock, Ca
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { extractMentionIds } from "@/components/ui/mentionSuggestion";
 import { useAuthStore } from "@/store/useAuthStore";
+import AnnouncementCardExtras from "@/components/announcements/AnnouncementCardExtras";
 
 interface Announcement {
   id: string;
   title: string;
   content: string;
   created_at: string;
-  creator: { name: string; avatar_url: string };
+  creator: { id?: string; name: string; avatar_url: string };
+  creator_id?: string;
   recipient_ids?: string[]; // empty/missing = broadcast
   expires_at?: string | null;
   is_secret?: boolean;
+  read_count?: number;
+  comment_count?: number;
+  has_read?: boolean;
 }
 
 type AudienceMode = "all" | "roles" | "users";
@@ -472,6 +477,15 @@ export default function WorkspaceAnnouncementsPage() {
                 <Users className="w-3 h-3" /> {audienceSummary(a)}
               </div>
               <div className="prose prose-sm dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: a.content }} />
+              <AnnouncementCardExtras
+                orgId={orgId as string}
+                announcementId={a.id}
+                initialReadCount={a.read_count || 0}
+                initialCommentCount={a.comment_count || 0}
+                hasReadInitial={!!a.has_read}
+                isCreator={!!user?.id && String(a.creator?.id || a.creator_id) === String(user.id)}
+                currentUserId={user?.id}
+              />
             </div>
             );
           })

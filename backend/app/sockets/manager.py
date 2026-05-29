@@ -29,6 +29,24 @@ async def disconnect(sid):
     print(f"User disconnected: {sid}")
     if user_id and user_id not in active_users.values():
         await sio.emit("presence_update", {"user_id": user_id, "online": False})
+        # Stempel last_seen_at saat semua tab/koneksi user ini ditutup,
+        # supaya UI DM bisa tampilkan "Terakhir online X menit lalu".
+        try:
+            await _stamp_last_seen(user_id)
+        except Exception as e:
+            print(f"[disconnect] failed to stamp last_seen for {user_id}: {e}")
+
+
+async def _stamp_last_seen(user_id: str) -> None:
+    from datetime import datetime, timezone
+    from sqlalchemy import update as _sa_update
+    from app.core.database import async_session
+    from app.models.user import User
+    async with async_session() as db:
+        await db.execute(
+            _sa_update(User).where(User.id == user_id).values(last_seen_at=datetime.now(timezone.utc))
+        )
+        await db.commit()
 
 @sio.event
 async def join_channel(sid, data):

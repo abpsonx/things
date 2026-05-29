@@ -38,6 +38,9 @@ class UserResponse(BaseModel):
     team_colors: dict = {}
     pinned_teams: list = []
     pinned_dms: list = []
+    # Disisi backend saat semua koneksi socket user ditutup. Frontend DM
+    # header pakai ini buat tampilkan "Terakhir online X menit lalu".
+    last_seen_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -492,6 +495,11 @@ class AnnouncementResponse(BaseModel):
     # Resolved recipient user_ids for targeted workspace announcements.
     # Empty list means "everyone" (broadcast).
     recipient_ids: List[UUID] = []
+    # Engagement counters — diisi backend di list/get untuk meminimalkan
+    # round-trip. 0 default kalau tidak ada.
+    read_count: int = 0
+    comment_count: int = 0
+    has_read: bool = False  # apakah viewer (current_user) sudah baca
 
     class Config:
         from_attributes = True
