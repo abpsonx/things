@@ -12,7 +12,8 @@ import {
   FileText,
   Megaphone,
   Calendar,
-  Settings
+  Settings,
+  Clapperboard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -33,6 +34,7 @@ export default function TeamNav({ orgId, teamId }: TeamNavProps) {
     { name: "Pengumuman", href: `/org/${orgId}/team/${teamId}/announcements`, icon: Megaphone },
     { name: "Aktivitas", href: `/org/${orgId}/team/${teamId}/activities`, icon: Activity },
     { name: "Dokumen", href: `/org/${orgId}/team/${teamId}/files`, icon: FileText },
+    { name: "Brief Iklan", href: `/org/${orgId}/team/${teamId}/briefs`, icon: Clapperboard },
     { name: "Settings", href: `/org/${orgId}/team/${teamId}/settings`, icon: Settings },
   ];
 

@@ -7,6 +7,7 @@ import { Clapperboard, Plus, Loader2, Calendar, Layers, ChevronRight, Trash2 } f
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import api from "@/lib/api";
+import TeamNav from "@/components/team/TeamNav";
 
 interface BriefListItem {
   id: string;
@@ -29,8 +30,9 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
 };
 
 export default function BriefsListPage() {
-  const { id: orgId, projectId } = useParams();
+  const { id: orgId, teamId } = useParams();
   const router = useRouter();
+  const base = `/organizations/${orgId}/teams/${teamId}/briefs`;
   const [briefs, setBriefs] = useState<BriefListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -39,7 +41,7 @@ export default function BriefsListPage() {
 
   const fetchBriefs = async () => {
     try {
-      const res = await api.get(`/projects/${projectId}/briefs`);
+      const res = await api.get(base);
       setBriefs(res.data || []);
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || "Gagal memuat brief");
@@ -49,17 +51,17 @@ export default function BriefsListPage() {
   };
 
   useEffect(() => {
-    if (projectId) fetchBriefs();
-  }, [projectId]);
+    if (teamId) fetchBriefs();
+  }, [teamId]);
 
   const createBrief = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
     setCreating(true);
     try {
-      const res = await api.post(`/projects/${projectId}/briefs`, { title: newTitle, platforms: [], status: "draft" });
+      const res = await api.post(base, { title: newTitle, platforms: [], status: "draft" });
       setNewTitle("");
-      router.push(`/org/${orgId}/project/${projectId}/briefs/${res.data.id}`);
+      router.push(`/org/${orgId}/team/${teamId}/briefs/${res.data.id}`);
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || "Gagal membuat brief");
     } finally {
@@ -72,7 +74,7 @@ export default function BriefsListPage() {
     e.stopPropagation();
     if (!confirm(`Hapus brief "${title}" beserta semua scene-nya?`)) return;
     try {
-      await api.delete(`/projects/${projectId}/briefs/${id}`);
+      await api.delete(`${base}/${id}`);
       setBriefs((prev) => prev.filter((b) => b.id !== id));
       toast.success("Brief dihapus");
     } catch (err: any) {
@@ -83,7 +85,9 @@ export default function BriefsListPage() {
   const visible = statusFilter === "all" ? briefs : briefs.filter((b) => b.status === statusFilter);
 
   return (
-    <div className="w-full space-y-6">
+    <div className="flex-1 flex flex-col min-h-screen bg-background">
+      <TeamNav orgId={orgId as string} teamId={teamId as string} />
+      <div className="flex-1 p-8 max-w-6xl mx-auto w-full space-y-6">
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-4">
           <div>
@@ -156,7 +160,7 @@ export default function BriefsListPage() {
             return (
               <Link
                 key={b.id}
-                href={`/org/${orgId}/project/${projectId}/briefs/${b.id}`}
+                href={`/org/${orgId}/team/${teamId}/briefs/${b.id}`}
                 className="group block p-5 rounded-2xl border border-border bg-card hover:border-primary/30 hover:shadow-md transition-all space-y-3"
               >
                 <div className="flex items-start justify-between gap-2">
@@ -214,6 +218,7 @@ export default function BriefsListPage() {
           })}
         </div>
       )}
+      </div>
     </div>
   );
 }

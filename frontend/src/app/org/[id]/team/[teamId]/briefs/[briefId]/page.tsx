@@ -9,6 +9,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import api from "@/lib/api";
+import TeamNav from "@/components/team/TeamNav";
 
 interface Scene {
   id: string;
@@ -62,7 +63,8 @@ const SCENE_TYPE_COLORS: Record<string, string> = {
 };
 
 export default function BriefDetailPage() {
-  const { id: orgId, projectId, briefId } = useParams();
+  const { id: orgId, teamId, briefId } = useParams();
+  const base = `/organizations/${orgId}/teams/${teamId}/briefs`;
   const router = useRouter();
   const [brief, setBrief] = useState<Brief | null>(null);
   const [loading, setLoading] = useState(true);
@@ -78,7 +80,7 @@ export default function BriefDetailPage() {
 
   const fetchBrief = useCallback(async () => {
     try {
-      const res = await api.get(`/projects/${projectId}/briefs/${briefId}`);
+      const res = await api.get(`${base}/${briefId}`);
       setBrief(res.data);
       setForm({
         title: res.data.title || "",
@@ -96,7 +98,7 @@ export default function BriefDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [projectId, briefId]);
+  }, [teamId, briefId, base]);
 
   useEffect(() => {
     if (briefId) fetchBrief();
@@ -110,7 +112,7 @@ export default function BriefDetailPage() {
       for (const key of Object.keys(patch) as (keyof typeof form)[]) {
         body[key] = patch[key] === "" ? null : patch[key];
       }
-      const res = await api.patch(`/projects/${projectId}/briefs/${briefId}`, body);
+      const res = await api.patch(`${base}/${briefId}`, body);
       setBrief(res.data);
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || "Gagal menyimpan");
@@ -130,7 +132,7 @@ export default function BriefDetailPage() {
   const addScene = async () => {
     setAddingScene(true);
     try {
-      const res = await api.post(`/projects/${projectId}/briefs/${briefId}/scenes`, {});
+      const res = await api.post(`${base}/${briefId}/scenes`, {});
       setBrief((prev) => prev ? { ...prev, scenes: [...prev.scenes, res.data] } : prev);
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || "Gagal menambah scene");
@@ -145,7 +147,7 @@ export default function BriefDetailPage() {
       ? { ...prev, scenes: prev.scenes.map((s) => s.id === sceneId ? { ...s, ...patch } : s) }
       : prev);
     try {
-      await api.patch(`/projects/${projectId}/briefs/${briefId}/scenes/${sceneId}`, patch);
+      await api.patch(`${base}/${briefId}/scenes/${sceneId}`, patch);
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || "Gagal menyimpan scene");
       fetchBrief(); // refetch to rollback
@@ -158,7 +160,7 @@ export default function BriefDetailPage() {
       ? { ...prev, scenes: prev.scenes.filter((s) => s.id !== sceneId) }
       : prev);
     try {
-      await api.delete(`/projects/${projectId}/briefs/${briefId}/scenes/${sceneId}`);
+      await api.delete(`${base}/${briefId}/scenes/${sceneId}`);
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || "Gagal menghapus");
       fetchBrief();
@@ -169,9 +171,9 @@ export default function BriefDetailPage() {
     if (!brief) return;
     if (!confirm(`Hapus brief "${brief.title}"? Semua scene ikut terhapus.`)) return;
     try {
-      await api.delete(`/projects/${projectId}/briefs/${briefId}`);
+      await api.delete(`${base}/${briefId}`);
       toast.success("Brief dihapus");
-      router.push(`/org/${orgId}/project/${projectId}/briefs`);
+      router.push(`/org/${orgId}/team/${teamId}/briefs`);
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || "Gagal menghapus brief");
     }
@@ -187,11 +189,13 @@ export default function BriefDetailPage() {
   if (!brief) return null;
 
   return (
-    <div className="w-full space-y-6">
+    <div className="flex-1 flex flex-col min-h-screen bg-background">
+      <TeamNav orgId={orgId as string} teamId={teamId as string} />
+      <div className="flex-1 p-8 max-w-6xl mx-auto w-full space-y-6">
       {/* Header / breadcrumb */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <Link
-          href={`/org/${orgId}/project/${projectId}/briefs`}
+          href={`/org/${orgId}/team/${teamId}/briefs`}
           className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
         >
           <ChevronLeft className="w-3.5 h-3.5" /> Semua brief
@@ -371,6 +375,7 @@ export default function BriefDetailPage() {
             </table>
           </div>
         )}
+      </div>
       </div>
     </div>
   );

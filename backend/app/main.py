@@ -74,6 +74,22 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
 
+        # content_briefs got relocated from project_id → team_id mid-development.
+        # If the table still has project_id (early-adopter dev DB), drop it so
+        # Base.metadata.create_all rebuilds it with the new schema. Safe because
+        # the feature was brand-new and never had production data.
+        try:
+            res = await conn.execute(text(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_name = 'content_briefs' AND column_name = 'project_id'"
+            ))
+            if res.first():
+                await conn.execute(text("DROP TABLE IF EXISTS brief_scenes CASCADE"))
+                await conn.execute(text("DROP TABLE IF EXISTS content_briefs CASCADE"))
+                print("[migration] dropped legacy content_briefs (project_id) — will recreate with team_id")
+        except Exception as e:
+            print(f"[migration] content_briefs relocation skipped: {e}")
+
         # engagement totals on social_metrics (existing tables predate them)
         for col in ("comments", "shares", "saves"):
             try:

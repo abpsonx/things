@@ -555,7 +555,8 @@ class ContentBriefUpdate(BaseModel):
 
 class ContentBriefResponse(ContentBriefBase):
     id: UUID
-    project_id: UUID
+    org_id: UUID
+    team_id: UUID
     creator_id: Optional[UUID] = None
     creator: Optional[UserResponse] = None
     created_at: datetime
@@ -569,7 +570,8 @@ class ContentBriefResponse(ContentBriefBase):
 class ContentBriefListItem(BaseModel):
     """Lightweight shape for the index page — no scenes payload."""
     id: UUID
-    project_id: UUID
+    org_id: UUID
+    team_id: UUID
     title: str
     status: str
     shoot_date: Optional[date] = None

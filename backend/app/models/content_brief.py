@@ -1,5 +1,6 @@
 """Content ad brief — replaces the spreadsheet workflow for scripting video
-ads. One ContentBrief = one ad/video (with metadata header). Many BriefScene
+ads. Lives at the TEAM level (creative crew works there, not project level).
+One ContentBrief = one ad/video (with metadata header). Many BriefScene
 rows belong to it (the storyboard table)."""
 import uuid
 from datetime import datetime, timezone
@@ -13,7 +14,9 @@ class ContentBrief(Base):
     __tablename__ = "content_briefs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    # org_id stored for activity log scoping; team_id is the real parent.
+    org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    team_id = Column(UUID(as_uuid=True), ForeignKey("teams.id", ondelete="CASCADE"), nullable=False)
     creator_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     title = Column(String(255), nullable=False)
@@ -31,7 +34,7 @@ class ContentBrief(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
-    project = relationship("Project")
+    team = relationship("Team")
     creator = relationship("User")
     scenes = relationship(
         "BriefScene",
