@@ -461,10 +461,16 @@ class AnnouncementCreate(BaseModel):
     # Roles + ids are unioned together.
     target_roles: List[str] = []
     target_user_ids: List[str] = []
+    # Optional ISO deadline — UI marks expired ones as such.
+    expires_at: Optional[datetime] = None
+    # Hide recipient list from non-creators + strip notification preview.
+    is_secret: bool = False
 
 class AnnouncementUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=255)
     content: Optional[str] = None
+    expires_at: Optional[datetime] = None
+    is_secret: Optional[bool] = None
 
 class AnnouncementResponse(BaseModel):
     id: UUID
@@ -476,6 +482,8 @@ class AnnouncementResponse(BaseModel):
     content: str
     created_at: datetime
     updated_at: datetime
+    expires_at: Optional[datetime] = None
+    is_secret: bool = False
     creator: Optional[UserResponse] = None
     # Resolved recipient user_ids for targeted workspace announcements.
     # Empty list means "everyone" (broadcast).

@@ -68,6 +68,12 @@ async def lifespan(app: FastAPI):
             except Exception:
                 pass
 
+        # is_secret — workspace announcements that hide their audience + content preview
+        try:
+            await conn.execute(text("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS is_secret BOOLEAN DEFAULT FALSE NOT NULL"))
+        except Exception:
+            pass
+
         # engagement totals on social_metrics (existing tables predate them)
         for col in ("comments", "shares", "saves"):
             try:

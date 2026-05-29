@@ -65,10 +65,17 @@ async def list_org_announcements(
 
     # Pydantic doesn't know recipient_ids exists on the ORM object, so attach
     # it as a synthetic attribute the response model can read.
+    # For SECRET announcements: hide the recipient list from everyone except
+    # the creator + platform superusers (so even other recipients can't see
+    # who else got it).
     out = []
     for a in visible:
         resp = AnnouncementResponse.model_validate(a)
-        resp.recipient_ids = [r.user_id for r in (a.recipients or [])]
+        is_creator = str(a.creator_id) == str(current_user.id)
+        if a.is_secret and not is_creator and not can_see_all:
+            resp.recipient_ids = []
+        else:
+            resp.recipient_ids = [r.user_id for r in (a.recipients or [])]
         out.append(resp)
     return out
 
@@ -88,6 +95,8 @@ async def create_org_announcement(
         creator_id=current_user.id,
         title=data.title,
         content=data.content,
+        expires_at=data.expires_at,
+        is_secret=bool(data.is_secret),
     )
     db.add(announcement)
     await db.flush()
@@ -135,8 +144,21 @@ async def create_org_announcement(
 
     from app.core.mentions import expand_mention_ids
     mentioned = await expand_mention_ids(db, data.mention_ids)
+    # Secret announcements: no title/content preview in the notif, just a
+    # neutral "ada pengumuman rahasia" so anyone glancing over a shoulder
+    # can't read it from the bell dropdown.
+    secret = bool(data.is_secret)
     for uid in notify_targets:
         if uid == str(current_user.id):
+            continue
+        if secret:
+            await notify_user(
+                db, user_id=uid, type="announcement",
+                title="Pengumuman rahasia",
+                content=f"{current_user.name} mengirim pengumuman rahasia",
+                ref_id=str(announcement.id), org_id=org_id,
+                url=f"/org/{org_id}/announcements",
+            )
             continue
         if uid in mentioned:
             await notify_user(

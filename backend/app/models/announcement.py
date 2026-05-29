@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Text, ForeignKey, DateTime, UniqueConstraint
+from sqlalchemy import Column, String, Text, ForeignKey, DateTime, UniqueConstraint, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -19,6 +19,9 @@ class Announcement(Base):
     content = Column(Text, nullable=False)
     # Optional deadline — after this the announcement is considered expired.
     expires_at = Column(DateTime(timezone=True), nullable=True)
+    # Secret announcements hide their recipient list from non-creators and
+    # strip the content preview from push notifications.
+    is_secret = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

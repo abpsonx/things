@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import api from "@/lib/api";
-import { Megaphone, Plus, Loader2, Trash2, Edit, Clock, User, X, Users } from "lucide-react";
+import { Megaphone, Plus, Loader2, Trash2, Edit, Clock, User, X, Users, Lock, CalendarClock, CheckSquare, Square } from "lucide-react";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { extractMentionIds } from "@/components/ui/mentionSuggestion";
 import { useAuthStore } from "@/store/useAuthStore";
@@ -15,6 +15,8 @@ interface Announcement {
   created_at: string;
   creator: { name: string; avatar_url: string };
   recipient_ids?: string[]; // empty/missing = broadcast
+  expires_at?: string | null;
+  is_secret?: boolean;
 }
 
 type AudienceMode = "all" | "roles" | "users";
@@ -42,6 +44,8 @@ export default function WorkspaceAnnouncementsPage() {
   const [audienceMode, setAudienceMode] = useState<AudienceMode>("all");
   const [selectedRoles, setSelectedRoles] = useState<Set<string>>(new Set());
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
+  const [isSecret, setIsSecret] = useState(false);
+  const [expiresAt, setExpiresAt] = useState(""); // datetime-local string, empty = no deadline
   const formRef = useRef<HTMLDivElement>(null);
 
   // Mention list = teams first (so "@tim" is easy to find), then people.
@@ -81,14 +85,19 @@ export default function WorkspaceAnnouncementsPage() {
     setSubmitting(true);
     try {
       if (isEditing) {
-        const res = await api.put(`/organizations/${orgId}/announcements/${isEditing}`, { title, content });
+        const payload: any = { title, content };
+        payload.expires_at = expiresAt ? new Date(expiresAt).toISOString() : null;
+        payload.is_secret = isSecret;
+        const res = await api.put(`/organizations/${orgId}/announcements/${isEditing}`, payload);
         setAnnouncements((prev) => prev.map((a) => (a.id === isEditing ? res.data : a)));
       } else {
         const payload: any = {
           title,
           content,
           mention_ids: extractMentionIds(content),
+          is_secret: isSecret,
         };
+        if (expiresAt) payload.expires_at = new Date(expiresAt).toISOString();
         if (audienceMode === "roles") payload.target_roles = Array.from(selectedRoles);
         if (audienceMode === "users") payload.target_user_ids = Array.from(selectedUserIds);
         const res = await api.post(`/organizations/${orgId}/announcements`, payload);
@@ -122,6 +131,8 @@ export default function WorkspaceAnnouncementsPage() {
     setAudienceMode("all");
     setSelectedRoles(new Set());
     setSelectedUserIds(new Set());
+    setIsSecret(false);
+    setExpiresAt("");
   };
 
   const toggleRole = (r: string) => {
@@ -142,6 +153,9 @@ export default function WorkspaceAnnouncementsPage() {
 
   const audienceSummary = (a: Announcement) => {
     const rids = a.recipient_ids || [];
+    // Backend strips recipient_ids for secret announcements when the viewer
+    // isn't the creator — so empty + is_secret means "we just can't see".
+    if (a.is_secret && rids.length === 0) return "Audiens disembunyikan";
     if (rids.length === 0) return "Untuk semua anggota";
     return `Untuk ${rids.length} orang`;
   };
@@ -151,6 +165,20 @@ export default function WorkspaceAnnouncementsPage() {
     setContent(a.content);
     setIsEditing(a.id);
     setIsCreating(true);
+    setIsSecret(!!a.is_secret);
+    // Convert ISO to datetime-local "YYYY-MM-DDTHH:mm" (strip seconds + Z).
+    setExpiresAt(a.expires_at ? a.expires_at.slice(0, 16) : "");
+  };
+
+  const formatDeadline = (iso?: string | null): { label: string; expired: boolean } | null => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return null;
+    const expired = d.getTime() < Date.now();
+    const label = d.toLocaleDateString("id-ID", {
+      day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
+    });
+    return { label, expired };
   };
 
   useEffect(() => {
@@ -247,12 +275,33 @@ export default function WorkspaceAnnouncementsPage() {
                   </div>
                 )}
 
-                {audienceMode === "users" && (
-                  <div className="max-h-48 overflow-y-auto p-2 rounded-xl border border-border bg-secondary/20 space-y-1">
-                    {members.filter((m) => m.user_id !== user?.id).length === 0 && (
+                {audienceMode === "users" && (() => {
+                  const eligible = members.filter((m) => m.user_id !== user?.id);
+                  const allSelected = eligible.length > 0 && eligible.every((m) => selectedUserIds.has(m.user_id));
+                  return (
+                  <div className="max-h-56 overflow-y-auto p-2 rounded-xl border border-border bg-secondary/20 space-y-1">
+                    {eligible.length === 0 && (
                       <div className="text-[10px] text-muted-foreground italic p-2">Belum ada anggota lain di workspace.</div>
                     )}
-                    {members.filter((m) => m.user_id !== user?.id).map((m) => {
+                    {eligible.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (allSelected) {
+                            setSelectedUserIds(new Set());
+                          } else {
+                            setSelectedUserIds(new Set(eligible.map((m) => m.user_id)));
+                          }
+                        }}
+                        className="w-full flex items-center justify-between p-2 rounded-lg text-xs font-bold border border-dashed border-border hover:bg-secondary hover:border-primary/50 transition-colors text-foreground"
+                      >
+                        <div className="flex items-center gap-2">
+                          {allSelected ? <CheckSquare className="w-4 h-4 text-primary" /> : <Square className="w-4 h-4 text-muted-foreground" />}
+                          {allSelected ? "Batalkan semua" : `Pilih semua (${eligible.length})`}
+                        </div>
+                      </button>
+                    )}
+                    {eligible.map((m) => {
                       const uid = m.user_id;
                       const checked = selectedUserIds.has(uid);
                       return (
@@ -287,9 +336,64 @@ export default function WorkspaceAnnouncementsPage() {
                       <div className="text-[10px] text-muted-foreground italic p-2">{selectedUserIds.size} orang dipilih</div>
                     )}
                   </div>
-                )}
+                  );
+                })()}
               </div>
             )}
+
+            {/* Deadline + Secret toggle — boleh di create & edit */}
+            <div className="grid sm:grid-cols-2 gap-3 pt-2 border-t border-border">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1">
+                  <CalendarClock className="w-3 h-3" /> Tenggat Waktu (opsional)
+                </label>
+                <div className="relative">
+                  <input
+                    type="datetime-local"
+                    value={expiresAt}
+                    onChange={(e) => setExpiresAt(e.target.value)}
+                    className="w-full px-3 py-2 bg-secondary/30 border border-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  />
+                  {expiresAt && (
+                    <button
+                      type="button"
+                      onClick={() => setExpiresAt("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                      title="Hapus tenggat"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1">
+                  <Lock className="w-3 h-3" /> Rahasia
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsSecret((v) => !v)}
+                  className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl border text-sm font-medium transition-all ${
+                    isSecret
+                      ? "bg-amber-500/10 border-amber-500/40 text-amber-700 dark:text-amber-300"
+                      : "bg-secondary/30 border-border text-muted-foreground hover:border-primary/40"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    {isSecret ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                    {isSecret ? "Pengumuman rahasia" : "Tandai sebagai rahasia"}
+                  </span>
+                  <span className="text-[9px] uppercase tracking-widest opacity-70">
+                    {isSecret ? "Tersembunyi" : "Biasa"}
+                  </span>
+                </button>
+                {isSecret && (
+                  <p className="text-[10px] text-muted-foreground/80 italic px-1">
+                    Daftar penerima disembunyikan dari yang lain & notifikasi tanpa preview.
+                  </p>
+                )}
+              </div>
+            </div>
 
             <div className="flex justify-end gap-3 pt-4">
               <button onClick={resetForm} className="px-6 py-2 rounded-xl font-bold text-muted-foreground hover:bg-secondary transition-colors">Batal</button>
@@ -320,8 +424,12 @@ export default function WorkspaceAnnouncementsPage() {
             <p className="text-muted-foreground">Bagikan info penting untuk seluruh workspace.</p>
           </div>
         ) : (
-          announcements.map((a) => (
-            <div key={a.id} className="bg-card border border-border rounded-3xl p-8 shadow-sm hover:shadow-md transition-shadow relative group">
+          announcements.map((a) => {
+            const dl = formatDeadline(a.expires_at);
+            return (
+            <div key={a.id} className={`bg-card border rounded-3xl p-8 shadow-sm hover:shadow-md transition-shadow relative group ${
+              dl?.expired ? "border-border opacity-70" : a.is_secret ? "border-amber-500/30" : "border-border"
+            }`}>
               <div className="flex items-start justify-between mb-6">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 rounded-full bg-secondary border border-border flex items-center justify-center overflow-hidden">
@@ -342,13 +450,31 @@ export default function WorkspaceAnnouncementsPage() {
                   </div>
                 )}
               </div>
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                {a.is_secret && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-widest bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                    <Lock className="w-3 h-3" /> Rahasia
+                  </span>
+                )}
+                {dl && (
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-widest border ${
+                    dl.expired
+                      ? "bg-destructive/10 text-destructive border-destructive/30"
+                      : "bg-secondary text-muted-foreground border-border"
+                  }`}>
+                    <CalendarClock className="w-3 h-3" />
+                    {dl.expired ? "Kadaluwarsa" : "Tenggat"}: {dl.label}
+                  </span>
+                )}
+              </div>
               <h3 className="text-2xl font-bold mb-2">{a.title}</h3>
               <div className="text-[10px] uppercase tracking-widest text-muted-foreground/70 mb-4 flex items-center gap-1.5">
                 <Users className="w-3 h-3" /> {audienceSummary(a)}
               </div>
               <div className="prose prose-sm dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: a.content }} />
             </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>
