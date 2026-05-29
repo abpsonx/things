@@ -50,6 +50,21 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
 
+        # announcements.created_at + updated_at sebelumnya pakai TIMESTAMP
+        # (tanpa timezone). PostgreSQL menghilangkan info tz saat insert,
+        # bikin frontend baca sebagai local time → tampak off ~7 jam dari
+        # WIB. Upgrade ke TIMESTAMP WITH TIME ZONE, interpret nilai lama
+        # sebagai UTC (sesuai apa yang sebenarnya disimpan).
+        for col in ("created_at", "updated_at"):
+            try:
+                await conn.execute(text(
+                    f"ALTER TABLE announcements "
+                    f"ALTER COLUMN {col} TYPE TIMESTAMP WITH TIME ZONE "
+                    f"USING {col} AT TIME ZONE 'UTC'"
+                ))
+            except Exception:
+                pass
+
         # brief brand / reference_url / final_url
         for col, col_type in [
             ("brand", "VARCHAR(255)"),
