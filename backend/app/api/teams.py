@@ -21,7 +21,7 @@ from app.schemas import (
 )
 from app.dependencies import get_current_user
 from app.services import log_activity
-from app.core.permissions import SUPERUSER_ROLES
+from app.core.permissions import SUPERUSER_ROLES, is_superuser
 
 router = APIRouter(prefix="/organizations/{org_id}/teams", tags=["Teams"])
 
@@ -182,10 +182,8 @@ async def delete_team(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Delete a team."""
-    org_member = await _require_team_access(db, org_id, team_id, current_user)
-    if org_member.role not in ("owner", "manager"):
-        raise HTTPException(status_code=403, detail="Hanya owner/manager yang bisa hapus team")
+    """Delete a team — restricted to the team's creator or platform SU/Developer."""
+    await _require_team_access(db, org_id, team_id, current_user)
 
     result = await db.execute(
         select(Team).where(Team.id == team_id, Team.org_id == org_id)
@@ -193,6 +191,9 @@ async def delete_team(
     team = result.scalar_one_or_none()
     if not team:
         raise HTTPException(status_code=404, detail="Team tidak ditemukan")
+
+    if not is_superuser(current_user) and str(team.created_by) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Hanya pembuat tim atau Super User yang bisa menghapus tim")
 
     await log_activity(
         db, org_id=org_id, user_id=current_user.id,

@@ -14,7 +14,7 @@ from typing import List
 from app.core.database import get_db
 from app.core.permissions import is_superuser, require_org_manager
 from app.dependencies import get_current_user
-from app.models.announcement import Announcement
+from app.models.announcement import Announcement, AnnouncementRecipient
 from app.models.organization import OrgMember
 from app.models.user import User
 from app.schemas import AnnouncementCreate, AnnouncementResponse, AnnouncementUpdate
@@ -42,11 +42,35 @@ async def list_org_announcements(
     await _require_member(db, oid, current_user.id)
     result = await db.execute(
         select(Announcement)
-        .options(selectinload(Announcement.creator))
+        .options(
+            selectinload(Announcement.creator),
+            selectinload(Announcement.recipients),
+        )
         .where(Announcement.org_id == oid)
         .order_by(Announcement.created_at.desc())
     )
-    return result.scalars().all()
+    rows = result.scalars().all()
+
+    # Audience filter: if an announcement has recipients pinned, only those
+    # users (plus the creator and any platform superuser) may see it.
+    can_see_all = is_superuser(current_user)
+    visible = []
+    for a in rows:
+        rids = {str(r.user_id) for r in (a.recipients or [])}
+        if not rids:
+            visible.append(a)  # broadcast
+            continue
+        if can_see_all or str(a.creator_id) == str(current_user.id) or str(current_user.id) in rids:
+            visible.append(a)
+
+    # Pydantic doesn't know recipient_ids exists on the ORM object, so attach
+    # it as a synthetic attribute the response model can read.
+    out = []
+    for a in visible:
+        resp = AnnouncementResponse.model_validate(a)
+        resp.recipient_ids = [r.user_id for r in (a.recipients or [])]
+        out.append(resp)
+    return out
 
 
 @router.post("", response_model=AnnouncementResponse, status_code=status.HTTP_201_CREATED)
@@ -68,18 +92,50 @@ async def create_org_announcement(
     db.add(announcement)
     await db.flush()
 
+    # Resolve audience: union of (members whose role matches target_roles)
+    # and explicit target_user_ids. Empty union → broadcast to everyone.
+    mem = await db.execute(
+        select(OrgMember.user_id, OrgMember.role).where(OrgMember.org_id == oid)
+    )
+    all_members = [(str(uid), role) for uid, role in mem.all()]
+    member_ids = [uid for uid, _ in all_members]
+
+    requested_roles = {r for r in (data.target_roles or []) if r in {"owner", "manager", "member"}}
+    requested_user_ids = {str(u) for u in (data.target_user_ids or [])}
+
+    if requested_roles or requested_user_ids:
+        # Targeted — only recipients matching either role or explicit pick
+        # AND who are actually members of this workspace.
+        targets: set[str] = set()
+        member_set = set(member_ids)
+        for uid, role in all_members:
+            if role in requested_roles:
+                targets.add(uid)
+        for uid in requested_user_ids:
+            if uid in member_set:
+                targets.add(uid)
+        # Persist as AnnouncementRecipient rows so visibility persists.
+        for uid in targets:
+            db.add(AnnouncementRecipient(announcement_id=announcement.id, user_id=UUID(uid)))
+        notify_targets = targets
+    else:
+        # Broadcast — no recipient rows; notify everyone except author.
+        notify_targets = set(member_ids)
+
     await log_activity(
         db, org_id=oid, user_id=current_user.id,
         action="announcement_created", entity_type="announcement", entity_id=announcement.id,
-        metadata={"title": data.title, "scope": "workspace"},
+        metadata={
+            "title": data.title,
+            "scope": "workspace",
+            "audience": "targeted" if (requested_roles or requested_user_ids) else "all",
+            "recipient_count": len(notify_targets),
+        },
     )
 
-    # Broadcast to every workspace member except the author.
     from app.core.mentions import expand_mention_ids
     mentioned = await expand_mention_ids(db, data.mention_ids)
-    mem = await db.execute(select(OrgMember.user_id).where(OrgMember.org_id == oid))
-    member_ids = [str(m) for (m,) in mem.all()]
-    for uid in member_ids:
+    for uid in notify_targets:
         if uid == str(current_user.id):
             continue
         if uid in mentioned:
@@ -94,16 +150,24 @@ async def create_org_announcement(
             await notify_user(
                 db, user_id=uid, type="announcement",
                 title=f"Pengumuman: {data.title}",
-                content=f"{current_user.name} memposting pengumuman untuk seluruh workspace",
+                content=f"{current_user.name} memposting pengumuman",
                 ref_id=str(announcement.id), org_id=org_id,
                 url=f"/org/{org_id}/announcements",
             )
 
     await db.commit()
     result = await db.execute(
-        select(Announcement).options(selectinload(Announcement.creator)).where(Announcement.id == announcement.id)
+        select(Announcement)
+        .options(
+            selectinload(Announcement.creator),
+            selectinload(Announcement.recipients),
+        )
+        .where(Announcement.id == announcement.id)
     )
-    return result.scalar_one()
+    row = result.scalar_one()
+    resp = AnnouncementResponse.model_validate(row)
+    resp.recipient_ids = [r.user_id for r in (row.recipients or [])]
+    return resp
 
 
 @router.put("/{announcement_id}", response_model=AnnouncementResponse)

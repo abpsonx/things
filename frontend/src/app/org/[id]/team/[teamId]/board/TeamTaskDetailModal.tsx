@@ -22,6 +22,7 @@ import {
   Send,
   MoreHorizontal,
   Trash2,
+  Pencil,
   Archive,
   CheckCircle2,
   Plus,
@@ -260,12 +261,54 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
         color: newLabelColor,
       });
       const createdLabel = res.data;
-      setAvailableLabels([...availableLabels, createdLabel]);
+      setAvailableLabels((prev) => [...prev, createdLabel]);
       setNewLabelName("");
       setIsCreatingLabel(false);
-      await toggleLabel(createdLabel.id);
-    } catch (err) {
+      // Attach directly using the fresh object — don't rely on
+      // availableLabels closure (it's still the stale value here).
+      if (!task) return;
+      try {
+        await api.post(`/organizations/${orgId}/labels/${createdLabel.id}/tasks/${taskId}`);
+        setTask({ ...task, labels: [...(task.labels || []), createdLabel] });
+        onUpdate();
+      } catch (err) {
+        console.error("Failed to attach new label", err);
+      }
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail || "Gagal membuat label";
+      alert(msg);
       console.error("Failed to create label", err);
+    }
+  };
+
+  const editLabel = async (labelId: string, currentName: string, currentColor: string) => {
+    const name = window.prompt("Nama label baru:", currentName)?.trim();
+    if (!name) return;
+    const color = window.prompt("Warna baru (hex, mis. #ef4444):", currentColor)?.trim() || currentColor;
+    try {
+      const res = await api.patch(`/organizations/${orgId}/labels/${labelId}`, { name, color });
+      const updated = res.data;
+      setAvailableLabels((prev) => prev.map((l) => l.id === labelId ? updated : l));
+      if (task?.labels?.some((l: any) => l.id === labelId)) {
+        setTask({ ...task, labels: task.labels.map((l: any) => l.id === labelId ? updated : l) });
+      }
+      onUpdate();
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || "Gagal mengubah label");
+    }
+  };
+
+  const deleteLabel = async (labelId: string, name: string) => {
+    if (!window.confirm(`Hapus label "${name}"? Label akan dilepas dari semua task yang memakainya.`)) return;
+    try {
+      await api.delete(`/organizations/${orgId}/labels/${labelId}`);
+      setAvailableLabels((prev) => prev.filter((l) => l.id !== labelId));
+      if (task?.labels?.some((l: any) => l.id === labelId)) {
+        setTask({ ...task, labels: task.labels.filter((l: any) => l.id !== labelId) });
+      }
+      onUpdate();
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || "Gagal menghapus label");
     }
   };
 
@@ -657,19 +700,40 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
                 <div className="p-3 space-y-3">
                   <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border pb-1">Labels</div>
                   <div className="space-y-1 max-h-40 overflow-y-auto">
-                    {availableLabels.map((l) => (
-                      <button
-                        key={l.id}
-                        onClick={() => toggleLabel(l.id)}
-                        className="w-full flex items-center justify-between p-2 hover:bg-secondary rounded-md group"
-                      >
-                        <div className="flex items-center gap-2">
-                          <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: l.color }} />
-                          <span className="text-xs">{l.name}</span>
+                    {availableLabels.map((l) => {
+                      const attached = task?.labels?.some((tl: any) => tl.id === l.id);
+                      return (
+                        <div key={l.id} className="group flex items-center gap-1 p-1 hover:bg-secondary rounded-md">
+                          <button
+                            type="button"
+                            onClick={() => toggleLabel(l.id)}
+                            className="flex-1 flex items-center justify-between gap-2 px-1.5 py-1 text-left"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: l.color }} />
+                              <span className="text-xs truncate">{l.name}</span>
+                            </div>
+                            {attached && <Check className="w-3 h-3 text-primary shrink-0" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); editLabel(l.id, l.name, l.color); }}
+                            title="Ubah label"
+                            className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background/70 text-muted-foreground hover:text-foreground transition-opacity"
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); deleteLabel(l.id, l.name); }}
+                            title="Hapus label"
+                            className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-opacity"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
                         </div>
-                        {task?.labels?.some((tl: any) => tl.id === l.id) && <Check className="w-3 h-3 text-primary" />}
-                      </button>
-                    ))}
+                      );
+                    })}
                   </div>
 
                   {isCreatingLabel ? (

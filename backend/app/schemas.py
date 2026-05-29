@@ -453,6 +453,14 @@ class AnnouncementCreate(BaseModel):
     content: str
     # Either a user UUID or a "team:{team_id}" token (expanded server-side).
     mention_ids: List[str] = []
+    # Audience targeting (workspace announcements):
+    # - Empty target_roles + empty target_user_ids → broadcast to everyone.
+    # - target_roles: any of {"owner","manager","member"} — include all
+    #   workspace members whose role matches.
+    # - target_user_ids: explicit per-person picks.
+    # Roles + ids are unioned together.
+    target_roles: List[str] = []
+    target_user_ids: List[str] = []
 
 class AnnouncementUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=255)
@@ -469,6 +477,9 @@ class AnnouncementResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     creator: Optional[UserResponse] = None
+    # Resolved recipient user_ids for targeted workspace announcements.
+    # Empty list means "everyone" (broadcast).
+    recipient_ids: List[UUID] = []
 
     class Config:
         from_attributes = True

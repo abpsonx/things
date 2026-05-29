@@ -156,3 +156,47 @@ async def delete_org_label(
         raise HTTPException(status_code=404, detail="Label tidak ditemukan")
     await db.delete(label)
     await db.commit()
+
+
+@router.patch("/{label_id}", response_model=LabelResponse)
+async def update_project_label(
+    project_id: str, label_id: str, data: LabelCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await require_project_manager(db, project_id, current_user)
+    result = await db.execute(
+        select(Label).where(Label.id == label_id, Label.project_id == project_id)
+    )
+    label = result.scalar_one_or_none()
+    if not label:
+        raise HTTPException(status_code=404, detail="Label tidak ditemukan")
+    if data.name:
+        label.name = data.name
+    if data.color:
+        label.color = data.color
+    await db.commit()
+    await db.refresh(label)
+    return LabelResponse.model_validate(label)
+
+
+@org_router.patch("/{label_id}", response_model=LabelResponse)
+async def update_org_label(
+    org_id: str, label_id: str, data: LabelCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await require_org_manager(db, org_id, current_user)
+    result = await db.execute(
+        select(Label).where(Label.id == label_id, Label.org_id == org_id)
+    )
+    label = result.scalar_one_or_none()
+    if not label:
+        raise HTTPException(status_code=404, detail="Label tidak ditemukan")
+    if data.name:
+        label.name = data.name
+    if data.color:
+        label.color = data.color
+    await db.commit()
+    await db.refresh(label)
+    return LabelResponse.model_validate(label)

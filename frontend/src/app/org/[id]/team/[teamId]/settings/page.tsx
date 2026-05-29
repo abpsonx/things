@@ -7,12 +7,14 @@ import { toast } from 'sonner';
 import api from '@/lib/api';
 import TeamNav from '@/components/team/TeamNav';
 import InviteTeamMemberModal from '@/components/team/InviteTeamMemberModal';
+import { useAuthStore } from '@/store/useAuthStore';
 
 export default function TeamSettingsPage() {
   const params = useParams();
   const router = useRouter();
   const orgId = params.id as string;
   const teamId = params.teamId as string;
+  const { user: currentUser } = useAuthStore();
 
   const [team, setTeam] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -283,28 +285,50 @@ export default function TeamSettingsPage() {
           onAdded={fetchMembers}
         />
 
-        {/* Danger Zone */}
-        <div className="bg-destructive/5 rounded-3xl border border-destructive/20 overflow-hidden mt-12">
-          <div className="p-8 border-b border-destructive/20 bg-destructive/10">
-            <h2 className="text-xl font-bold flex items-center gap-2 text-red-600">
-              <ShieldAlert className="w-5 h-5" />
-              Danger Zone
-            </h2>
-            <p className="text-sm text-red-600/70 mt-1">Actions that cannot be undone.</p>
-          </div>
-          <div className="p-8 space-y-4">
-            <div className="flex items-center justify-between p-4 bg-card rounded-2xl border border-destructive/20">
-              <div>
-                <h4 className="font-bold text-red-600">Delete Team</h4>
-                <p className="text-xs text-muted-foreground">Permanently remove this team and all associated data</p>
+        {/* Danger Zone — pembuat tim atau Super User / Developer saja.
+            Workspace Admin & Manager lain tidak boleh nge-delete tim yang
+            bukan punya mereka. */}
+        {(() => {
+          const role = (currentUser as any)?.role;
+          const isCreator = team && currentUser && String(team.created_by) === String(currentUser.id);
+          const isSuper = role === "super_user" || role === "developer";
+          if (!isCreator && !isSuper) return null;
+          return (
+            <div className="bg-destructive/5 rounded-3xl border border-destructive/20 overflow-hidden mt-12">
+              <div className="p-8 border-b border-destructive/20 bg-destructive/10">
+                <h2 className="text-xl font-bold flex items-center gap-2 text-red-600">
+                  <ShieldAlert className="w-5 h-5" />
+                  Danger Zone
+                </h2>
+                <p className="text-sm text-red-600/70 mt-1">Actions that cannot be undone.</p>
               </div>
-              <button className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-bold hover:bg-red-700 transition-all">
-                <Trash2 className="w-4 h-4" />
-                Delete
-              </button>
+              <div className="p-8 space-y-4">
+                <div className="flex items-center justify-between p-4 bg-card rounded-2xl border border-destructive/20">
+                  <div>
+                    <h4 className="font-bold text-red-600">Delete Team</h4>
+                    <p className="text-xs text-muted-foreground">Permanently remove this team and all associated data</p>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      if (!confirm(`Hapus tim "${team.name}" permanen? Semua data tim hilang dan tidak bisa dipulihkan.`)) return;
+                      try {
+                        await api.delete(`/organizations/${orgId}/teams/${teamId}`);
+                        toast.success("Tim dihapus");
+                        router.push(`/org/${orgId}`);
+                      } catch (e: any) {
+                        toast.error(e?.response?.data?.detail || "Gagal menghapus tim");
+                      }
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-bold hover:bg-red-700 transition-all"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Delete
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+          );
+        })()}
       </div>
     </div>
   );

@@ -14,7 +14,15 @@ interface Announcement {
   content: string;
   created_at: string;
   creator: { name: string; avatar_url: string };
+  recipient_ids?: string[]; // empty/missing = broadcast
 }
+
+type AudienceMode = "all" | "roles" | "users";
+const ROLE_LABELS: Record<string, string> = {
+  owner: "Admin",
+  manager: "Manager",
+  member: "Member",
+};
 
 const SUPERUSER_ROLES = ["super_user", "developer"];
 
@@ -31,6 +39,9 @@ export default function WorkspaceAnnouncementsPage() {
   const [members, setMembers] = useState<any[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
   const [canManage, setCanManage] = useState(false);
+  const [audienceMode, setAudienceMode] = useState<AudienceMode>("all");
+  const [selectedRoles, setSelectedRoles] = useState<Set<string>>(new Set());
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
   const formRef = useRef<HTMLDivElement>(null);
 
   // Mention list = teams first (so "@tim" is easy to find), then people.
@@ -73,7 +84,14 @@ export default function WorkspaceAnnouncementsPage() {
         const res = await api.put(`/organizations/${orgId}/announcements/${isEditing}`, { title, content });
         setAnnouncements((prev) => prev.map((a) => (a.id === isEditing ? res.data : a)));
       } else {
-        const res = await api.post(`/organizations/${orgId}/announcements`, { title, content, mention_ids: extractMentionIds(content) });
+        const payload: any = {
+          title,
+          content,
+          mention_ids: extractMentionIds(content),
+        };
+        if (audienceMode === "roles") payload.target_roles = Array.from(selectedRoles);
+        if (audienceMode === "users") payload.target_user_ids = Array.from(selectedUserIds);
+        const res = await api.post(`/organizations/${orgId}/announcements`, payload);
         setAnnouncements((prev) => [res.data, ...prev]);
       }
       resetForm();
@@ -101,6 +119,31 @@ export default function WorkspaceAnnouncementsPage() {
     setContent("");
     setIsCreating(false);
     setIsEditing(null);
+    setAudienceMode("all");
+    setSelectedRoles(new Set());
+    setSelectedUserIds(new Set());
+  };
+
+  const toggleRole = (r: string) => {
+    setSelectedRoles((prev) => {
+      const next = new Set(prev);
+      if (next.has(r)) next.delete(r); else next.add(r);
+      return next;
+    });
+  };
+
+  const toggleUserId = (uid: string) => {
+    setSelectedUserIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(uid)) next.delete(uid); else next.add(uid);
+      return next;
+    });
+  };
+
+  const audienceSummary = (a: Announcement) => {
+    const rids = a.recipient_ids || [];
+    if (rids.length === 0) return "Untuk semua anggota";
+    return `Untuk ${rids.length} orang`;
   };
 
   const startEdit = (a: Announcement) => {
@@ -156,10 +199,111 @@ export default function WorkspaceAnnouncementsPage() {
               <RichTextEditor content={content} onChange={setContent}
                 placeholder="Tulis isi pengumuman di sini... ketik @ untuk tag orang" members={memberOptions} />
             </div>
+
+            {/* Audience picker — only on CREATE. Edit form skips it because
+                the existing recipients are pinned and changing audience
+                mid-flight gets confusing. */}
+            {!isEditing && (
+              <div className="space-y-3 pt-2 border-t border-border">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Audiens</label>
+                <div className="flex gap-2">
+                  {(["all", "roles", "users"] as AudienceMode[]).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setAudienceMode(m)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                        audienceMode === m
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-secondary/30 text-muted-foreground border-border hover:bg-secondary"
+                      }`}
+                    >
+                      {m === "all" ? "Semua" : m === "roles" ? "Per Level" : "Per Orang"}
+                    </button>
+                  ))}
+                </div>
+
+                {audienceMode === "roles" && (
+                  <div className="flex flex-wrap gap-2 p-3 rounded-xl border border-border bg-secondary/20">
+                    {(["owner", "manager", "member"] as const).map((r) => (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => toggleRole(r)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                          selectedRoles.has(r)
+                            ? "bg-primary/10 text-primary border-primary"
+                            : "bg-card text-muted-foreground border-border hover:border-primary/50"
+                        }`}
+                      >
+                        {ROLE_LABELS[r]}
+                      </button>
+                    ))}
+                    {selectedRoles.size === 0 && (
+                      <span className="text-[10px] text-muted-foreground/60 self-center ml-2 italic">
+                        Pilih minimal satu level
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {audienceMode === "users" && (
+                  <div className="max-h-48 overflow-y-auto p-2 rounded-xl border border-border bg-secondary/20 space-y-1">
+                    {members.filter((m) => m.user_id !== user?.id).length === 0 && (
+                      <div className="text-[10px] text-muted-foreground italic p-2">Belum ada anggota lain di workspace.</div>
+                    )}
+                    {members.filter((m) => m.user_id !== user?.id).map((m) => {
+                      const uid = m.user_id;
+                      const checked = selectedUserIds.has(uid);
+                      return (
+                        <button
+                          key={uid}
+                          type="button"
+                          onClick={() => toggleUserId(uid)}
+                          className={`w-full flex items-center justify-between p-2 rounded-lg text-xs hover:bg-secondary transition-colors ${
+                            checked ? "bg-primary/5" : ""
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-full bg-secondary border border-border flex items-center justify-center text-[10px] font-bold overflow-hidden">
+                              {m.user?.avatar_url ? (
+                                <img src={m.user.avatar_url} alt="" className="w-full h-full object-cover" />
+                              ) : (
+                                m.user?.name?.charAt(0) || "?"
+                              )}
+                            </div>
+                            <span>{m.user?.name}</span>
+                            <span className="text-[9px] uppercase tracking-wider text-muted-foreground">
+                              {ROLE_LABELS[m.role] || m.role}
+                            </span>
+                          </div>
+                          <span className={`w-4 h-4 rounded border flex items-center justify-center ${checked ? "bg-primary border-primary" : "border-border"}`}>
+                            {checked && <X className="w-3 h-3 text-primary-foreground rotate-45" />}
+                          </span>
+                        </button>
+                      );
+                    })}
+                    {selectedUserIds.size > 0 && (
+                      <div className="text-[10px] text-muted-foreground italic p-2">{selectedUserIds.size} orang dipilih</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="flex justify-end gap-3 pt-4">
               <button onClick={resetForm} className="px-6 py-2 rounded-xl font-bold text-muted-foreground hover:bg-secondary transition-colors">Batal</button>
-              <button onClick={handleSubmit} disabled={submitting || !title || !content}
-                className="px-8 py-2 bg-primary text-primary-foreground rounded-xl font-bold disabled:opacity-50 flex items-center gap-2">
+              <button
+                onClick={handleSubmit}
+                disabled={
+                  submitting
+                  || !title
+                  || !content
+                  || (!isEditing && audienceMode === "roles" && selectedRoles.size === 0)
+                  || (!isEditing && audienceMode === "users" && selectedUserIds.size === 0)
+                }
+                className="px-8 py-2 bg-primary text-primary-foreground rounded-xl font-bold disabled:opacity-50 flex items-center gap-2"
+              >
                 {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
                 {isEditing ? "Update" : "Publish"}
               </button>
@@ -198,7 +342,10 @@ export default function WorkspaceAnnouncementsPage() {
                   </div>
                 )}
               </div>
-              <h3 className="text-2xl font-bold mb-4">{a.title}</h3>
+              <h3 className="text-2xl font-bold mb-2">{a.title}</h3>
+              <div className="text-[10px] uppercase tracking-widest text-muted-foreground/70 mb-4 flex items-center gap-1.5">
+                <Users className="w-3 h-3" /> {audienceSummary(a)}
+              </div>
               <div className="prose prose-sm dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: a.content }} />
             </div>
           ))
