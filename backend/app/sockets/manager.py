@@ -47,7 +47,67 @@ async def join_user(sid, data):
         active_users[sid] = user_id
         if was_offline:
             await sio.emit("presence_update", {"user_id": user_id, "online": True})
+            # Catch-up: tandai semua DM yang ditujukan ke user ini (yang masih
+            # belum delivered) sebagai delivered SEKARANG. Mirror behavior WA
+            # di mana ✓ jadi ✓✓ begitu lawan bicara online lagi, walau dia
+            # belum buka chat.
+            try:
+                await _mark_pending_dms_delivered(user_id)
+            except Exception as e:
+                print(f"[join_user] failed to flush pending dm deliveries for {user_id}: {e}")
         print(f"User {sid} registered as: {user_id}")
+
+
+async def _mark_pending_dms_delivered(user_id: str) -> None:
+    """When a user comes online, mark every DM addressed to them that's
+    still pending delivery as delivered, and broadcast a dm_delivered event
+    per channel so senders' UI updates ✓ → ✓✓ in real-time."""
+    from datetime import datetime, timezone
+    from sqlalchemy import select, and_
+    from app.core.database import async_session
+    from app.models.dm import DMChannel, DMMessage
+    from app.api.dm import dm_ws_manager
+
+    now = datetime.now(timezone.utc)
+    async with async_session() as db:
+        # Channels yang melibatkan user.
+        ch_res = await db.execute(
+            select(DMChannel).where(
+                (DMChannel.user1_id == user_id) | (DMChannel.user2_id == user_id)
+            )
+        )
+        channel_ids = [c.id for c in ch_res.scalars().all()]
+        if not channel_ids:
+            return
+
+        # Ambil pesan yang user ini = recipient (bukan sender), belum delivered.
+        msg_res = await db.execute(
+            select(DMMessage).where(
+                and_(
+                    DMMessage.dm_channel_id.in_(channel_ids),
+                    DMMessage.user_id != user_id,
+                    DMMessage.is_delivered == False,
+                )
+            )
+        )
+        by_channel: dict = {}
+        for m in msg_res.scalars().all():
+            m.is_delivered = True
+            m.delivered_at = now
+            by_channel.setdefault(str(m.dm_channel_id), []).append(str(m.id))
+
+        if not by_channel:
+            return
+        await db.commit()
+
+    # Broadcast per channel — senders' WS will update ✓ → ✓✓ instantly.
+    for ch_id, msg_ids in by_channel.items():
+        await dm_ws_manager.broadcast(ch_id, {
+            "type": "dm_delivered",
+            "channel_id": ch_id,
+            "message_ids": msg_ids,
+            "delivered_at": now.isoformat(),
+        })
 
 
 @sio.event
