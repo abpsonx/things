@@ -286,16 +286,13 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
     { icon: CheckSquare, label: "Tugas Saya", href: "/my-tasks" },
     { icon: Briefcase, label: "Proyek", href: "/projects" },
-    {
-      icon: MessageSquare,
-      label: "Chat",
-      href: (activeOrgId && activeProjectId) ? `/org/${activeOrgId}/project/${activeProjectId}/chat` : "/chat"
-    },
-    {
-      icon: Calendar,
-      label: "Kalender",
-      href: (activeOrgId && activeProjectId) ? `/org/${activeOrgId}/project/${activeProjectId}/calendar` : "/calendar"
-    },
+    // Top-level Chat & Kalender selalu ke halaman PERSONAL (semua DM +
+    // event lintas-proyek). Per-proyek/per-workspace chat & calendar
+    // tetap accessible via nav project / expanded workspace section di
+    // bawah — kalau dipaksa ke project pertama, jadi membuka project
+    // arbitrer yang user tidak minta (mis. BACIGOR 2026).
+    { icon: MessageSquare, label: "Chat", href: "/chat" },
+    { icon: Calendar, label: "Kalender", href: "/calendar" },
     {
       icon: Folder,
       label: "Files",
