@@ -1,12 +1,17 @@
 "use client";
 
-import React from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
 import { MessageSquare, Paperclip, Calendar, Flag, MoreHorizontal } from "lucide-react";
 import { format, isValid } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
+
+interface Label {
+  id: string;
+  name: string;
+  color: string;
+}
 
 interface Task {
   id: string;
@@ -20,6 +25,7 @@ interface Task {
   attachments_count?: number;
   assignee?: { name: string; avatar_url?: string };
   assignees?: { id?: string; name: string; avatar_url?: string }[];
+  labels?: Label[];
 }
 
 const PRIORITY_META: Record<string, { label: string; flagColor: string; textColor: string } | undefined> = {
@@ -63,6 +69,8 @@ export default function TeamTaskCard({
   const dueDateValid = !!dueDate && isValid(dueDate);
   const filesCount = task.attachments_count || 0;
   const commentsCount = task.comments_count || 0;
+  const labels = task.labels || [];
+  const firstLabel = labels[0];
 
   return (
     <div
@@ -152,9 +160,9 @@ export default function TeamTaskCard({
         </p>
       )}
 
-      {/* Footer: files / comments */}
-      {(filesCount > 0 || commentsCount > 0) && (
-        <div className="flex items-center justify-between pt-2 border-t border-border/60 text-[11px] text-muted-foreground">
+      {/* Footer: files / comments / first label */}
+      {(filesCount > 0 || commentsCount > 0 || firstLabel) && (
+        <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/60 text-[11px] text-muted-foreground">
           <div className="flex items-center gap-3">
             {filesCount > 0 && (
               <span className="inline-flex items-center gap-1">
@@ -167,6 +175,16 @@ export default function TeamTaskCard({
               </span>
             )}
           </div>
+          {firstLabel && (
+            <span
+              className="inline-flex items-center gap-1 font-semibold truncate"
+              style={{ color: firstLabel.color }}
+              title={labels.length > 1 ? labels.map(l => l.name).join(", ") : firstLabel.name}
+            >
+              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: firstLabel.color }} />
+              <span className="truncate">{firstLabel.name}{labels.length > 1 ? ` +${labels.length - 1}` : ""}</span>
+            </span>
+          )}
         </div>
       )}
     </div>

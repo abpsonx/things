@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { createPortal } from "react-dom";
 import { X, Building2, Loader2, CheckCircle2, Plus, Type } from "lucide-react";
 import api from "@/lib/api";
 
@@ -40,7 +41,11 @@ export default function CreateOrgModal({ isOpen, onClose, onSuccess }: CreateOrg
     }
   };
 
-  return (
+  // Portal to <body> — Sidebar has a CSS transform (translate-x) which would
+  // otherwise become the containing block for our `fixed inset-0`, sizing the
+  // modal to the 208px-wide drawer instead of the viewport.
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="relative w-full max-w-md bg-card border border-border rounded-3xl shadow-2xl p-8 animate-in zoom-in-95 duration-200">
         <button 
@@ -111,6 +116,7 @@ export default function CreateOrgModal({ isOpen, onClose, onSuccess }: CreateOrg
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

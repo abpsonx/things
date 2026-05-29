@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { createPortal } from "react-dom";
 import { X, Users, Loader2, CheckCircle2, Plus, Type, AlignLeft } from "lucide-react";
 import api from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -49,7 +50,9 @@ export default function CreateTeamModal({ orgId, isOpen, onClose, onSuccess }: C
     }
   };
 
-  return (
+  // Portal to <body> — Sidebar's CSS transform breaks `fixed` for descendants.
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="relative w-full max-w-md bg-card border border-border rounded-3xl shadow-2xl p-8 animate-in zoom-in-95 duration-200">
         <button 
@@ -134,6 +137,7 @@ export default function CreateTeamModal({ orgId, isOpen, onClose, onSuccess }: C
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
@@ -20,7 +21,10 @@ export default function Modal({ isOpen, onClose, title, children, className }: M
     return () => { document.body.style.overflow = "unset"; };
   }, [isOpen]);
 
-  return (
+  // Portal to <body> so `fixed inset-0` is sized to the viewport rather than
+  // an ancestor with a CSS transform (e.g. the Sidebar drawer).
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -61,6 +65,7 @@ export default function Modal({ isOpen, onClose, title, children, className }: M
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }
