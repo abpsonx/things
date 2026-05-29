@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import { MessageSquare, X, Send, Search, Users, Hash, Loader2 } from "lucide-react";
+import { MessageSquare, X, Send, Search, Users, Hash, Loader2, Building2, ArrowRight } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -13,8 +13,11 @@ import { usePresenceStore } from "@/store/usePresenceStore";
 
 export default function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"dm" | "channels">("dm");
+  const [activeTab, setActiveTab] = useState<"dm" | "channels" | "workspace">("dm");
   const [members, setMembers] = useState<any[]>([]);
+  const [projects, setProjects] = useState<any[]>([]);
+  const [orgName, setOrgName] = useState<string>("");
+  const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   // Resolved org id used for navigation. Equals the URL :id when we're on
   // an /org/:id/* route, otherwise the user's first organization (looked
@@ -58,27 +61,54 @@ export default function ChatWidget() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // If we are on a page with orgId, use it.
-      // Otherwise, fetch user's first organization as default.
       let targetOrgId = (orgId as string) || null;
-
       if (!targetOrgId) {
         const orgsRes = await api.get("/organizations");
         if (Array.isArray(orgsRes.data) && orgsRes.data.length > 0) {
           targetOrgId = orgsRes.data[0].id;
         }
       }
-
       if (targetOrgId) {
         setActiveOrgId(targetOrgId);
-        const res = await api.get(`/organizations/${targetOrgId}`);
-        setMembers(res.data.members.filter((m: any) => m.user_id !== currentUser?.id));
+        // Parallel fetch: workspace detail (members + name) + projects in workspace.
+        const [detailRes, projectsRes] = await Promise.all([
+          api.get(`/organizations/${targetOrgId}`),
+          api.get(`/organizations/${targetOrgId}/projects`).catch(() => ({ data: [] })),
+        ]);
+        setMembers(detailRes.data.members.filter((m: any) => m.user_id !== currentUser?.id));
+        setOrgName(detailRes.data.name || "");
+        setProjects(Array.isArray(projectsRes.data) ? projectsRes.data : []);
       }
     } catch (err) {
       console.error("Failed to fetch chat data", err);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Filter berdasar query — case-insensitive, jalan di nama (DM & proyek).
+  const filteredMembers = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return sortedMembers;
+    return sortedMembers.filter((m) => (m.user?.name || "").toLowerCase().includes(q));
+  }, [sortedMembers, query]);
+  const filteredProjects = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return projects;
+    return projects.filter((p) => (p.name || "").toLowerCase().includes(q));
+  }, [projects, query]);
+
+  const openWorkspaceChat = () => {
+    const targetId = (orgId as string) || activeOrgId;
+    if (!targetId) return;
+    router.push(`/org/${targetId}/chat`);
+    setIsOpen(false);
+  };
+  const openProjectChat = (projectId: string) => {
+    const targetId = (orgId as string) || activeOrgId;
+    if (!targetId) return;
+    router.push(`/org/${targetId}/project/${projectId}/chat`);
+    setIsOpen(false);
   };
 
   const handleStartChat = (userId: string) => {
@@ -119,41 +149,55 @@ export default function ChatWidget() {
             </button>
           </div>
 
-          {/* Tabs */}
+          {/* Tabs — 3 mode: DM, Project chat, Workspace chat */}
           <div className="flex border-b border-border p-2 gap-1">
-            <button 
+            <button
               onClick={() => setActiveTab("dm")}
               className={cn(
-                "flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-xs font-bold transition-all",
+                "flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-2xl text-[11px] font-bold transition-all",
                 activeTab === "dm" ? "bg-secondary text-primary shadow-sm" : "text-muted-foreground hover:bg-secondary/50"
               )}
             >
-              <Users className="w-4 h-4" />
+              <Users className="w-3.5 h-3.5" />
               Pesan Privat
             </button>
-            <button 
+            <button
               onClick={() => setActiveTab("channels")}
               className={cn(
-                "flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-xs font-bold transition-all",
+                "flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-2xl text-[11px] font-bold transition-all",
                 activeTab === "channels" ? "bg-secondary text-primary shadow-sm" : "text-muted-foreground hover:bg-secondary/50"
               )}
             >
-              <Hash className="w-4 h-4" />
-              Grup Proyek
+              <Hash className="w-3.5 h-3.5" />
+              Proyek
+            </button>
+            <button
+              onClick={() => setActiveTab("workspace")}
+              className={cn(
+                "flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-2xl text-[11px] font-bold transition-all",
+                activeTab === "workspace" ? "bg-secondary text-primary shadow-sm" : "text-muted-foreground hover:bg-secondary/50"
+              )}
+            >
+              <Building2 className="w-3.5 h-3.5" />
+              Workspace
             </button>
           </div>
 
-          {/* Search */}
-          <div className="px-6 py-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input 
-                type="text" 
-                placeholder="Cari orang atau grup..."
-                className="w-full pl-10 pr-4 py-3 bg-secondary/30 border border-border rounded-2xl text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
-              />
+          {/* Search — hanya tampil di tab yang punya daftar (dm / channels) */}
+          {activeTab !== "workspace" && (
+            <div className="px-6 py-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={activeTab === "dm" ? "Cari orang…" : "Cari proyek…"}
+                  className="w-full pl-10 pr-4 py-3 bg-secondary/30 border border-border rounded-2xl text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Content Area */}
           <div className="flex-1 overflow-y-auto px-6 pb-6 space-y-2">
@@ -163,8 +207,8 @@ export default function ChatWidget() {
                 <p className="text-xs font-medium">Memuat tim...</p>
               </div>
             ) : activeTab === "dm" ? (
-              sortedMembers.length > 0 ? (
-                sortedMembers.map((member) => {
+              filteredMembers.length > 0 ? (
+                filteredMembers.map((member) => {
                   const summary = dmBySender[member.user_id];
                   const hasUnread = !!summary;
                   return (
@@ -227,14 +271,65 @@ export default function ChatWidget() {
               ) : (
                 <div className="text-center py-12 opacity-50 space-y-2">
                   <Users className="w-8 h-8 mx-auto text-muted-foreground" />
-                  <p className="text-xs font-medium">Tidak ada member lain ditemukan.</p>
+                  <p className="text-xs font-medium">
+                    {query.trim() ? "Tidak ada hasil pencarian." : "Tidak ada member lain ditemukan."}
+                  </p>
+                </div>
+              )
+            ) : activeTab === "channels" ? (
+              filteredProjects.length > 0 ? (
+                filteredProjects.map((project) => (
+                  <button
+                    key={project.id}
+                    onClick={() => openProjectChat(project.id)}
+                    className="w-full flex items-center gap-4 p-3 rounded-2xl hover:bg-secondary/50 transition-all group text-left"
+                  >
+                    <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary border border-primary/20 flex items-center justify-center shrink-0">
+                      <Hash className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold truncate group-hover:text-primary transition-colors">{project.name}</p>
+                      <p className="text-[10px] text-muted-foreground truncate">
+                        {project.description || "Tidak ada deskripsi"}
+                      </p>
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </button>
+                ))
+              ) : (
+                <div className="text-center py-12 opacity-50 space-y-2">
+                  <Hash className="w-8 h-8 mx-auto text-muted-foreground" />
+                  <p className="text-xs font-medium">
+                    {query.trim() ? "Tidak ada proyek cocok." : "Belum ada proyek di workspace ini."}
+                  </p>
                 </div>
               )
             ) : (
-              <div className="text-center py-12 opacity-50 space-y-2">
-                <Hash className="w-8 h-8 mx-auto text-muted-foreground" />
-                <p className="text-xs font-medium italic">Grup proyek muncul saat proyek dipilih.</p>
-              </div>
+              // Workspace chat — single big card untuk buka chat workspace
+              activeOrgId ? (
+                <button
+                  onClick={openWorkspaceChat}
+                  className="w-full flex items-center gap-4 p-4 rounded-2xl bg-primary/5 hover:bg-primary/10 border border-primary/20 transition-all group text-left"
+                >
+                  <div className="w-12 h-12 rounded-2xl bg-primary text-primary-foreground flex items-center justify-center shrink-0">
+                    <Building2 className="w-5 h-5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold truncate group-hover:text-primary transition-colors">
+                      {orgName || "Workspace"}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground truncate">
+                      Channel publik untuk seluruh anggota workspace
+                    </p>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-primary shrink-0" />
+                </button>
+              ) : (
+                <div className="text-center py-12 opacity-50 space-y-2">
+                  <Building2 className="w-8 h-8 mx-auto text-muted-foreground" />
+                  <p className="text-xs font-medium italic">Belum ada workspace aktif.</p>
+                </div>
+              )
             )}
           </div>
         </div>

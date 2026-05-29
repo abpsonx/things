@@ -74,6 +74,11 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const [teams, setTeams] = useState<any[]>([]);
   const [isCreateTeamOpen, setIsCreateTeamOpen] = useState(false);
   const [isCreateOrgOpen, setIsCreateOrgOpen] = useState(false);
+  // DM list — expanded shows ALL members, collapsed shows top N
+  // (pinned + unread + recent). Default collapsed agar sidebar gak panjang
+  // banget untuk workspace yang anggotanya banyak.
+  const [dmExpanded, setDmExpanded] = useState(false);
+  const [dmQuery, setDmQuery] = useState("");
 
   const fetchContext = async () => {
     try {
@@ -150,9 +155,39 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const sortedTeams = [...teams].sort(
     (a, b) => (pinnedTeamIds.includes(a.id) ? 0 : 1) - (pinnedTeamIds.includes(b.id) ? 0 : 1)
   );
-  const sortedMembers = [...members].sort(
-    (a, b) => (pinnedDmIds.includes(a.user_id) ? 0 : 1) - (pinnedDmIds.includes(b.user_id) ? 0 : 1)
-  );
+  const sortedMembers = useMemo(() => {
+    // Sort priority: pinned → has unread DM → recent DM activity → alphabetical
+    return [...members].sort((a, b) => {
+      const aPinned = pinnedDmIds.includes(a.user_id) ? 1 : 0;
+      const bPinned = pinnedDmIds.includes(b.user_id) ? 1 : 0;
+      if (aPinned !== bPinned) return bPinned - aPinned;
+      const aSum = dmBySender[a.user_id];
+      const bSum = dmBySender[b.user_id];
+      if (aSum && !bSum) return -1;
+      if (!aSum && bSum) return 1;
+      if (aSum && bSum) return new Date(bSum.lastAt).getTime() - new Date(aSum.lastAt).getTime();
+      return (a.user?.name || "").localeCompare(b.user?.name || "");
+    });
+  }, [members, pinnedDmIds, dmBySender]);
+
+  const DM_COLLAPSED_LIMIT = 6;
+  const filteredDmMembers = useMemo(() => {
+    const q = dmQuery.trim().toLowerCase();
+    if (!q) return sortedMembers;
+    return sortedMembers.filter((m) => (m.user?.name || "").toLowerCase().includes(q));
+  }, [sortedMembers, dmQuery]);
+  // When collapsed (and not searching), show the top N most relevant members
+  // — anyone pinned or with unread always makes the cut even past the limit.
+  const displayedDmMembers = useMemo(() => {
+    if (dmExpanded || dmQuery.trim()) return filteredDmMembers;
+    const important = sortedMembers.filter((m) =>
+      pinnedDmIds.includes(m.user_id) || !!dmBySender[m.user_id]
+    );
+    const rest = sortedMembers.filter((m) =>
+      !pinnedDmIds.includes(m.user_id) && !dmBySender[m.user_id]
+    );
+    return [...important, ...rest].slice(0, Math.max(DM_COLLAPSED_LIMIT, important.length));
+  }, [sortedMembers, dmExpanded, dmQuery, pinnedDmIds, dmBySender, filteredDmMembers]);
 
   const setTeamColor = async (teamId: string, color: string | null) => {
     try {
@@ -510,11 +545,32 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
 
         <div className="space-y-2">
           <h4 className="px-2.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 flex items-center justify-between">
-            Direct Messages
-            <Plus className="w-3 h-3 cursor-pointer hover:text-primary transition-colors" />
+            <span>Direct Messages</span>
+            <button
+              type="button"
+              onClick={() => { setDmExpanded(true); setTimeout(() => { document.getElementById("dm-search-input")?.focus(); }, 50); }}
+              title="Cari semua kontak"
+              className="p-0.5 rounded hover:bg-secondary text-muted-foreground/60 hover:text-primary transition-colors"
+            >
+              <Plus className="w-3 h-3" />
+            </button>
           </h4>
+
+          {/* Search bar — muncul saat expanded atau saat user mulai mengetik */}
+          {dmExpanded && (
+            <div className="px-2">
+              <input
+                id="dm-search-input"
+                value={dmQuery}
+                onChange={(e) => setDmQuery(e.target.value)}
+                placeholder="Cari nama…"
+                className="w-full px-2.5 py-1 text-[11px] bg-secondary/50 border border-border rounded-md outline-none focus:border-primary"
+              />
+            </div>
+          )}
+
           <div className="space-y-1">
-            {sortedMembers.map((member) => {
+            {displayedDmMembers.map((member) => {
               const summary = dmBySender[member.user_id];
               const hasUnread = !!summary;
               const pinned = pinnedDmIds.includes(member.user_id);
@@ -562,6 +618,29 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                 </div>
               );
             })}
+
+            {/* Empty-state hint kalau cari gak ketemu */}
+            {dmExpanded && dmQuery.trim() && displayedDmMembers.length === 0 && (
+              <p className="px-3 py-2 text-[10px] italic text-muted-foreground/60">
+                Tidak ada kontak cocok.
+              </p>
+            )}
+
+            {/* Footer toggle: lihat semua / tutup */}
+            {sortedMembers.length > DM_COLLAPSED_LIMIT && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (dmExpanded) { setDmExpanded(false); setDmQuery(""); }
+                  else setDmExpanded(true);
+                }}
+                className="w-full px-3 py-1.5 text-[10px] font-semibold text-muted-foreground hover:text-primary hover:bg-secondary/50 rounded-md transition-colors text-left"
+              >
+                {dmExpanded
+                  ? "▴ Tutup daftar"
+                  : `▾ Lihat semua (${sortedMembers.length})`}
+              </button>
+            )}
           </div>
         </div>
       </nav>
