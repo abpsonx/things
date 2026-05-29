@@ -24,11 +24,13 @@ set -e
 
 cd "$(dirname "$0")"
 
-# Tolak deploy kalau ada perubahan uncommitted — biasanya itu artinya
-# lupa commit / dibuat di branch lain. Lebih aman fail dulu.
-if [[ -n $(git status --porcelain) ]]; then
-  echo "✋ Ada perubahan uncommitted di repo. Stash / commit dulu sebelum deploy."
-  git status --short
+# Tolak deploy kalau ada perubahan MODIFIED di file yang sudah ter-track
+# (biasanya itu artinya lupa commit / dibuat di branch lain). Untracked
+# files (logs/, nginx/cache/, .env.bak, dll yang dibuat runtime di server)
+# diabaikan.
+if [[ -n $(git status --porcelain --untracked-files=no 2>/dev/null) ]]; then
+  echo "✋ Ada perubahan ter-track yang belum di-commit di repo. Stash / commit dulu sebelum deploy."
+  git status --short --untracked-files=no
   exit 1
 fi
 

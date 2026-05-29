@@ -13,3 +13,9 @@ backend/uploads/*
 
 # DB backup dumps (server-side, not committed)
 backups/
+
+# Runtime / server-side artifacts (not committed)
+.env.bak
+logs/
+nginx/cache/
+nginx/conf.d/
