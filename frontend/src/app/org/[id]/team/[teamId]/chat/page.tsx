@@ -111,8 +111,11 @@ export default function TeamChatPage() {
       setMessages((prev) => prev.filter(m => m.id !== messageId));
     });
 
-    socket.on("message_edited", (updatedMsg: Message) => {
-      setMessages((prev) => prev.map(m => m.id === updatedMsg.id ? updatedMsg : m));
+    socket.on("message_edited", (updatedMsg: Partial<Message> & { id: string }) => {
+      // Backend's edit broadcast only carries {id, content, edited_at}; we MUST
+      // merge so file_url / user / reactions / is_sticker survive the update.
+      // Replacing the whole object made attachments vanish on edit.
+      setMessages((prev) => prev.map(m => m.id === updatedMsg.id ? { ...m, ...updatedMsg } : m));
     });
 
     socket.on("poll_updated", (poll: any) => {

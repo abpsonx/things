@@ -790,12 +790,18 @@ async def delete_team_message(
     """Delete a chat message."""
     await _require_team_access(db, org_id, team_id, current_user)
 
-    result = await db.execute(
-        select(TeamMessage).where(TeamMessage.id == message_id, TeamMessage.user_id == current_user.id)
-    )
-    msg = result.scalar_one_or_none()
-    if not msg:
+    # Temporary diagnostic — log every delete attempt so we can pin down a bug
+    # report ("orang lain hapus, gambar saya juga hilang"). Match the message's
+    # owner BEFORE applying the user_id filter, so we can tell the difference
+    # between "wrong owner" and "no such message". Remove once verified.
+    raw_res = await db.execute(select(TeamMessage).where(TeamMessage.id == message_id))
+    raw_msg = raw_res.scalar_one_or_none()
+    print(f"[chat-delete] team={team_id} caller={current_user.id} msg={message_id} "
+          f"owner={raw_msg.user_id if raw_msg else 'NOT_FOUND'}")
+
+    if not raw_msg or str(raw_msg.user_id) != str(current_user.id):
         raise HTTPException(status_code=404, detail="Pesan tidak ditemukan atau Anda tidak berhak menghapusnya")
+    msg = raw_msg
 
     await db.delete(msg)
     await db.commit()
