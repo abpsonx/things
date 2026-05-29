@@ -7,7 +7,7 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { useNotificationsStore } from "@/store/useNotificationsStore";
 import {
   Send, Loader2, User as UserIcon, ShieldCheck, Paperclip,
-  Trash2, Edit2, X, Check, CheckCheck, Smile, Wifi, WifiOff, Reply, CornerDownRight,
+  Edit2, X, Check, CheckCheck, Smile, Wifi, WifiOff, Reply, CornerDownRight,
   FileText, File, Image, Video, Music, Download, Eye, Clock, Sticker
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -16,6 +16,7 @@ import FileViewerModal from "@/components/ui/FileViewerModal";
 import VoiceRecorder from "@/components/chat/VoiceRecorder";
 import VoiceNotePlayer from "@/components/chat/VoiceNotePlayer";
 import TypingIndicator from "@/components/chat/TypingIndicator";
+import EditHistoryBadge from "@/components/chat/EditHistoryBadge";
 
 const GI = (n: string) => { const e = (n || "").toLowerCase().split(".").pop() || ""; return { isImage: ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "ico"].includes(e), isVideo: ["mp4", "mov", "avi", "mkv", "wmv"].includes(e), isAudio: ["mp3", "wav", "ogg", "aac", "flac", "m4a", "webm"].includes(e) || (n || "").includes("voice-note"), isPdf: e === "pdf" } };
 
@@ -146,7 +147,7 @@ export default function DMChatPage() {
         } else if (d.type === "dm_reacted") {
           setMs(prev => prev.map(m => m.id === d.message_id ? { ...m, reactions: d.reactions || {} } : m));
         } else if (d.type === "dm_edited") {
-          setMs(prev => prev.map(m => m.id === d.message.id ? { ...m, content: d.message.content, edited_at: d.message.edited_at || m.edited_at } : m));
+          setMs(prev => prev.map(m => m.id === d.message.id ? { ...m, content: d.message.content, edited_at: d.message.edited_at || m.edited_at, edit_history: d.message.edit_history ?? (m as any).edit_history ?? [] } : m));
         } else if (d.type === "dm_deleted") {
           setMs(prev => prev.filter(m => m.id !== d.message_id));
         } else if (d.type === "dm_typing") {
@@ -227,7 +228,6 @@ export default function DMChatPage() {
   const updateMsg = async () => {
     try { const r = await api.put(`/dm/messages/${em.id}`, { content: tx }); setMs(p => p.map(m => m.id === em.id ? { ...m, content: r.data.content, edited_at: r.data.edited_at || new Date().toISOString() } : m)); setEm(null); setTx(""); } catch { }
   };
-  const delMsg = async (id: string) => { if (!confirm("Hapus?")) return; setMs(p => p.filter(m => m.id !== id)); try { await api.delete(`/dm/messages/${id}`); } catch { } };
 
   // ─── React ───────────────────────────────────────────────────────────────
   const doReact = async (mid: string, emoji: string) => {
@@ -413,8 +413,13 @@ export default function DMChatPage() {
                             : up2 ? null
                               : <span className={cn("text-[9px] flex items-center gap-0.5", me ? "text-white/70" : "text-muted-foreground")}>
                                 {msg.edited_at && (
-                                  <span className="italic mr-0.5" title={`Diedit ${fmtEdited(msg.edited_at)}`}>
-                                    Diedit {fmtEdited(msg.edited_at)} ·
+                                  <span className="mr-1">
+                                    <EditHistoryBadge
+                                      history={(msg as any).edit_history || []}
+                                      editedAt={msg.edited_at}
+                                      onDark={me}
+                                    />
+                                    <span className="opacity-60"> ·</span>
                                   </span>
                                 )}
                                 {d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
@@ -434,10 +439,7 @@ export default function DMChatPage() {
                               <Reply className="w-3 h-3" />
                             </button>
                             {me && (
-                              <>
-                                <button onClick={() => { setEm(msg); setTx(msg.content); setReplyTo(null); }} className="p-1 hover:bg-secondary rounded-lg text-muted-foreground bg-background/80 backdrop-blur-sm shadow-sm"><Edit2 className="w-3 h-3" /></button>
-                                <button onClick={() => delMsg(msg.id)} className="p-1 hover:bg-destructive/10 rounded-lg text-destructive bg-background/80 backdrop-blur-sm shadow-sm"><Trash2 className="w-3 h-3" /></button>
-                              </>
+                              <button onClick={() => { setEm(msg); setTx(msg.content); setReplyTo(null); }} className="p-1 hover:bg-secondary rounded-lg text-muted-foreground bg-background/80 backdrop-blur-sm shadow-sm"><Edit2 className="w-3 h-3" /></button>
                             )}
                           </div>
                         )}

@@ -12,7 +12,6 @@ import {
   Paperclip,
   MoreVertical,
   Edit2,
-  Trash2,
   Check,
   CheckCheck,
   X,
@@ -33,6 +32,7 @@ import api from "@/lib/api";
 import { socket } from "@/lib/socket";
 import { useTyping } from "@/lib/useTyping";
 import TypingIndicator from "@/components/chat/TypingIndicator";
+import EditHistoryBadge from "@/components/chat/EditHistoryBadge";
 import { useAuthStore } from "@/store/useAuthStore";
 import TeamNav from "@/components/team/TeamNav";
 import { format } from "date-fns";
@@ -49,6 +49,7 @@ interface Message {
   is_sticker?: boolean;
   created_at: string;
   edited_at?: string;
+  edit_history?: { content: string; edited_at: string | null }[];
   parent_id?: string | null;
   parent?: { id: string; content?: string; user?: { id?: string; name?: string } | null } | null;
   poll?: PollData | null;
@@ -203,17 +204,6 @@ export default function TeamChatPage() {
     } catch (err) {
       console.error("Failed to send message", err);
       setMessages((prev) => prev.filter(m => m.id !== tempId));
-    }
-  };
-
-  const deleteMessage = async (id: string) => {
-    if (!confirm("Hapus pesan ini?")) return;
-    try {
-      await api.delete(`/organizations/${orgId}/teams/${teamId}/chat/messages/${id}`);
-      setMessages((prev) => prev.filter(m => m.id !== id));
-      setActiveMenuId(null);
-    } catch (err) {
-      console.error("Failed to delete message", err);
     }
   };
 
@@ -555,13 +545,15 @@ export default function TeamChatPage() {
                             </div>
                           )}
                           {renderContent(msg, isMe)}
-                          {msg.edited_at && (() => {
-                            const dd = new Date(msg.edited_at);
-                            const stamp = isNaN(dd.getTime())
-                              ? "diedit"
-                              : `Diedit ${String(dd.getDate()).padStart(2, "0")}/${String(dd.getMonth() + 1).padStart(2, "0")} ${String(dd.getHours()).padStart(2, "0")}.${String(dd.getMinutes()).padStart(2, "0")}`;
-                            return <span className={`text-[9px] block mt-1 italic opacity-60 ${isMe ? 'text-white' : 'text-muted-foreground'}`}>{stamp}</span>;
-                          })()}
+                          {msg.edited_at && (
+                            <span className="block mt-1">
+                              <EditHistoryBadge
+                                history={msg.edit_history || []}
+                                editedAt={msg.edited_at}
+                                onDark={isMe}
+                              />
+                            </span>
+                          )}
                         </>
                       )}
                     </div>
@@ -632,20 +624,15 @@ export default function TeamChatPage() {
                     )}
                   </div>
 
-                  {/* Context Menu Popup */}
+                  {/* Context Menu Popup — edit only, delete disabled for the
+                      whole workspace so chat keeps an immutable history. */}
                   {activeMenuId === msg.id && (
                     <div className={`absolute top-full ${isMe ? 'right-0' : 'left-0'} z-50 mt-1 bg-card border border-border rounded-xl shadow-xl p-1 min-w-[120px] animate-in zoom-in-95 duration-200`}>
-                      <button 
+                      <button
                         onClick={() => startEdit(msg)}
                         className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-secondary rounded-lg transition-colors text-foreground"
                       >
                         <Edit2 className="w-3.5 h-3.5" /> Edit Pesan
-                      </button>
-                      <button 
-                        onClick={() => deleteMessage(msg.id)}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-red-50 text-red-600 rounded-lg transition-colors"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" /> Hapus Pesan
                       </button>
                     </div>
                   )}

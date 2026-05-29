@@ -219,6 +219,12 @@ async def update_workspace_message(
     if not message or str(message.user_id) != str(current_user.id):
         raise HTTPException(status_code=403, detail="Tidak boleh mengedit pesan ini")
 
+    history = list(message.edit_history or [])
+    history.append({
+        "content": message.content,
+        "edited_at": (message.edited_at or message.created_at).isoformat() if (message.edited_at or message.created_at) else None,
+    })
+    message.edit_history = history
     message.content = data.content
     message.is_edited = True
     message.edited_at = datetime.now(timezone.utc)
@@ -231,6 +237,7 @@ async def update_workspace_message(
         "content": message.content,
         "is_edited": True,
         "edited_at": message.edited_at.isoformat() if message.edited_at else None,
+        "edit_history": message.edit_history,
     }, room=f"channel_{ch.id}")
     return message
 

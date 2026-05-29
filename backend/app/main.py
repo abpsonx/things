@@ -61,6 +61,13 @@ async def lifespan(app: FastAPI):
             except Exception:
                 pass
 
+        # edit_history — past versions of message content, appended on every edit
+        for tbl in ("messages", "team_messages", "dm_messages"):
+            try:
+                await conn.execute(text(f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS edit_history JSONB DEFAULT '[]'::jsonb"))
+            except Exception:
+                pass
+
         # engagement totals on social_metrics (existing tables predate them)
         for col in ("comments", "shares", "saves"):
             try:

@@ -2,7 +2,7 @@
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import Column, String, Text, DateTime, ForeignKey, CheckConstraint, Boolean
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 
@@ -62,6 +62,9 @@ class TeamMessage(Base):
     is_sticker = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     edited_at = Column(DateTime(timezone=True), nullable=True)
+    # Past versions: append {content, edited_at} on every edit so users can see
+    # what the message used to say. Latest content stays in `content`.
+    edit_history = Column(JSONB, nullable=True, default=list)
 
     # Relationships
     team = relationship("Team", back_populates="messages")

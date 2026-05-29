@@ -19,6 +19,7 @@ import Reactions, { ReactionBucket } from "@/components/reactions/Reactions";
 import VoiceRecorder from "@/components/chat/VoiceRecorder";
 import VoiceNotePlayer, { isAudioFile } from "@/components/chat/VoiceNotePlayer";
 import StickerPicker from "@/components/chat/StickerPicker";
+import EditHistoryBadge from "@/components/chat/EditHistoryBadge";
 
 const fmtEdited = (iso?: string | null) => {
   if (!iso) return "";
@@ -248,7 +249,7 @@ export default function WorkspaceChatPage() {
       setMessages((prev) => (prev.find((x) => x.id === m.id) ? prev : [...prev, m]));
     };
     const onUpd = (d: any) =>
-      setMessages((prev) => prev.map((m) => m.id === d.id ? { ...m, content: d.content, is_edited: true, edited_at: d.edited_at || m.edited_at || new Date().toISOString() } : m));
+      setMessages((prev) => prev.map((m) => m.id === d.id ? { ...m, content: d.content, is_edited: true, edited_at: d.edited_at || m.edited_at || new Date().toISOString(), edit_history: d.edit_history ?? (m as any).edit_history ?? [] } : m));
     const onDel = (d: any) => setMessages((prev) => prev.filter((m) => m.id !== d.id));
     const onRead = (d: any) => {
       if (d.channel_id !== channelId) return;
@@ -381,11 +382,6 @@ export default function WorkspaceChatPage() {
     } catch (err) {
       console.error("Failed to send sticker", err);
     }
-  };
-
-  const deleteMessage = async (msgId: string) => {
-    if (!confirm("Hapus pesan ini?")) return;
-    try { await api.delete(`${base}/messages/${msgId}`); } catch (e) { console.error(e); }
   };
 
   const formatTime = (dateStr: string) =>
@@ -562,8 +558,13 @@ export default function WorkspaceChatPage() {
                     )}
                     <div className={cn("flex items-center gap-0.5 text-[8px] mb-[1px] shrink-0 font-medium select-none", (msg.poll || isSticker) ? "text-muted-foreground/70" : isMe ? "text-white/70" : "text-muted-foreground/60")}>
                       {(msg.edited_at || msg.is_edited) && (
-                        <span className="italic mr-0.5" title={msg.edited_at ? `Diedit ${fmtEdited(msg.edited_at)}` : "Diedit"}>
-                          {msg.edited_at ? `Diedit ${fmtEdited(msg.edited_at)} ·` : "Diedit ·"}
+                        <span className="mr-1">
+                          <EditHistoryBadge
+                            history={(msg as any).edit_history || []}
+                            editedAt={msg.edited_at || msg.created_at}
+                            onDark={isMe}
+                          />
+                          <span className="opacity-60"> ·</span>
                         </span>
                       )}
                       <span>{formatTime(msg.created_at)}</span>
@@ -593,10 +594,7 @@ export default function WorkspaceChatPage() {
                     <button onClick={() => togglePin(msg)} title={msg.is_pinned ? "Unpin" : "Pin"} className={cn("p-0.5 hover:bg-secondary rounded transition-all", msg.is_pinned ? "text-blue-500" : "text-muted-foreground")}><Pin className="w-2.5 h-2.5" /></button>
                     <button onClick={() => setReplyingTo(msg)} title="Reply" className="p-0.5 hover:bg-secondary rounded text-muted-foreground transition-all"><Reply className="w-2.5 h-2.5" /></button>
                     {isMe && (
-                      <>
-                        <button onClick={() => { setEditingMessage(msg); setNewMessage(msg.content); }} title="Edit" className="p-0.5 hover:bg-secondary rounded text-muted-foreground transition-all"><Edit2 className="w-2.5 h-2.5" /></button>
-                        <button onClick={() => deleteMessage(msg.id)} title="Delete" className="p-0.5 hover:bg-red-500/10 rounded text-red-500 transition-all"><Trash2 className="w-2.5 h-2.5" /></button>
-                      </>
+                      <button onClick={() => { setEditingMessage(msg); setNewMessage(msg.content); }} title="Edit" className="p-0.5 hover:bg-secondary rounded text-muted-foreground transition-all"><Edit2 className="w-2.5 h-2.5" /></button>
                     )}
                   </div>
                 </div>

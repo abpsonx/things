@@ -143,6 +143,7 @@ async def get_dm_messages(
             "attachment_name": m.attachment_name,
             "is_sticker": m.is_sticker,
             "edited_at": m.edited_at.isoformat() if m.edited_at else None,
+            "edit_history": m.edit_history or [],
             "created_at": m.created_at.isoformat() if m.created_at else None,
             "parent_id": str(m.parent_id) if m.parent_id else None,
             "parent": parents_map.get(str(m.parent_id)) if m.parent_id else None,
@@ -297,6 +298,12 @@ async def edit_dm_message(
     if not message:
         raise HTTPException(status_code=404, detail="Pesan tidak ditemukan atau bukan milik Anda")
     
+    history = list(message.edit_history or [])
+    history.append({
+        "content": message.content,
+        "edited_at": (message.edited_at or message.created_at).isoformat() if (message.edited_at or message.created_at) else None,
+    })
+    message.edit_history = history
     message.content = data.content
     message.edited_at = datetime.now(timezone.utc)
     await db.commit()
@@ -310,6 +317,7 @@ async def edit_dm_message(
             "id": str(message.id),
             "content": message.content,
             "edited_at": message.edited_at.isoformat() if message.edited_at else None,
+            "edit_history": message.edit_history,
         },
     })
 

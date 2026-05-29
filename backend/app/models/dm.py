@@ -39,6 +39,7 @@ class DMMessage(Base):
     is_sticker = Column(Boolean, default=False)
     parent_id = Column(UUID(as_uuid=True), ForeignKey("dm_messages.id", ondelete="SET NULL"), nullable=True)
     edited_at = Column(DateTime(timezone=True), nullable=True)
+    edit_history = Column(JSONB, nullable=True, default=list)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Relationships

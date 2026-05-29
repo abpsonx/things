@@ -7,6 +7,7 @@ import api from "@/lib/api";
 import { socket } from "@/lib/socket";
 import { useTyping } from "@/lib/useTyping";
 import TypingIndicator from "@/components/chat/TypingIndicator";
+import EditHistoryBadge from "@/components/chat/EditHistoryBadge";
 import {
   Send,
   Hash,
@@ -514,7 +515,7 @@ export default function ChatPage() {
       };
 
       const handleUpdateMessage = (data: any) => {
-        setMessages((prev) => prev.map(m => m.id === data.id ? { ...m, content: data.content, is_edited: true, edited_at: data.edited_at || m.edited_at || new Date().toISOString() } : m));
+        setMessages((prev) => prev.map(m => m.id === data.id ? { ...m, content: data.content, is_edited: true, edited_at: data.edited_at || m.edited_at || new Date().toISOString(), edit_history: data.edit_history ?? (m as any).edit_history ?? [] } : m));
       };
 
       const handleDeleteMessage = (data: any) => {
@@ -701,15 +702,6 @@ export default function ChatPage() {
     } catch (err) {
       console.error("Failed to send voice note", err);
       alert("Gagal mengirim voice note");
-    }
-  };
-
-  const deleteMessage = async (msgId: string) => {
-    if (!confirm("Hapus pesan ini?")) return;
-    try {
-      await api.delete(`/projects/${projectId}/channels/${activeChannel.id}/messages/${msgId}`);
-    } catch (err) {
-      console.error("Failed to delete message", err);
     }
   };
 
@@ -1042,8 +1034,13 @@ export default function ChatPage() {
                                 : "text-muted-foreground/60"
                           )}>
                             {(msg.edited_at || msg.is_edited) && (
-                              <span className="italic mr-0.5" title={msg.edited_at ? `Diedit ${fmtEdited(msg.edited_at)}` : "Diedit"}>
-                                {msg.edited_at ? `Diedit ${fmtEdited(msg.edited_at)} ·` : "Diedit ·"}
+                              <span className="mr-1">
+                                <EditHistoryBadge
+                                  history={(msg as any).edit_history || []}
+                                  editedAt={msg.edited_at || msg.created_at}
+                                  onDark={isMe}
+                                />
+                                <span className="opacity-60"> ·</span>
                               </span>
                             )}
                             <span>{formatTime(msg.created_at)}</span>
@@ -1091,7 +1088,6 @@ export default function ChatPage() {
                           {isMe && (
                             <>
                               <button onClick={() => { setEditingMessage(msg); setNewMessage(msg.content); }} title="Edit" className="p-0.5 hover:bg-secondary rounded text-muted-foreground transition-all"><Edit2 className="w-2.5 h-2.5" /></button>
-                              <button onClick={() => deleteMessage(msg.id)} title="Delete" className="p-0.5 hover:bg-red-500/10 rounded text-red-500 transition-all"><Trash2 className="w-2.5 h-2.5" /></button>
                             </>
                           )}
                         </div>

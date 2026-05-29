@@ -765,20 +765,34 @@ async def edit_team_message(
     if not msg:
         raise HTTPException(status_code=404, detail="Pesan tidak ditemukan atau Anda tidak berhak mengeditnya")
 
+    # Snapshot the OLD content+timestamp into history before overwriting.
+    history = list(msg.edit_history or [])
+    history.append({
+        "content": msg.content,
+        "edited_at": (msg.edited_at or msg.created_at).isoformat() if (msg.edited_at or msg.created_at) else None,
+    })
+    msg.edit_history = history
     msg.content = data.get("content")
     msg.edited_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(msg)
 
-    # Broadcast update
+    # Broadcast update — include edit_history so other clients can show the
+    # "view past versions" popover without an extra round-trip.
     from app.sockets.manager import sio
     await sio.emit("message_edited", {
         "id": str(msg.id),
         "content": msg.content,
-        "edited_at": msg.edited_at.isoformat()
+        "edited_at": msg.edited_at.isoformat(),
+        "edit_history": msg.edit_history,
     }, room=f"team_{team_id}")
 
-    return {"id": str(msg.id), "content": msg.content, "edited_at": msg.edited_at.isoformat()}
+    return {
+        "id": str(msg.id),
+        "content": msg.content,
+        "edited_at": msg.edited_at.isoformat(),
+        "edit_history": msg.edit_history,
+    }
 
 
 @router.delete("/{team_id}/chat/messages/{message_id}")
@@ -790,18 +804,12 @@ async def delete_team_message(
     """Delete a chat message."""
     await _require_team_access(db, org_id, team_id, current_user)
 
-    # Temporary diagnostic — log every delete attempt so we can pin down a bug
-    # report ("orang lain hapus, gambar saya juga hilang"). Match the message's
-    # owner BEFORE applying the user_id filter, so we can tell the difference
-    # between "wrong owner" and "no such message". Remove once verified.
-    raw_res = await db.execute(select(TeamMessage).where(TeamMessage.id == message_id))
-    raw_msg = raw_res.scalar_one_or_none()
-    print(f"[chat-delete] team={team_id} caller={current_user.id} msg={message_id} "
-          f"owner={raw_msg.user_id if raw_msg else 'NOT_FOUND'}")
-
-    if not raw_msg or str(raw_msg.user_id) != str(current_user.id):
+    result = await db.execute(
+        select(TeamMessage).where(TeamMessage.id == message_id, TeamMessage.user_id == current_user.id)
+    )
+    msg = result.scalar_one_or_none()
+    if not msg:
         raise HTTPException(status_code=404, detail="Pesan tidak ditemukan atau Anda tidak berhak menghapusnya")
-    msg = raw_msg
 
     await db.delete(msg)
     await db.commit()
@@ -925,6 +933,7 @@ async def list_team_messages(
             "is_sticker": m.is_sticker,
             "created_at": m.created_at.isoformat(),
             "edited_at": m.edited_at.isoformat() if m.edited_at else None,
+            "edit_history": m.edit_history or [],
             "parent_id": str(m.parent_id) if m.parent_id else None,
             "parent": parents_map.get(str(m.parent_id)) if m.parent_id else None,
             "poll": _serialize_poll(m.poll, current_user.id) if m.poll else None,
