@@ -251,6 +251,24 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
     }
   };
 
+  const handleCreateLabel = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newLabelName.trim()) return;
+    try {
+      const res = await api.post(`/organizations/${orgId}/labels`, {
+        name: newLabelName,
+        color: newLabelColor,
+      });
+      const createdLabel = res.data;
+      setAvailableLabels([...availableLabels, createdLabel]);
+      setNewLabelName("");
+      setIsCreatingLabel(false);
+      await toggleLabel(createdLabel.id);
+    } catch (err) {
+      console.error("Failed to create label", err);
+    }
+  };
+
   const deleteTask = async () => {
     if (!confirm("Hapus tugas ini permanen? Pakai 'Arsipkan' kalau cuma mau menyembunyikan.")) return;
     try {
@@ -612,6 +630,85 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
           </div>
             );
           })()}
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1">
+              <Tag className="w-3 h-3" /> Labels
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {task?.labels?.map((label: any) => (
+                <div
+                  key={label.id}
+                  className="px-2 py-0.5 rounded text-[8px] font-bold text-white uppercase tracking-tighter"
+                  style={{ backgroundColor: label.color }}
+                >
+                  {label.name}
+                </div>
+              ))}
+
+              <Popover
+                align="right"
+                trigger={
+                  <button className="w-6 h-6 rounded bg-background border border-border flex items-center justify-center hover:border-primary/50 text-muted-foreground hover:text-primary transition-all">
+                    <Plus className="w-3 h-3" />
+                  </button>
+                }
+              >
+                <div className="p-3 space-y-3">
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border pb-1">Labels</div>
+                  <div className="space-y-1 max-h-40 overflow-y-auto">
+                    {availableLabels.map((l) => (
+                      <button
+                        key={l.id}
+                        onClick={() => toggleLabel(l.id)}
+                        className="w-full flex items-center justify-between p-2 hover:bg-secondary rounded-md group"
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: l.color }} />
+                          <span className="text-xs">{l.name}</span>
+                        </div>
+                        {task?.labels?.some((tl: any) => tl.id === l.id) && <Check className="w-3 h-3 text-primary" />}
+                      </button>
+                    ))}
+                  </div>
+
+                  {isCreatingLabel ? (
+                    <form onSubmit={handleCreateLabel} className="space-y-2 pt-2 border-t border-border">
+                      <input
+                        autoFocus
+                        value={newLabelName}
+                        onChange={(e) => setNewLabelName(e.target.value)}
+                        placeholder="Nama label..."
+                        className="w-full px-2 py-1 text-[10px] border border-border rounded outline-none focus:border-primary"
+                      />
+                      <div className="flex gap-1">
+                        {["#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899"].map(c => (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => setNewLabelColor(c)}
+                            className={cn("w-4 h-4 rounded-full border border-white", newLabelColor === c && "ring-1 ring-primary")}
+                            style={{ backgroundColor: c }}
+                          />
+                        ))}
+                      </div>
+                      <div className="flex gap-2">
+                        <button type="submit" className="flex-1 py-1 bg-primary text-primary-foreground text-[10px] font-bold rounded">Buat</button>
+                        <button type="button" onClick={() => setIsCreatingLabel(false)} className="px-2 py-1 text-[10px] text-muted-foreground">Batal</button>
+                      </div>
+                    </form>
+                  ) : (
+                    <button
+                      onClick={() => setIsCreatingLabel(true)}
+                      className="w-full py-1.5 border border-dashed border-border rounded-md text-[10px] font-bold text-muted-foreground hover:border-primary hover:text-primary transition-all"
+                    >
+                      Buat Label Baru
+                    </button>
+                  )}
+                </div>
+              </Popover>
+            </div>
+          </div>
           </div>
 
           <div className="pt-6 border-t border-border mt-4 space-y-2">
