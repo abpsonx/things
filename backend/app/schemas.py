@@ -502,6 +502,7 @@ class BriefSceneBase(BaseModel):
     shoot_time: Optional[str] = None
     script_vo: Optional[str] = None
     footage: Optional[str] = None
+    text_on_video: Optional[str] = None
     talent: Optional[str] = None
     duration: Optional[str] = None
 

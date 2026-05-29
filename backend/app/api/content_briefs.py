@@ -138,6 +138,13 @@ async def create_brief(
     db.add(brief)
     await db.flush()
 
+    # Seed 5 empty scenes so the storyboard table feels usable from the start
+    # — saves the user from clicking "+ Tambah Scene" 5 times for every new
+    # brief. Order matches typical ad shape: hook → problem → solusi → cta → outro,
+    # but slugs left blank so the user is free to relabel/delete any.
+    for i in range(1, 6):
+        db.add(BriefScene(brief_id=brief.id, position=i))
+
     await log_activity(
         db, org_id=org_id, user_id=current_user.id,
         action="brief_created", entity_type="content_brief", entity_id=brief.id,

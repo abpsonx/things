@@ -21,6 +21,7 @@ interface Scene {
   shoot_time: string | null;
   script_vo: string | null;
   footage: string | null;
+  text_on_video: string | null;
   talent: string | null;
   duration: string | null;
 }
@@ -191,7 +192,9 @@ export default function BriefDetailPage() {
   return (
     <div className="flex-1 flex flex-col min-h-screen bg-background">
       <TeamNav orgId={orgId as string} teamId={teamId as string} />
-      <div className="flex-1 p-8 max-w-6xl mx-auto w-full space-y-6">
+      {/* Wider than other team pages — table view butuh ruang biar kolom
+          (Scene/Script/Footage/Text-on-Video/Talent) gak terlalu sempit. */}
+      <div className="flex-1 px-4 md:px-6 py-8 w-full space-y-6">
       {/* Header / breadcrumb */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <Link
@@ -353,10 +356,11 @@ export default function BriefDetailPage() {
               <thead className="bg-secondary/30 border-b border-border">
                 <tr>
                   <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-muted-foreground w-12">No</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-muted-foreground w-44">Scene / Waktu</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-muted-foreground w-40">Scene / Waktu</th>
                   <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Script / VO</th>
                   <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Footage</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-muted-foreground w-40">Talent</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Text on Video</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-muted-foreground w-36">Talent</th>
                   <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-muted-foreground w-20">Durasi</th>
                   <th className="px-3 py-2 w-8"></th>
                 </tr>
@@ -434,24 +438,30 @@ function SceneRow({
     <tr className="border-b border-border last:border-b-0 hover:bg-secondary/10 align-top">
       <td className="px-3 py-3 text-xs font-bold text-muted-foreground">{index}</td>
 
-      {/* Scene meta column — type badge + time + location + shoot time */}
+      {/* Scene meta column — type badge selalu tampil, 3 sub-field (waktu /
+          lokasi / jam) bersifat opsional: yang sudah terisi tampak, yang
+          kosong cuma jadi affordance kecil "+ tambah" sehingga user gak
+          merasa wajib isi 3. */}
       <td className="px-3 py-3 space-y-1.5">
         <SceneTypeInput value={local.scene_type || ""} badgeCls={badgeCls} onChange={(v) => setLocal({ ...local, scene_type: v })} onBlur={() => commit({ scene_type: local.scene_type })} />
-        <CellInput
+        <OptionalCell
+          icon="⏱"
           value={local.time_range || ""}
-          placeholder="dtk 0-3"
+          placeholder="waktu (mis. 0-3 dtk)"
           onChange={(v) => setLocal({ ...local, time_range: v })}
           onBlur={() => commit({ time_range: local.time_range })}
         />
-        <CellInput
+        <OptionalCell
+          icon="📍"
           value={local.location || ""}
-          placeholder="Lokasi: …"
+          placeholder="lokasi"
           onChange={(v) => setLocal({ ...local, location: v })}
           onBlur={() => commit({ location: local.location })}
         />
-        <CellInput
+        <OptionalCell
+          icon="🕒"
           value={local.shoot_time || ""}
-          placeholder="Jam: …"
+          placeholder="jam syuting"
           onChange={(v) => setLocal({ ...local, shoot_time: v })}
           onBlur={() => commit({ shoot_time: local.shoot_time })}
         />
@@ -471,6 +481,14 @@ function SceneRow({
           placeholder="Camera direction / shot list…"
           onChange={(v) => setLocal({ ...local, footage: v })}
           onBlur={() => commit({ footage: local.footage })}
+        />
+      </td>
+      <td className="px-3 py-3">
+        <CellTextarea
+          value={local.text_on_video || ""}
+          placeholder="Text overlay / caption di layar…"
+          onChange={(v) => setLocal({ ...local, text_on_video: v })}
+          onBlur={() => commit({ text_on_video: local.text_on_video })}
         />
       </td>
       <td className="px-3 py-3">
@@ -519,6 +537,42 @@ function CellInput({
       placeholder={placeholder}
       className="w-full px-2 py-1 bg-transparent border border-transparent hover:border-border focus:border-primary rounded-md text-xs outline-none transition-all"
     />
+  );
+}
+
+// Optional inline-meta cell — when empty, renders as a small ghosted hint
+// with a leading icon so user can ignore it. When focused or filled, jadi
+// input normal yang menyimpan saat blur. Tujuan: 3 sub-field (waktu/lokasi/
+// jam) gak terlihat memaksa diisi semua.
+function OptionalCell({
+  value, onChange, onBlur, placeholder, icon,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onBlur: () => void;
+  placeholder?: string;
+  icon?: string;
+}) {
+  return (
+    <div className="flex items-center gap-1 group/cell">
+      {icon && (
+        <span className={cn(
+          "text-[10px] shrink-0 transition-opacity",
+          value ? "opacity-70" : "opacity-30 group-hover/cell:opacity-60",
+        )}>{icon}</span>
+      )}
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
+        placeholder={placeholder}
+        className={cn(
+          "flex-1 min-w-0 px-1.5 py-0.5 bg-transparent border border-transparent rounded-md text-[11px] outline-none transition-all",
+          "focus:border-primary focus:bg-card",
+          value ? "text-foreground" : "text-muted-foreground/50 hover:bg-secondary/30",
+        )}
+      />
+    </div>
   );
 }
 

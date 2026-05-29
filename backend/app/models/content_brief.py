@@ -59,6 +59,7 @@ class BriefScene(Base):
     shoot_time = Column(String(64), nullable=True)         # e.g. "06.30"
     script_vo = Column(Text, nullable=True)                # rich text / multi-line
     footage = Column(Text, nullable=True)                  # camera direction
+    text_on_video = Column(Text, nullable=True)            # on-screen text / caption overlay
     talent = Column(String(255), nullable=True)
     duration = Column(String(32), nullable=True)           # free text, e.g. "3 dtk"
 

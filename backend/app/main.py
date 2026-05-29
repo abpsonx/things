@@ -38,6 +38,12 @@ async def lifespan(app: FastAPI):
         # Note: In production, use Alembic for migrations
         await conn.run_sync(Base.metadata.create_all)
 
+        # text_on_video — added to scene table after initial release
+        try:
+            await conn.execute(text("ALTER TABLE brief_scenes ADD COLUMN IF NOT EXISTS text_on_video TEXT"))
+        except Exception:
+            pass
+
         # Auto-fix missing columns in dm_messages (existing databases)
         for col, col_type in [
             ("is_delivered", "BOOLEAN DEFAULT FALSE"),
