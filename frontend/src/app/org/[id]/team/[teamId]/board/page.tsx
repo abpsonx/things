@@ -437,6 +437,23 @@ export default function TeamBoardPage() {
                   onTaskClick={handleTaskClick}
                   onRename={() => renameColumn(col)}
                   onDelete={columns.length > 1 ? () => deleteColumn(col) : undefined}
+                  onTaskDuplicate={async (taskId) => {
+                    try {
+                      await api.post(`/organizations/${orgId}/teams/${teamId}/tasks/${taskId}/duplicate`);
+                      await fetchData();
+                    } catch (e: any) {
+                      alert(e?.response?.data?.detail || "Gagal menduplikasi task");
+                    }
+                  }}
+                  onTaskArchive={async (taskId) => {
+                    if (!confirm("Arsipkan task ini? Bisa dipulihkan dari arsip.")) return;
+                    try {
+                      await api.post(`/organizations/${orgId}/teams/${teamId}/tasks/${taskId}/archive`);
+                      await fetchData();
+                    } catch (e: any) {
+                      alert(e?.response?.data?.detail || "Gagal mengarsipkan");
+                    }
+                  }}
                 />
               ))}
             </SortableContext>

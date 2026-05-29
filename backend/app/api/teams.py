@@ -429,6 +429,68 @@ async def archive_team_task(
     return _task_to_response(res.scalar_one())
 
 
+@router.post("/{team_id}/tasks/{task_id}/duplicate", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
+async def duplicate_team_task(
+    org_id: str, team_id: str, task_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Clone a team task — title gets " (copy)" suffix, copies description,
+    priority, status, due_date, labels, assignees. Activity items (subtasks,
+    comments, attachments) are NOT carried over."""
+    from sqlalchemy import func as safunc
+    from app.models.label import TaskLabel
+    await _require_team_access(db, org_id, team_id, current_user)
+    res = await db.execute(
+        select(Task)
+        .options(selectinload(Task.task_labels), selectinload(Task.assignee_links))
+        .where(Task.id == task_id, Task.team_id == team_id)
+    )
+    src = res.scalar_one_or_none()
+    if not src:
+        raise HTTPException(status_code=404, detail="Task tidak ditemukan")
+
+    max_pos = (await db.execute(
+        select(safunc.max(Task.position)).where(Task.team_id == team_id, Task.status == src.status)
+    )).scalar() or 0
+
+    new_task = Task(
+        team_id=team_id,
+        title=f"{src.title} (copy)",
+        description=src.description,
+        status=src.status,
+        priority=src.priority,
+        due_date=src.due_date,
+        assignee_id=src.assignee_id,
+        created_by=current_user.id,
+        position=max_pos + 1,
+    )
+    db.add(new_task)
+    await db.flush()
+
+    for tl in (src.task_labels or []):
+        db.add(TaskLabel(task_id=new_task.id, label_id=tl.label_id))
+    for al in (src.assignee_links or []):
+        db.add(TaskAssignee(task_id=new_task.id, user_id=al.user_id))
+
+    await log_activity(
+        db, org_id=org_id, user_id=current_user.id,
+        action="task_created", entity_type="task", entity_id=new_task.id,
+        team_id=team_id, metadata={"title": new_task.title, "duplicated_from": str(src.id)},
+    )
+    await db.commit()
+
+    res = await db.execute(
+        select(Task).options(
+            selectinload(Task.task_labels).selectinload(TaskLabel.label),
+            selectinload(Task.subtasks), selectinload(Task.comments),
+            selectinload(Task.attachments), selectinload(Task.assignee),
+            selectinload(Task.assignee_links).selectinload(TaskAssignee.user),
+        ).where(Task.id == new_task.id)
+    )
+    return _task_to_response(res.scalar_one())
+
+
 @router.post("/{team_id}/tasks/{task_id}/restore", response_model=TaskResponse)
 async def restore_team_task(
     org_id: str, team_id: str, task_id: str,

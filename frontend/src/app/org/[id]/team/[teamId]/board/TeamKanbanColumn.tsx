@@ -25,6 +25,8 @@ interface ColumnProps {
   onTaskClick: (task: any) => void;
   onRename?: () => void;
   onDelete?: () => void;
+  onTaskDuplicate?: (taskId: string) => void | Promise<void>;
+  onTaskArchive?: (taskId: string) => void | Promise<void>;
 }
 
 export default function TeamKanbanColumn({
@@ -35,6 +37,8 @@ export default function TeamKanbanColumn({
   onTaskClick,
   onRename,
   onDelete,
+  onTaskDuplicate,
+  onTaskArchive,
 }: ColumnProps) {
   // useSortable makes the column both draggable (reorder) and a droppable for
   // tasks (id = slug). Drag is triggered only by the grip handle in the header.
@@ -129,6 +133,8 @@ export default function TeamKanbanColumn({
                 key={task.id}
                 task={task}
                 onClick={() => onTaskClick(task)}
+                onDuplicate={onTaskDuplicate ? () => onTaskDuplicate(task.id) : undefined}
+                onArchive={onTaskArchive ? () => onTaskArchive(task.id) : undefined}
               />
             ))}
           </div>

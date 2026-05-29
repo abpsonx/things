@@ -1,9 +1,10 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
-import { MessageSquare, Paperclip, Calendar, Flag, MoreHorizontal } from "lucide-react";
+import { MessageSquare, Paperclip, Calendar, Flag, MoreHorizontal, Edit2, Copy, Archive } from "lucide-react";
 import { format, isValid } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 
@@ -38,10 +39,14 @@ export default function TeamTaskCard({
   task,
   isOverlay,
   onClick,
+  onDuplicate,
+  onArchive,
 }: {
   task: Task;
   isOverlay?: boolean;
   onClick?: () => void;
+  onDuplicate?: () => void | Promise<void>;
+  onArchive?: () => void | Promise<void>;
 }) {
   const {
     attributes,
@@ -53,6 +58,17 @@ export default function TeamTaskCard({
   } = useSortable({ id: task.id });
 
   const style = { transform: CSS.Translate.toString(transform), transition };
+
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [menuOpen]);
 
   if (isDragging && !isOverlay) {
     return (
@@ -92,15 +108,45 @@ export default function TeamTaskCard({
             {priority.label}
           </span>
         ) : <span />}
-        <button
-          type="button"
-          title="Buka detail"
-          onClick={(e) => { e.stopPropagation(); onClick?.(); }}
-          onPointerDown={(e) => e.stopPropagation()}
-          className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
-        >
-          <MoreHorizontal className="w-4 h-4" />
-        </button>
+        <div ref={menuRef} className="relative" onPointerDown={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            title="Aksi tugas"
+            onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
+            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground p-0.5 -m-0.5"
+          >
+            <MoreHorizontal className="w-4 h-4" />
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-full mt-1 z-50 min-w-[150px] bg-card border border-border rounded-xl shadow-xl py-1 animate-in zoom-in-95 duration-100">
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onClick?.(); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-secondary text-foreground transition-colors"
+              >
+                <Edit2 className="w-3.5 h-3.5" /> Edit
+              </button>
+              {onDuplicate && (
+                <button
+                  type="button"
+                  onClick={async (e) => { e.stopPropagation(); setMenuOpen(false); await onDuplicate(); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-secondary text-foreground transition-colors"
+                >
+                  <Copy className="w-3.5 h-3.5" /> Duplikat
+                </button>
+              )}
+              {onArchive && (
+                <button
+                  type="button"
+                  onClick={async (e) => { e.stopPropagation(); setMenuOpen(false); await onArchive(); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-secondary text-foreground transition-colors"
+                >
+                  <Archive className="w-3.5 h-3.5" /> Arsipkan
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Title */}

@@ -25,6 +25,8 @@ interface ColumnProps {
   selectMode?: boolean;
   selectedIds?: Set<string>;
   onToggleSelect?: (taskId: string) => void;
+  onTaskDuplicate?: (taskId: string) => void | Promise<void>;
+  onTaskArchive?: (taskId: string) => void | Promise<void>;
 }
 
 export default function KanbanColumn({
@@ -40,6 +42,8 @@ export default function KanbanColumn({
   selectMode,
   selectedIds,
   onToggleSelect,
+  onTaskDuplicate,
+  onTaskArchive,
 }: ColumnProps) {
   const [isAdding, setIsAdding] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
@@ -187,6 +191,8 @@ export default function KanbanColumn({
               selectMode={selectMode}
               selected={selectedIds?.has(task.id)}
               onToggleSelect={onToggleSelect ? () => onToggleSelect(task.id) : undefined}
+              onDuplicate={onTaskDuplicate ? () => onTaskDuplicate(task.id) : undefined}
+              onArchive={onTaskArchive ? () => onTaskArchive(task.id) : undefined}
             />
           ))}
         </SortableContext>

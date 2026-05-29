@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
-import { MessageSquare, Paperclip, CheckSquare, Calendar, Flag, MoreHorizontal, Check } from "lucide-react";
+import { MessageSquare, Paperclip, CheckSquare, Calendar, Flag, MoreHorizontal, Check, Edit2, Copy, Archive } from "lucide-react";
 import { format, isValid } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 import api from "@/lib/api";
@@ -52,6 +52,8 @@ export default function TaskCard({
   task,
   isOverlay,
   onClick,
+  onDuplicate,
+  onArchive,
   selected,
   onToggleSelect,
   selectMode,
@@ -59,6 +61,8 @@ export default function TaskCard({
   task: Task;
   isOverlay?: boolean;
   onClick?: () => void;
+  onDuplicate?: () => void | Promise<void>;
+  onArchive?: () => void | Promise<void>;
   selected?: boolean;
   onToggleSelect?: () => void;
   selectMode?: boolean;
@@ -70,7 +74,18 @@ export default function TaskCard({
   // All hooks must be called unconditionally before any early return.
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitle, setEditTitle] = useState(task.title);
+  const [menuOpen, setMenuOpen] = useState(false);
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [menuOpen]);
 
   useEffect(() => {
     if (isEditingTitle) titleInputRef.current?.select();
@@ -166,15 +181,45 @@ export default function TaskCard({
             {priority.label}
           </span>
         ) : <span />}
-        <button
-          type="button"
-          title="Buka detail"
-          onClick={(e) => { e.stopPropagation(); onClick?.(); }}
-          onPointerDown={(e) => e.stopPropagation()}
-          className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
-        >
-          <MoreHorizontal className="w-4 h-4" />
-        </button>
+        <div ref={menuRef} className="relative" onPointerDown={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            title="Aksi tugas"
+            onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
+            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground p-0.5 -m-0.5"
+          >
+            <MoreHorizontal className="w-4 h-4" />
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-full mt-1 z-50 min-w-[150px] bg-card border border-border rounded-xl shadow-xl py-1 animate-in zoom-in-95 duration-100">
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onClick?.(); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-secondary text-foreground transition-colors"
+              >
+                <Edit2 className="w-3.5 h-3.5" /> Edit
+              </button>
+              {onDuplicate && (
+                <button
+                  type="button"
+                  onClick={async (e) => { e.stopPropagation(); setMenuOpen(false); await onDuplicate(); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-secondary text-foreground transition-colors"
+                >
+                  <Copy className="w-3.5 h-3.5" /> Duplikat
+                </button>
+              )}
+              {onArchive && (
+                <button
+                  type="button"
+                  onClick={async (e) => { e.stopPropagation(); setMenuOpen(false); await onArchive(); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-secondary text-foreground transition-colors"
+                >
+                  <Archive className="w-3.5 h-3.5" /> Arsipkan
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Title (double-click to edit) */}

@@ -482,6 +482,23 @@ export default function KanbanBoard() {
                 selectMode={selectMode}
                 selectedIds={selectedIds}
                 onToggleSelect={toggleSelect}
+                onTaskDuplicate={async (taskId) => {
+                  try {
+                    await api.post(`/projects/${projectId}/tasks/${taskId}/duplicate`);
+                    await fetchTasks();
+                  } catch (e: any) {
+                    alert(e?.response?.data?.detail || "Gagal menduplikasi task");
+                  }
+                }}
+                onTaskArchive={async (taskId) => {
+                  if (!confirm("Arsipkan task ini? Bisa dipulihkan dari halaman arsip.")) return;
+                  try {
+                    await api.post(`/projects/${projectId}/tasks/${taskId}/archive`);
+                    await fetchTasks();
+                  } catch (e: any) {
+                    alert(e?.response?.data?.detail || "Gagal mengarsipkan");
+                  }
+                }}
               />
             ))}
             </SortableContext>

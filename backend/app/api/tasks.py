@@ -350,6 +350,75 @@ async def archive_task(
     return _task_to_response(result.scalar_one())
 
 
+@router.post("/{task_id}/duplicate", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
+async def duplicate_task(
+    project_id: str, task_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Create a sibling task with the same shape (title + " (copy)", same
+    description/priority/status/due/labels/assignees). Activity items —
+    subtasks, comments, attachments — are NOT copied; the duplicate is
+    treated like a fresh task that just inherits the template fields."""
+    from sqlalchemy import func as safunc
+    project = await _get_project(db, project_id)
+    res = await db.execute(
+        select(Task)
+        .options(
+            selectinload(Task.task_labels),
+            selectinload(Task.assignee_links),
+        )
+        .where(Task.id == task_id, Task.project_id == project_id)
+    )
+    src = res.scalar_one_or_none()
+    if not src:
+        raise HTTPException(status_code=404, detail="Task tidak ditemukan")
+
+    max_pos = (await db.execute(
+        select(safunc.max(Task.position)).where(Task.project_id == project_id, Task.status == src.status)
+    )).scalar() or 0
+
+    new_task = Task(
+        project_id=project_id,
+        title=f"{src.title} (copy)",
+        description=src.description,
+        status=src.status,
+        priority=src.priority,
+        due_date=src.due_date,
+        assignee_id=src.assignee_id,
+        created_by=current_user.id,
+        position=max_pos + 1,
+    )
+    db.add(new_task)
+    await db.flush()
+
+    for tl in (src.task_labels or []):
+        db.add(TaskLabel(task_id=new_task.id, label_id=tl.label_id))
+    for al in (src.assignee_links or []):
+        db.add(TaskAssignee(task_id=new_task.id, user_id=al.user_id))
+
+    await log_activity(
+        db, org_id=project.org_id, user_id=current_user.id,
+        action="task_created", entity_type="task", entity_id=new_task.id,
+        project_id=project_id, metadata={"title": new_task.title, "duplicated_from": str(src.id)},
+    )
+    await db.commit()
+
+    from app.sockets.manager import sio
+    await sio.emit("task_created", {"id": str(new_task.id), "project_id": project_id}, room=f"project_{project_id}")
+
+    result = await db.execute(
+        select(Task).options(
+            selectinload(Task.task_labels).selectinload(TaskLabel.label),
+            selectinload(Task.subtasks),
+            selectinload(Task.comments),
+            selectinload(Task.attachments),
+            selectinload(Task.assignee), selectinload(Task.assignee_links).selectinload(TaskAssignee.user),
+        ).where(Task.id == new_task.id)
+    )
+    return _task_to_response(result.scalar_one())
+
+
 @router.post("/{task_id}/restore", response_model=TaskResponse)
 async def restore_task(
     project_id: str, task_id: str,
