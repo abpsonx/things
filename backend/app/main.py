@@ -81,6 +81,20 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
 
+        # tasks — result_url + custom_properties JSONB
+        try:
+            await conn.execute(text(
+                "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS result_url TEXT"
+            ))
+        except Exception:
+            pass
+        try:
+            await conn.execute(text(
+                "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS custom_properties JSONB DEFAULT '[]'::jsonb"
+            ))
+        except Exception:
+            pass
+
         # brief brand / reference_url / final_url
         for col, col_type in [
             ("brand", "VARCHAR(255)"),

@@ -37,6 +37,8 @@ import {
   File as FileIcon,
   UploadCloud,
   Clapperboard,
+  Link as LinkIcon,
+  ExternalLink,
 } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useAuthStore } from "@/store/useAuthStore";
@@ -74,6 +76,9 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
   const [newLabelName, setNewLabelName] = useState("");
   const [newLabelColor, setNewLabelColor] = useState("#3b82f6");
   const [teamBriefs, setTeamBriefs] = useState<any[]>([]);
+  const [resultUrl, setResultUrl] = useState<string>("");
+  const [propDraftName, setPropDraftName] = useState("");
+  const [propDraftValue, setPropDraftValue] = useState("");
   const { user: currentUser } = useAuthStore();
 
   const statusOptions = [
@@ -106,6 +111,7 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
       ]);
       setTask(taskRes.data);
       setDescription(taskRes.data.description || "");
+      setResultUrl(taskRes.data.result_url || "");
       setComments(commentsRes.data);
       setSubtasks(taskRes.data.subtasks || []);
       setAttachments(attachmentsRes.data);
@@ -184,6 +190,49 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
       ? linkedBriefIds.filter((id) => id !== briefId)
       : [...linkedBriefIds, briefId];
     setLinkedBriefs(next);
+  };
+
+  // Result URL + custom properties — bebas diisi siapa pun anggota tim
+  // (gak butuh edit grant). Backend gating: lihat free_only di update_team_task.
+  const saveResultUrl = async () => {
+    if (!task) return;
+    const next = resultUrl.trim();
+    if ((task.result_url || "") === next) return;
+    try {
+      await api.put(`/organizations/${orgId}/teams/${teamId}/tasks/${taskId}`, { result_url: next || null });
+      setTask((prev: any) => prev ? { ...prev, result_url: next || null } : prev);
+      setLogReload((n) => n + 1);
+      onUpdate();
+    } catch (err) {
+      console.error("Failed to save result_url", err);
+      setResultUrl(task.result_url || "");
+    }
+  };
+
+  const saveCustomProps = async (next: any[]) => {
+    setTask((prev: any) => prev ? { ...prev, custom_properties: next } : prev);
+    try {
+      await api.put(`/organizations/${orgId}/teams/${teamId}/tasks/${taskId}`, { custom_properties: next });
+      setLogReload((n) => n + 1);
+    } catch (err) {
+      console.error("Failed to save custom_properties", err);
+      fetchTaskDetail();
+    }
+  };
+  const addCustomProp = () => {
+    if (!task || !propDraftName.trim()) return;
+    const next = [...(task.custom_properties || []), { name: propDraftName.trim(), value: propDraftValue }];
+    setPropDraftName(""); setPropDraftValue("");
+    saveCustomProps(next);
+  };
+  const updateCustomProp = (idx: number, patch: any) => {
+    if (!task) return;
+    const cur = task.custom_properties || [];
+    saveCustomProps(cur.map((p: any, i: number) => i === idx ? { ...p, ...patch } : p));
+  };
+  const removeCustomProp = (idx: number) => {
+    if (!task) return;
+    saveCustomProps((task.custom_properties || []).filter((_: any, i: number) => i !== idx));
   };
 
   const handlePostComment = async (e: React.FormEvent) => {
@@ -402,6 +451,37 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
             />
             <DescriptionLinkChips text={description} />
           </div>
+
+          {/* Link Hasil Pengerjaan — deliverable URL (live post, deploy preview, Drive). */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-sm font-bold text-muted-foreground uppercase tracking-widest">
+              <LinkIcon className="w-4 h-4" />
+              Link Hasil Pengerjaan
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="url"
+                value={resultUrl}
+                onChange={(e) => setResultUrl(e.target.value)}
+                onBlur={saveResultUrl}
+                onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                placeholder="https://… (post live, file Drive, halaman deploy, dst)"
+                className="flex-1 text-sm bg-secondary/30 border border-border focus:border-primary focus:bg-background rounded-xl px-3 py-2 transition-all focus:outline-none"
+              />
+              {resultUrl.trim() && (
+                <a
+                  href={resultUrl}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  title="Buka link"
+                  className="shrink-0 p-2 rounded-xl bg-primary/10 text-primary hover:bg-primary/20 transition-all"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+              )}
+            </div>
+          </div>
+
           <TaskLinksSection taskId={taskId} canEdit={canEdit} />
 
           {/* Subtasks */}
@@ -519,6 +599,68 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Custom Properties — Notion-style ad-hoc rows */}
+          <div className="space-y-3 pt-6 border-t border-border">
+            <div className="flex items-center gap-2 text-sm font-bold text-muted-foreground uppercase tracking-widest">
+              <Tag className="w-4 h-4" />
+              Properti Tambahan
+            </div>
+            {(task?.custom_properties || []).length > 0 && (
+              <div className="space-y-1.5">
+                {(task?.custom_properties || []).map((p: any, i: number) => (
+                  <div key={i} className="group flex items-center gap-1.5">
+                    <input
+                      value={p.name || ""}
+                      onChange={(e) => updateCustomProp(i, { name: e.target.value })}
+                      onBlur={() => { if (!(p.name || "").trim()) removeCustomProp(i); }}
+                      placeholder="Nama"
+                      className="w-32 px-2.5 py-1.5 text-xs font-bold bg-card border border-border rounded-lg outline-none focus:border-primary"
+                    />
+                    <input
+                      value={p.value || ""}
+                      onChange={(e) => updateCustomProp(i, { value: e.target.value })}
+                      placeholder="Nilai"
+                      className="flex-1 min-w-0 px-2.5 py-1.5 text-xs bg-card border border-border rounded-lg outline-none focus:border-primary"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeCustomProp(i)}
+                      title="Hapus"
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded text-muted-foreground hover:text-destructive transition-opacity"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <form
+              onSubmit={(e) => { e.preventDefault(); addCustomProp(); }}
+              className="flex items-center gap-1.5"
+            >
+              <input
+                value={propDraftName}
+                onChange={(e) => setPropDraftName(e.target.value)}
+                placeholder="Nama properti"
+                className="w-32 px-2.5 py-1.5 text-xs font-bold bg-secondary/30 border border-dashed border-border rounded-lg outline-none focus:border-primary focus:bg-card"
+              />
+              <input
+                value={propDraftValue}
+                onChange={(e) => setPropDraftValue(e.target.value)}
+                placeholder="Nilai"
+                className="flex-1 min-w-0 px-2.5 py-1.5 text-xs bg-secondary/30 border border-dashed border-border rounded-lg outline-none focus:border-primary focus:bg-card"
+              />
+              <button
+                type="submit"
+                disabled={!propDraftName.trim()}
+                title="Tambah properti"
+                className="p-1.5 rounded-lg bg-primary text-primary-foreground disabled:opacity-30 hover:shadow-md transition-all"
+              >
+                <Plus className="w-3 h-3" />
+              </button>
+            </form>
           </div>
 
           {/* Activity Log (audit trail) */}

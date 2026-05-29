@@ -38,6 +38,11 @@ class Task(Base):
     # List of ContentBrief IDs (as strings) yang ditautkan ke task ini, supaya
     # task di board bisa ambil "link hasil jadi" (final_url) dari brief.
     linked_brief_ids = Column(JSONB, nullable=True, default=list)
+    # URL hasil pengerjaan (deliverable): post yang sudah live, deploy preview,
+    # Drive folder, dst. Tetap bebas — task gak harus punya brief untuk mengisi.
+    result_url = Column(Text, nullable=True)
+    # Ad-hoc properties (Notion-style) — list of {name, value}. Order dijaga.
+    custom_properties = Column(JSONB, nullable=True, default=list)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

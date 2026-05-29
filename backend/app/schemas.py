@@ -172,6 +172,8 @@ class TaskCreate(BaseModel):
     due_date: Optional[datetime] = None
     position: int = 0
     recurrence: Optional[str] = None
+    result_url: Optional[str] = None
+    custom_properties: Optional[List[dict]] = None
 
 
 class TaskUpdate(BaseModel):
@@ -184,6 +186,8 @@ class TaskUpdate(BaseModel):
     due_date: Optional[datetime] = None
     position: Optional[int] = None
     recurrence: Optional[str] = None
+    result_url: Optional[str] = None
+    custom_properties: Optional[List[dict]] = None
 
 
 class TaskMoveRequest(BaseModel):
@@ -244,6 +248,8 @@ class TaskResponse(BaseModel):
     # Frontend resolve detail brief-nya dari list brief tim yang sudah dimuat
     # — gak perlu round-trip ekstra.
     linked_brief_ids: List[str] = []
+    result_url: Optional[str] = None
+    custom_properties: List[dict] = []
 
     class Config:
         from_attributes = True

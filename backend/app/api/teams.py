@@ -726,8 +726,12 @@ async def update_team_task(
     # assignee_ids isn't a Task column — handle it separately via the M2M table.
     assignee_ids = update_data.pop("assignee_ids", None)
 
-    # Status/position changes are free; other edits (incl. assignees) need permission.
-    free_only = set(update_data.keys()) <= {"status", "position"} and assignee_ids is None
+    # Status/position + result_url + custom_properties bebas. Field lain
+    # (incl. assignees) butuh creator/manager/owner atau edit grant.
+    free_only = (
+        set(update_data.keys()) <= {"status", "position", "result_url", "custom_properties"}
+        and assignee_ids is None
+    )
     if not free_only:
         from app.services.task_permissions import user_can_edit_task
         if not await user_can_edit_task(db, task, current_user):
