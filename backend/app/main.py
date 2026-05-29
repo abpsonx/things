@@ -19,11 +19,26 @@ import asyncio
 async def lifespan(app: FastAPI):
     # Create tables on startup
     async with engine.begin() as conn:
+        # Schema-relocations that must run BEFORE create_all (so create_all
+        # can rebuild the dropped tables with the new shape). Keep these
+        # idempotent + guarded.
+        from sqlalchemy import text
+        try:
+            res = await conn.execute(text(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_name = 'content_briefs' AND column_name = 'project_id'"
+            ))
+            if res.first():
+                await conn.execute(text("DROP TABLE IF EXISTS brief_scenes CASCADE"))
+                await conn.execute(text("DROP TABLE IF EXISTS content_briefs CASCADE"))
+                print("[migration] dropped legacy content_briefs (project_id) — create_all will rebuild with team_id")
+        except Exception as e:
+            print(f"[migration] content_briefs relocation skipped: {e}")
+
         # Note: In production, use Alembic for migrations
         await conn.run_sync(Base.metadata.create_all)
-        
+
         # Auto-fix missing columns in dm_messages (existing databases)
-        from sqlalchemy import text
         for col, col_type in [
             ("is_delivered", "BOOLEAN DEFAULT FALSE"),
             ("delivered_at", "TIMESTAMP WITH TIME ZONE"),
@@ -73,22 +88,6 @@ async def lifespan(app: FastAPI):
             await conn.execute(text("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS is_secret BOOLEAN DEFAULT FALSE NOT NULL"))
         except Exception:
             pass
-
-        # content_briefs got relocated from project_id → team_id mid-development.
-        # If the table still has project_id (early-adopter dev DB), drop it so
-        # Base.metadata.create_all rebuilds it with the new schema. Safe because
-        # the feature was brand-new and never had production data.
-        try:
-            res = await conn.execute(text(
-                "SELECT 1 FROM information_schema.columns "
-                "WHERE table_name = 'content_briefs' AND column_name = 'project_id'"
-            ))
-            if res.first():
-                await conn.execute(text("DROP TABLE IF EXISTS brief_scenes CASCADE"))
-                await conn.execute(text("DROP TABLE IF EXISTS content_briefs CASCADE"))
-                print("[migration] dropped legacy content_briefs (project_id) — will recreate with team_id")
-        except Exception as e:
-            print(f"[migration] content_briefs relocation skipped: {e}")
 
         # engagement totals on social_metrics (existing tables predate them)
         for col in ("comments", "shares", "saves"):
