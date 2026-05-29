@@ -237,6 +237,10 @@ class TaskResponse(BaseModel):
     assignees: List[UserResponse] = []
     recurrence: Optional[str] = None
     archived_at: Optional[datetime] = None
+    # List of ContentBrief IDs ditautkan ke task ini (untuk akses cepat final_url).
+    # Frontend resolve detail brief-nya dari list brief tim yang sudah dimuat
+    # — gak perlu round-trip ekstra.
+    linked_brief_ids: List[str] = []
 
     class Config:
         from_attributes = True
@@ -528,13 +532,16 @@ class BriefSceneResponse(BriefSceneBase):
 
 class ContentBriefBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
-    location: Optional[str] = None
+    brand: Optional[str] = None
+    location: Optional[str] = None  # legacy — disimpan tapi UI tidak menampilkan
     shoot_date: Optional[date] = None
     shoot_time: Optional[str] = None
     video_duration: Optional[str] = None
     video_format: Optional[str] = None
     platforms: List[str] = []
-    tone: Optional[str] = None
+    tone: Optional[str] = None  # legacy — disimpan tapi UI tidak menampilkan
+    reference_url: Optional[str] = None
+    final_url: Optional[str] = None
     status: str = "draft"  # draft | review | approved | published
 
 
@@ -544,6 +551,7 @@ class ContentBriefCreate(ContentBriefBase):
 
 class ContentBriefUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=255)
+    brand: Optional[str] = None
     location: Optional[str] = None
     shoot_date: Optional[date] = None
     shoot_time: Optional[str] = None
@@ -551,6 +559,8 @@ class ContentBriefUpdate(BaseModel):
     video_format: Optional[str] = None
     platforms: Optional[List[str]] = None
     tone: Optional[str] = None
+    reference_url: Optional[str] = None
+    final_url: Optional[str] = None
     status: Optional[str] = None
 
 
@@ -590,4 +600,9 @@ class ContentBriefListItem(BaseModel):
 class SceneReorderRequest(BaseModel):
     """Bulk reorder — list of scene IDs in their new order."""
     scene_ids: List[UUID]
+
+
+class TaskBriefLinksUpdate(BaseModel):
+    """Replace the full set of brief links on a task."""
+    brief_ids: List[UUID]
 

@@ -83,6 +83,10 @@ def _task_to_response(task):
     resp.labels = labels
     resp.comments_count = len(task.comments) if hasattr(task, 'comments') else 0
     resp.attachments_count = len(task.attachments) if hasattr(task, 'attachments') else 0
+    # Coerce JSONB list-of-strings ke List[str] yang konsisten — DB bisa
+    # return None (column nullable), kosong, atau list of UUIDs/strings.
+    raw_links = getattr(task, "linked_brief_ids", None) or []
+    resp.linked_brief_ids = [str(x) for x in raw_links]
     return resp
 
 

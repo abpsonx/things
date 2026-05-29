@@ -35,7 +35,8 @@ import {
   Paperclip,
   Download,
   File as FileIcon,
-  UploadCloud
+  UploadCloud,
+  Clapperboard,
 } from "lucide-react";
 import { useParams } from "next/navigation";
 import { cn, formatDate } from "@/lib/utils";
@@ -71,6 +72,7 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
   const [isCreatingLabel, setIsCreatingLabel] = useState(false);
   const [newLabelName, setNewLabelName] = useState("");
   const [newLabelColor, setNewLabelColor] = useState("#3b82f6");
+  const [teamBriefs, setTeamBriefs] = useState<any[]>([]);
 
   const statusOptions = [
     { value: "todo", label: "To Do" },
@@ -146,16 +148,40 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
 
   const fetchContextData = async () => {
     try {
-      // Use team members instead of project members
-      const [membersRes, labelsRes] = await Promise.all([
+      const [membersRes, labelsRes, briefsRes] = await Promise.all([
         api.get(`/organizations/${orgId}/teams/${teamId}/members`),
-        api.get(`/organizations/${orgId}/labels`) // Assuming global or org labels
+        api.get(`/organizations/${orgId}/labels`),
+        api.get(`/organizations/${orgId}/teams/${teamId}/briefs`).catch(() => ({ data: [] })),
       ]);
       setMembers(membersRes.data);
       setAvailableLabels(labelsRes.data);
+      setTeamBriefs(Array.isArray(briefsRes.data) ? briefsRes.data : []);
     } catch (err) {
       console.error("Failed to fetch context data", err);
     }
+  };
+
+  const linkedBriefIds: string[] = task?.linked_brief_ids || [];
+  const linkedBriefs = teamBriefs.filter((b) => linkedBriefIds.includes(b.id));
+
+  const setLinkedBriefs = async (briefIds: string[]) => {
+    try {
+      const res = await api.patch(
+        `/organizations/${orgId}/teams/${teamId}/tasks/${taskId}/briefs`,
+        { brief_ids: briefIds },
+      );
+      setTask(res.data);
+      onUpdate();
+    } catch (err) {
+      console.error("Failed to update task briefs", err);
+    }
+  };
+
+  const toggleBriefLink = (briefId: string) => {
+    const next = linkedBriefIds.includes(briefId)
+      ? linkedBriefIds.filter((id) => id !== briefId)
+      : [...linkedBriefIds, briefId];
+    setLinkedBriefs(next);
   };
 
   const handlePostComment = async (e: React.FormEvent) => {
@@ -774,6 +800,92 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
             </div>
           </div>
           </div>
+
+          {/* Brief Terkait — taut brief iklan ke task agar "link hasil jadi"
+              gampang diakses dari board. Hanya ditampilkan kalau tim punya
+              minimal satu brief (kalau belum ada, jangan kasih noise). */}
+          {teamBriefs.length > 0 && (
+            <div className="space-y-2 pt-2">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1">
+                <Clapperboard className="w-3 h-3" /> Brief Terkait
+                {linkedBriefs.length > 0 && (
+                  <span className="text-primary">({linkedBriefs.length})</span>
+                )}
+              </label>
+
+              <div className="space-y-1.5">
+                {linkedBriefs.map((b) => (
+                  <div key={b.id} className="p-2 rounded-lg border border-border bg-card space-y-1 group">
+                    <div className="flex items-start justify-between gap-2">
+                      <a
+                        href={`/org/${orgId}/team/${teamId}/briefs/${b.id}`}
+                        className="text-xs font-bold text-foreground hover:text-primary truncate flex-1"
+                        title={b.title}
+                      >
+                        {b.title}
+                      </a>
+                      <button
+                        onClick={() => toggleBriefLink(b.id)}
+                        title="Lepas tautan"
+                        className="opacity-0 group-hover:opacity-100 p-0.5 text-muted-foreground hover:text-destructive transition-opacity"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                    {b.final_url ? (
+                      <a
+                        href={b.final_url}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="inline-flex items-center gap-1 text-[10px] font-bold text-primary hover:underline truncate max-w-full"
+                      >
+                        🔗 Hasil jadi
+                      </a>
+                    ) : (
+                      <div className="text-[10px] italic text-muted-foreground">Belum ada link hasil jadi</div>
+                    )}
+                  </div>
+                ))}
+
+                <Popover
+                  align="right"
+                  trigger={
+                    <button className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-bold text-muted-foreground rounded-lg border border-dashed border-border hover:border-primary hover:text-primary transition-all">
+                      <Plus className="w-3 h-3" /> Taut brief
+                    </button>
+                  }
+                >
+                  <div className="p-2 space-y-1 w-72 max-h-72 overflow-y-auto">
+                    <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">
+                      Pilih brief
+                    </div>
+                    {teamBriefs.length === 0 && (
+                      <div className="px-2 py-3 text-[10px] italic text-muted-foreground text-center">
+                        Belum ada brief di tim ini.
+                      </div>
+                    )}
+                    {teamBriefs.map((b) => {
+                      const linked = linkedBriefIds.includes(b.id);
+                      return (
+                        <button
+                          key={b.id}
+                          onClick={() => toggleBriefLink(b.id)}
+                          className={cn(
+                            "w-full flex items-center justify-between gap-2 p-2 rounded-md text-left text-xs transition-colors",
+                            linked ? "bg-primary/5 text-primary" : "hover:bg-secondary text-foreground",
+                          )}
+                        >
+                          <span className="truncate flex-1">{b.title}</span>
+                          {b.final_url && <span className="text-[9px] uppercase tracking-widest text-muted-foreground">link</span>}
+                          {linked && <Check className="w-3 h-3 shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Popover>
+              </div>
+            </div>
+          )}
 
           <div className="pt-6 border-t border-border mt-4 space-y-2">
             <button

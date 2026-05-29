@@ -20,13 +20,16 @@ class ContentBrief(Base):
     creator_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     title = Column(String(255), nullable=False)
-    location = Column(String(255), nullable=True)
+    brand = Column(String(255), nullable=True)             # untuk brand campaign / klien
+    location = Column(String(255), nullable=True)          # legacy — UI tidak menampilkan lagi
     shoot_date = Column(Date, nullable=True)
     shoot_time = Column(String(64), nullable=True)        # free text, e.g. "06.00 - 15.00 WIB"
     video_duration = Column(String(64), nullable=True)     # free text, e.g. "30-60 detik"
     video_format = Column(String(32), nullable=True)       # e.g. "9:16", "16:9", "1:1", "4:5"
     platforms = Column(JSONB, nullable=True, default=list) # list[str] — IG/TikTok/etc
-    tone = Column(String(255), nullable=True)
+    tone = Column(String(255), nullable=True)              # legacy — UI tidak menampilkan lagi
+    reference_url = Column(Text, nullable=True)            # link referensi (mood/competitor/inspirasi)
+    final_url = Column(Text, nullable=True)                # link hasil jadi (video published)
 
     # 4-step status: draft → review → approved → published
     status = Column(String(20), default="draft", nullable=False)

@@ -333,6 +333,8 @@ def _task_to_response(task):
     resp.labels = labels
     resp.comments_count = len(task.comments) if hasattr(task, 'comments') else 0
     resp.attachments_count = len(task.attachments) if hasattr(task, 'attachments') else 0
+    raw_links = getattr(task, "linked_brief_ids", None) or []
+    resp.linked_brief_ids = [str(x) for x in raw_links]
     return resp
 
 
@@ -487,6 +489,57 @@ async def duplicate_team_task(
             selectinload(Task.attachments), selectinload(Task.assignee),
             selectinload(Task.assignee_links).selectinload(TaskAssignee.user),
         ).where(Task.id == new_task.id)
+    )
+    return _task_to_response(res.scalar_one())
+
+
+@router.patch("/{team_id}/tasks/{task_id}/briefs", response_model=TaskResponse)
+async def set_team_task_briefs(
+    org_id: str, team_id: str, task_id: str,
+    data: dict,  # {"brief_ids": ["<uuid>", ...]}
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Replace the list of briefs linked to a team task.
+
+    Validasi: brief yang ditautkan harus milik TIM yang sama dengan task
+    (mencegah link silang antar tim)."""
+    from app.models.label import TaskLabel
+    from app.models.content_brief import ContentBrief
+    await _require_team_access(db, org_id, team_id, current_user)
+
+    res = await db.execute(select(Task).where(Task.id == task_id, Task.team_id == team_id))
+    task = res.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task tidak ditemukan")
+
+    incoming = data.get("brief_ids") or []
+    if not isinstance(incoming, list):
+        raise HTTPException(status_code=400, detail="brief_ids harus berupa list")
+
+    # Drop duplicate + invalid IDs, restrict to briefs in this team.
+    incoming_set = {str(i) for i in incoming if i}
+    if incoming_set:
+        b_res = await db.execute(
+            select(ContentBrief.id).where(
+                ContentBrief.team_id == team_id,
+                ContentBrief.id.in_(list(incoming_set)),
+            )
+        )
+        valid_ids = {str(row[0]) for row in b_res.all()}
+        # Preserve client-provided ordering for valid IDs.
+        task.linked_brief_ids = [bid for bid in [str(x) for x in incoming] if bid in valid_ids]
+    else:
+        task.linked_brief_ids = []
+
+    await db.commit()
+    res = await db.execute(
+        select(Task).options(
+            selectinload(Task.task_labels).selectinload(TaskLabel.label),
+            selectinload(Task.subtasks), selectinload(Task.comments),
+            selectinload(Task.attachments), selectinload(Task.assignee),
+            selectinload(Task.assignee_links).selectinload(TaskAssignee.user),
+        ).where(Task.id == task_id)
     )
     return _task_to_response(res.scalar_one())
 

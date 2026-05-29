@@ -2,7 +2,7 @@
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import Column, String, Text, DateTime, Date, Integer, ForeignKey, CheckConstraint, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy import Boolean
 from app.core.database import Base
@@ -35,6 +35,9 @@ class Task(Base):
     # Date (UTC) of the last deadline reminder sent, so we notify at most
     # once per day per task instead of every scheduler tick.
     last_reminded_on = Column(Date, nullable=True)
+    # List of ContentBrief IDs (as strings) yang ditautkan ke task ini, supaya
+    # task di board bisa ambil "link hasil jadi" (final_url) dari brief.
+    linked_brief_ids = Column(JSONB, nullable=True, default=list)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

@@ -44,6 +44,23 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
 
+        # brief brand / reference_url / final_url
+        for col, col_type in [
+            ("brand", "VARCHAR(255)"),
+            ("reference_url", "TEXT"),
+            ("final_url", "TEXT"),
+        ]:
+            try:
+                await conn.execute(text(f"ALTER TABLE content_briefs ADD COLUMN IF NOT EXISTS {col} {col_type}"))
+            except Exception:
+                pass
+
+        # task ↔ brief link list
+        try:
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS linked_brief_ids JSONB DEFAULT '[]'::jsonb"))
+        except Exception:
+            pass
+
         # Auto-fix missing columns in dm_messages (existing databases)
         for col, col_type in [
             ("is_delivered", "BOOLEAN DEFAULT FALSE"),

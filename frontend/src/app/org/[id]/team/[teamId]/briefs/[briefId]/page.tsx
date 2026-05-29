@@ -28,18 +28,22 @@ interface Scene {
 
 interface Brief {
   id: string;
-  project_id: string;
+  team_id: string;
   title: string;
-  location: string | null;
+  brand: string | null;
   shoot_date: string | null;
   shoot_time: string | null;
   video_duration: string | null;
   video_format: string | null;
   platforms: string[];
-  tone: string | null;
+  reference_url: string | null;
+  final_url: string | null;
   status: string;
   scenes: Scene[];
   creator: { id: string; name: string; avatar_url?: string } | null;
+  // Legacy — backend masih simpan tapi UI gak nampilin.
+  location?: string | null;
+  tone?: string | null;
 }
 
 const STATUS_OPTIONS = [
@@ -72,10 +76,11 @@ export default function BriefDetailPage() {
   const [savingHeader, setSavingHeader] = useState(false);
   const [addingScene, setAddingScene] = useState(false);
 
-  // Local editing state for header fields (debounced save on blur).
+  // Local editing state for header fields (save on blur).
   const [form, setForm] = useState({
-    title: "", location: "", shoot_date: "", shoot_time: "",
-    video_duration: "", video_format: "", platforms: [] as string[], tone: "",
+    title: "", brand: "", shoot_date: "", shoot_time: "",
+    video_duration: "", video_format: "", platforms: [] as string[],
+    reference_url: "", final_url: "",
     status: "draft",
   });
 
@@ -85,13 +90,14 @@ export default function BriefDetailPage() {
       setBrief(res.data);
       setForm({
         title: res.data.title || "",
-        location: res.data.location || "",
+        brand: res.data.brand || "",
         shoot_date: res.data.shoot_date || "",
         shoot_time: res.data.shoot_time || "",
         video_duration: res.data.video_duration || "",
         video_format: res.data.video_format || "",
         platforms: res.data.platforms || [],
-        tone: res.data.tone || "",
+        reference_url: res.data.reference_url || "",
+        final_url: res.data.final_url || "",
         status: res.data.status || "draft",
       });
     } catch (err: any) {
@@ -243,11 +249,11 @@ export default function BriefDetailPage() {
       {/* Metadata grid */}
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 p-4 rounded-2xl border border-border bg-secondary/20">
         <Field
-          label="Lokasi"
-          value={form.location}
-          placeholder="mis. Gerai FnB area pusat kota"
-          onChange={(v) => setForm({ ...form, location: v })}
-          onBlur={() => { if (form.location !== (brief.location || "")) saveHeader({ location: form.location }); }}
+          label="Brand"
+          value={form.brand}
+          placeholder="mis. Kopi Kenangan / Klien"
+          onChange={(v) => setForm({ ...form, brand: v })}
+          onBlur={() => { if (form.brand !== (brief.brand || "")) saveHeader({ brand: form.brand }); }}
         />
         <Field
           label="Tanggal Syuting"
@@ -298,11 +304,20 @@ export default function BriefDetailPage() {
           </div>
         </div>
         <Field
-          label="Tone"
-          value={form.tone}
-          placeholder="Aspiratif, hangat, relatable"
-          onChange={(v) => setForm({ ...form, tone: v })}
-          onBlur={() => { if (form.tone !== (brief.tone || "")) saveHeader({ tone: form.tone }); }}
+          label="Link Referensi"
+          type="url"
+          value={form.reference_url}
+          placeholder="https://… (mood/competitor/inspirasi)"
+          onChange={(v) => setForm({ ...form, reference_url: v })}
+          onBlur={() => { if (form.reference_url !== (brief.reference_url || "")) saveHeader({ reference_url: form.reference_url }); }}
+        />
+        <Field
+          label="Link Hasil Jadi"
+          type="url"
+          value={form.final_url}
+          placeholder="https://… (video published)"
+          onChange={(v) => setForm({ ...form, final_url: v })}
+          onBlur={() => { if (form.final_url !== (brief.final_url || "")) saveHeader({ final_url: form.final_url }); }}
         />
         <div className="sm:col-span-2 lg:col-span-3 space-y-1.5">
           <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Platform</label>
@@ -361,7 +376,6 @@ export default function BriefDetailPage() {
                   <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Footage</th>
                   <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Text on Video</th>
                   <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-muted-foreground w-36">Talent</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-muted-foreground w-20">Durasi</th>
                   <th className="px-3 py-2 w-8"></th>
                 </tr>
               </thead>
@@ -501,14 +515,6 @@ function SceneRow({
         />
       </td>
       <td className="px-3 py-3">
-        <CellInput
-          value={local.duration || ""}
-          placeholder="3 dtk"
-          onChange={(v) => setLocal({ ...local, duration: v })}
-          onBlur={() => commit({ duration: local.duration })}
-        />
-      </td>
-      <td className="px-3 py-3">
         <button
           onClick={onDelete}
           title="Hapus scene"
@@ -518,25 +524,6 @@ function SceneRow({
         </button>
       </td>
     </tr>
-  );
-}
-
-function CellInput({
-  value, onChange, onBlur, placeholder,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  onBlur: () => void;
-  placeholder?: string;
-}) {
-  return (
-    <input
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      onBlur={onBlur}
-      placeholder={placeholder}
-      className="w-full px-2 py-1 bg-transparent border border-transparent hover:border-border focus:border-primary rounded-md text-xs outline-none transition-all"
-    />
   );
 }
 
