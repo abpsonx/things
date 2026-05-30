@@ -20,6 +20,7 @@ import {
   Check,
 } from "lucide-react";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
+import MentionTextarea from "@/components/ui/MentionTextarea";
 import { extractMentionIds } from "@/components/ui/mentionSuggestion";
 import { useAuthStore } from "@/store/useAuthStore";
 import TeamNav from "@/components/team/TeamNav";
@@ -66,6 +67,7 @@ export default function TeamAnnouncementsPage() {
   const [openComments, setOpenComments] = useState<string | null>(null);
   const [comments, setComments] = useState<any[]>([]);
   const [commentText, setCommentText] = useState("");
+  const [commentMentionIds, setCommentMentionIds] = useState<string[]>([]);
   const [loadingComments, setLoadingComments] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -177,9 +179,10 @@ export default function TeamAnnouncementsPage() {
   const postComment = async (id: string) => {
     if (!commentText.trim()) return;
     try {
-      const res = await api.post(`/organizations/${orgId}/teams/${teamId}/announcements/${id}/comments`, { content: commentText });
+      const res = await api.post(`/organizations/${orgId}/teams/${teamId}/announcements/${id}/comments`, { content: commentText, mention_ids: commentMentionIds });
       setComments((prev) => [...prev, res.data]);
       setCommentText("");
+      setCommentMentionIds([]);
       setAnnouncements((prev) => prev.map((a) => a.id === id ? { ...a, comment_count: a.comment_count + 1 } : a));
     } catch (err) {
       console.error("Failed to post comment", err);
@@ -379,14 +382,17 @@ export default function TeamAnnouncementsPage() {
                                 </div>
                               ))}
                               {comments.length === 0 && <p className="text-xs text-muted-foreground text-center py-2">Belum ada komentar. Tanyakan sesuatu!</p>}
-                              <div className="flex gap-2 pt-2">
-                                <input
-                                  value={commentText}
-                                  onChange={(e) => setCommentText(e.target.value)}
-                                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); postComment(a.id); } }}
-                                  placeholder="Tulis komentar / pertanyaan..."
-                                  className="flex-1 px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                                />
+                              <div className="flex items-end gap-2 pt-2">
+                                <div className="flex-1 min-w-0">
+                                  <MentionTextarea
+                                    value={commentText}
+                                    onChange={setCommentText}
+                                    onMentionsChange={setCommentMentionIds}
+                                    members={memberOptions.map((m) => ({ id: m.id, name: m.name, avatar_url: m.avatar_url }))}
+                                    placeholder="Tulis komentar / pertanyaan... ketik @ untuk tag orang"
+                                    className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none min-h-[40px]"
+                                  />
+                                </div>
                                 <button onClick={() => postComment(a.id)} disabled={!commentText.trim()} className="px-3 py-2 rounded-xl bg-primary text-primary-foreground disabled:opacity-50">
                                   <Send className="w-4 h-4" />
                                 </button>

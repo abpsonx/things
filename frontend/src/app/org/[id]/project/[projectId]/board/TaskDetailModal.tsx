@@ -6,6 +6,7 @@ import CustomSelect from "@/components/ui/Select";
 import Popover from "@/components/ui/Popover";
 import Reactions, { ReactionBucket } from "@/components/reactions/Reactions";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
+import MentionTextarea from "@/components/ui/MentionTextarea";
 import FileViewerModal from "@/components/ui/FileViewerModal";
 import TaskLinksSection, { DescriptionLinkChips } from "@/components/board/TaskLinksSection";
 import TaskActivityLog from "@/components/board/TaskActivityLog";
@@ -74,6 +75,7 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
   const [isCreatingLabel, setIsCreatingLabel] = useState(false);
   const [newLabelName, setNewLabelName] = useState("");
   const [newLabelColor, setNewLabelColor] = useState("#3b82f6");
+  const [commentMentionIds, setCommentMentionIds] = useState<string[]>([]);
   const [resultUrl, setResultUrl] = useState<string>("");
   const [propDraftName, setPropDraftName] = useState("");
   const [propDraftValue, setPropDraftValue] = useState("");
@@ -230,8 +232,9 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
 
     setSubmitting(true);
     try {
-      await api.post(`/tasks/${taskId}/comments`, { content: newComment });
+      await api.post(`/tasks/${taskId}/comments`, { content: newComment, mention_ids: commentMentionIds });
       setNewComment("");
+      setCommentMentionIds([]);
       const res = await api.get(`/tasks/${taskId}/comments`);
       setComments(res.data);
     } catch (err) {
@@ -704,10 +707,12 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
             <form onSubmit={handlePostComment} className="flex gap-3">
               <div className="w-8 h-8 rounded-full bg-secondary border border-border flex-shrink-0 flex items-center justify-center font-bold text-[10px]">JD</div>
               <div className="flex-1 space-y-2">
-                <textarea
+                <MentionTextarea
                   value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  placeholder="Tulis komentar..."
+                  onChange={setNewComment}
+                  onMentionsChange={setCommentMentionIds}
+                  members={(members || []).filter((m: any) => m.user).map((m: any) => ({ id: m.user_id || m.user.id, name: m.user.name, avatar_url: m.user.avatar_url }))}
+                  placeholder="Tulis komentar... ketik @ untuk tag orang"
                   className="w-full text-sm bg-secondary/30 border border-border rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-primary/20 min-h-[80px] resize-none transition-all"
                 />
                 <button

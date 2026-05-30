@@ -1782,10 +1782,12 @@ async def create_announcement_comment(
     )
     db.add(comment)
 
+    from app.services.notification import notify_user
+    notified: set[str] = set()
+    snippet = content[:60] + ("..." if len(content) > 60 else "")
+
     # Notify the announcement creator (skip self)
     if ann.creator_id and str(ann.creator_id) != str(current_user.id):
-        from app.services.notification import notify_user
-        snippet = content[:60] + ("..." if len(content) > 60 else "")
         await notify_user(
             db,
             user_id=str(ann.creator_id),
@@ -1796,6 +1798,23 @@ async def create_announcement_comment(
             org_id=str(org_id),
             url=f"/org/{org_id}/team/{team_id}/announcements",
         )
+        notified.add(str(ann.creator_id))
+
+    # Notify @mentions
+    for uid in (data.get("mention_ids") or []):
+        uid_s = str(uid)
+        if not uid_s or uid_s == str(current_user.id) or uid_s in notified:
+            continue
+        await notify_user(
+            db,
+            user_id=uid_s,
+            type="mention",
+            content=f"{current_user.name} menyebut kamu di komentar pengumuman: {ann.title}",
+            ref_id=str(announcement_id),
+            org_id=str(org_id),
+            url=f"/org/{org_id}/team/{team_id}/announcements",
+        )
+        notified.add(uid_s)
 
     await db.commit()
     await db.refresh(comment)

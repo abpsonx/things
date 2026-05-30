@@ -348,6 +348,50 @@ async def list_announcement_readers(
     return res.scalars().all()
 
 
+@router.get("/{announcement_id}/read-status")
+async def announcement_read_status(
+    org_id: str,
+    announcement_id: str,
+    db=Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Status lengkap: siapa sudah baca & siapa belum, di antara seluruh
+    anggota workspace. Hanya pembuat + superuser yang boleh lihat."""
+    oid = UUID(org_id)
+    await _require_member(db, oid, current_user.id)
+    ann = await _load_announcement(db, oid, announcement_id)
+    if str(ann.creator_id) != str(current_user.id) and not is_superuser(current_user):
+        raise HTTPException(status_code=403, detail="Hanya pembuat yang bisa melihat daftar pembaca")
+
+    # Semua anggota workspace.
+    members_res = await db.execute(
+        select(User, OrgMember.role)
+        .join(OrgMember, OrgMember.user_id == User.id)
+        .where(OrgMember.org_id == oid)
+    )
+    members = list(members_res.all())
+
+    # ID yang sudah baca + timestamp baca-nya.
+    reads_res = await db.execute(
+        select(AnnouncementRead.user_id, AnnouncementRead.read_at)
+        .where(AnnouncementRead.announcement_id == ann.id)
+    )
+    read_map = {str(uid): ts for uid, ts in reads_res.all()}
+
+    readers, unreaders = [], []
+    for user, _role in members:
+        u = UserResponse.model_validate(user).model_dump(mode="json")
+        if str(user.id) in read_map:
+            u["read_at"] = read_map[str(user.id)].isoformat() if read_map[str(user.id)] else None
+            readers.append(u)
+        else:
+            unreaders.append(u)
+    # Urutkan readers paling baru di atas, unreaders alfabetis.
+    readers.sort(key=lambda x: x.get("read_at") or "", reverse=True)
+    unreaders.sort(key=lambda x: (x.get("name") or "").lower())
+    return {"readers": readers, "unreaders": unreaders}
+
+
 # ─── Reactions ────────────────────────────────────────────────────────────────
 
 @router.post("/{announcement_id}/reactions/{emoji}", status_code=status.HTTP_204_NO_CONTENT)
@@ -451,7 +495,7 @@ async def list_announcement_comments(
 async def add_announcement_comment(
     org_id: str,
     announcement_id: str,
-    data: dict,  # {"content": "..."}
+    data: dict,  # {"content": "...", "mention_ids": [uuid, ...]}
     db=Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -465,6 +509,22 @@ async def add_announcement_comment(
     db.add(c)
     await db.commit()
     await db.refresh(c, ["user"])
+
+    # Notify mentions
+    raw_mentions = data.get("mention_ids") or []
+    if raw_mentions:
+        for uid in raw_mentions:
+            uid_s = str(uid)
+            if not uid_s or uid_s == str(current_user.id):
+                continue
+            await notify_user(
+                db,
+                user_id=uid_s,
+                type="mention",
+                content=f"{current_user.name} menyebut kamu di komentar pengumuman",
+                ref_id=str(ann.id),
+                org_id=str(oid),
+            )
     return {
         "id": str(c.id),
         "announcement_id": str(c.announcement_id),

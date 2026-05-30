@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Heart, MessageCircle, Eye, Smile, Loader2, Send, Trash2, X } from "lucide-react";
+import { Heart, MessageCircle, Eye, Smile, Loader2, Send, Trash2, X, Check, Clock } from "lucide-react";
+import Modal from "@/components/ui/Modal";
+import MentionTextarea from "@/components/ui/MentionTextarea";
 import { formatDistanceToNow } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 import api from "@/lib/api";
@@ -58,11 +60,15 @@ export default function AnnouncementCardExtras({
   const [commentCount, setCommentCount] = useState(initialCommentCount);
   const [readersOpen, setReadersOpen] = useState(false);
   const [readers, setReaders] = useState<any[]>([]);
+  const [unreaders, setUnreaders] = useState<any[]>([]);
+  const [readersLoading, setReadersLoading] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentText, setCommentText] = useState("");
   const [posting, setPosting] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [members, setMembers] = useState<{ id: string; name: string; avatar_url?: string | null }[]>([]);
+  const [mentionIds, setMentionIds] = useState<string[]>([]);
   const cardRef = useRef<HTMLDivElement>(null);
   const markedRead = useRef(hasReadInitial);
   const base = `/organizations/${orgId}/announcements/${announcementId}`;
@@ -130,11 +136,25 @@ export default function AnnouncementCardExtras({
 
   const openComments = async () => {
     setCommentsOpen((v) => !v);
-    if (!commentsOpen && comments.length === 0) {
-      try {
-        const res = await api.get(`${base}/comments`);
-        setComments(res.data || []);
-      } catch { /* ignore */ }
+    if (!commentsOpen) {
+      // Comments + members — lazy load: cuma di-fetch waktu user buka panel,
+      // gak setiap card mount (kalau N pengumuman = N request, mahal).
+      if (comments.length === 0) {
+        try {
+          const res = await api.get(`${base}/comments`);
+          setComments(res.data || []);
+        } catch { /* ignore */ }
+      }
+      if (members.length === 0) {
+        try {
+          const res = await api.get(`/organizations/${orgId}/members`);
+          setMembers(
+            (res.data || [])
+              .filter((m: any) => m.user)
+              .map((m: any) => ({ id: m.user_id || m.user.id, name: m.user.name, avatar_url: m.user.avatar_url })),
+          );
+        } catch { /* ignore */ }
+      }
     }
   };
 
@@ -143,9 +163,10 @@ export default function AnnouncementCardExtras({
     if (!commentText.trim()) return;
     setPosting(true);
     try {
-      const res = await api.post(`${base}/comments`, { content: commentText.trim() });
+      const res = await api.post(`${base}/comments`, { content: commentText.trim(), mention_ids: mentionIds });
       setComments((p) => [...p, res.data]);
       setCommentText("");
+      setMentionIds([]);
       setCommentCount((n) => n + 1);
     } catch { /* ignore */ } finally {
       setPosting(false);
@@ -162,12 +183,21 @@ export default function AnnouncementCardExtras({
   };
 
   const openReaders = async () => {
-    setReadersOpen((v) => !v);
-    if (!readersOpen && readers.length === 0) {
+    setReadersOpen(true);
+    setReadersLoading(true);
+    try {
+      const res = await api.get(`${base}/read-status`);
+      setReaders(res.data?.readers || []);
+      setUnreaders(res.data?.unreaders || []);
+    } catch {
+      // fallback ke endpoint lama kalau read-status belum di-deploy
       try {
-        const res = await api.get(`${base}/readers`);
-        setReaders(res.data || []);
+        const r = await api.get(`${base}/readers`);
+        setReaders(r.data || []);
+        setUnreaders([]);
       } catch { /* ignore */ }
+    } finally {
+      setReadersLoading(false);
     }
   };
 
@@ -236,32 +266,75 @@ export default function AnnouncementCardExtras({
         </div>
       </div>
 
-      {/* Readers list (creator only) */}
+      {/* Readers modal (creator only) — dua kolom: sudah baca + belum */}
       {readersOpen && isCreator && (
-        <div className="rounded-xl border border-border bg-secondary/10 p-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-              Pembaca ({readers.length})
-            </span>
-            <button onClick={() => setReadersOpen(false)} className="p-0.5 rounded hover:bg-secondary text-muted-foreground">
-              <X className="w-3 h-3" />
-            </button>
-          </div>
-          {readers.length === 0 ? (
-            <p className="text-[11px] italic text-muted-foreground">Belum ada yang baca.</p>
+        <Modal isOpen={readersOpen} onClose={() => setReadersOpen(false)} title="Status Baca Pengumuman">
+          {readersLoading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
           ) : (
-            <div className="flex flex-wrap gap-1.5">
-              {readers.map((u) => (
-                <span key={u.id} className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] bg-card border border-border">
-                  <span className="w-4 h-4 rounded-full bg-secondary flex items-center justify-center text-[8px] font-bold overflow-hidden">
-                    {u.avatar_url ? <img src={u.avatar_url} alt="" className="w-full h-full object-cover" /> : (u.name || "?").charAt(0)}
-                  </span>
-                  {u.name}
-                </span>
-              ))}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto">
+              {/* Sudah baca */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-emerald-600">
+                  <Check className="w-3.5 h-3.5" />
+                  Sudah Baca ({readers.length})
+                </div>
+                {readers.length === 0 ? (
+                  <p className="text-[11px] italic text-muted-foreground p-3 border border-dashed border-border rounded-xl">
+                    Belum ada yang baca.
+                  </p>
+                ) : (
+                  <div className="space-y-1">
+                    {readers.map((u) => (
+                      <div key={u.id} className="flex items-center gap-2 p-2 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
+                        <span className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center text-[10px] font-bold overflow-hidden shrink-0">
+                          {u.avatar_url ? <img src={u.avatar_url} alt="" className="w-full h-full object-cover" /> : (u.name || "?").charAt(0)}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold truncate">{u.name}</p>
+                          {u.read_at && (
+                            <p className="text-[9px] text-muted-foreground">
+                              {(() => {
+                                try { return formatDistanceToNow(new Date(u.read_at), { addSuffix: true, locale: idLocale }); }
+                                catch { return ""; }
+                              })()}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Belum baca */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                  <Clock className="w-3.5 h-3.5" />
+                  Belum Baca ({unreaders.length})
+                </div>
+                {unreaders.length === 0 ? (
+                  <p className="text-[11px] italic text-emerald-600 p-3 border border-dashed border-emerald-500/30 rounded-xl bg-emerald-500/5">
+                    Semua sudah baca 🎉
+                  </p>
+                ) : (
+                  <div className="space-y-1">
+                    {unreaders.map((u) => (
+                      <div key={u.id} className="flex items-center gap-2 p-2 rounded-lg bg-secondary/30 border border-border">
+                        <span className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center text-[10px] font-bold overflow-hidden shrink-0">
+                          {u.avatar_url ? <img src={u.avatar_url} alt="" className="w-full h-full object-cover" /> : (u.name || "?").charAt(0)}
+                        </span>
+                        <p className="text-xs font-bold truncate flex-1">{u.name}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
-        </div>
+        </Modal>
       )}
 
       {/* Comments thread */}
@@ -307,14 +380,16 @@ export default function AnnouncementCardExtras({
             </div>
           )}
           <form onSubmit={submitComment} className="flex items-end gap-2">
-            <textarea
-              value={commentText}
-              onChange={(e) => setCommentText(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitComment(e as any); } }}
-              placeholder="Tulis komentar…"
-              rows={1}
-              className="flex-1 min-w-0 px-3 py-2 text-xs bg-card border border-border rounded-xl outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
-            />
+            <div className="flex-1 min-w-0">
+              <MentionTextarea
+                value={commentText}
+                onChange={setCommentText}
+                onMentionsChange={setMentionIds}
+                members={members}
+                placeholder="Tulis komentar… ketik @ untuk tag orang"
+                className="w-full px-3 py-2 text-xs bg-card border border-border rounded-xl outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none min-h-[36px]"
+              />
+            </div>
             <button
               type="submit"
               disabled={posting || !commentText.trim()}

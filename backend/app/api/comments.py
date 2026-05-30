@@ -55,9 +55,11 @@ async def create_comment(
         project_id=project_id, team_id=team_id, metadata={"task_title": task.title},
     )
 
+    from app.services.notification import notify_user
+    notified: set[str] = set()
+
     # Notify task assignee if someone else comments
     if task.assignee_id and str(task.assignee_id) != str(current_user.id):
-        from app.services.notification import notify_user
         await notify_user(
             db,
             user_id=str(task.assignee_id),
@@ -66,6 +68,22 @@ async def create_comment(
             ref_id=str(task.id),
             org_id=str(org_id)
         )
+        notified.add(str(task.assignee_id))
+
+    # Notify @mentions (skip diri sendiri dan duplikat dengan assignee notify).
+    for uid in (data.mention_ids or []):
+        uid_s = str(uid)
+        if not uid_s or uid_s == str(current_user.id) or uid_s in notified:
+            continue
+        await notify_user(
+            db,
+            user_id=uid_s,
+            type="mention",
+            content=f"{current_user.name} menyebut kamu di komentar: {task.title}",
+            ref_id=str(task.id),
+            org_id=str(org_id),
+        )
+        notified.add(uid_s)
 
     await db.commit()
     await db.refresh(comment)

@@ -266,6 +266,9 @@ class LabelCreate(BaseModel):
 
 class CommentCreate(BaseModel):
     content: str = Field(..., min_length=1)
+    # ID user yang di-tag (@mention) — frontend MentionTextarea kirim ini
+    # via onMentionsChange. Backend pakai untuk notify masing-masing.
+    mention_ids: List[str] = []
 
 
 class CommentResponse(BaseModel):

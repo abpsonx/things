@@ -6,6 +6,7 @@ import CustomSelect from "@/components/ui/Select";
 import Popover from "@/components/ui/Popover";
 import api from "@/lib/api";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
+import MentionTextarea from "@/components/ui/MentionTextarea";
 import FileViewerModal from "@/components/ui/FileViewerModal";
 import TaskLinksSection, { DescriptionLinkChips } from "@/components/board/TaskLinksSection";
 import TaskActivityLog from "@/components/board/TaskActivityLog";
@@ -78,6 +79,7 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
   const [newLabelColor, setNewLabelColor] = useState("#3b82f6");
   const [teamBriefs, setTeamBriefs] = useState<any[]>([]);
   const [previewFile, setPreviewFile] = useState<any | null>(null);
+  const [commentMentionIds, setCommentMentionIds] = useState<string[]>([]);
   const [resultUrl, setResultUrl] = useState<string>("");
   const [propDraftName, setPropDraftName] = useState("");
   const [propDraftValue, setPropDraftValue] = useState("");
@@ -253,8 +255,9 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
 
     setSubmitting(true);
     try {
-      await api.post(`/tasks/${taskId}/comments`, { content: newComment });
+      await api.post(`/tasks/${taskId}/comments`, { content: newComment, mention_ids: commentMentionIds });
       setNewComment("");
+      setCommentMentionIds([]);
       const res = await api.get(`/tasks/${taskId}/comments`);
       setComments(res.data);
     } catch (err) {
@@ -709,10 +712,12 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
                 {task?.assignee?.name?.charAt(0) || "U"}
               </div>
               <div className="flex-1 space-y-2">
-                <textarea
+                <MentionTextarea
                   value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  placeholder="Tulis komentar..."
+                  onChange={setNewComment}
+                  onMentionsChange={setCommentMentionIds}
+                  members={(members || []).filter((m: any) => m.user).map((m: any) => ({ id: m.user_id || m.user.id, name: m.user.name, avatar_url: m.user.avatar_url }))}
+                  placeholder="Tulis komentar... ketik @ untuk tag orang"
                   className="w-full text-sm bg-secondary/30 border border-border rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-primary/20 min-h-[80px] resize-none transition-all"
                 />
                 <button
