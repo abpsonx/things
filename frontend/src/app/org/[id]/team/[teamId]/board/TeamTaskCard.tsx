@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { MessageSquare, Paperclip, Calendar, Flag, MoreHorizontal, Edit2, Copy, Archive } from "lucide-react";
 import { format, isValid } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
+import { MarkdownText } from "@/components/ui/Markdown";
 
 interface Label {
   id: string;
@@ -199,11 +200,12 @@ export default function TeamTaskCard({
         );
       })()}
 
-      {/* Description */}
+      {/* Description (rendered markdown, truncated 2 baris) */}
       {task.description && (
-        <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2 mb-2">
-          {task.description}
-        </p>
+        <MarkdownText
+          text={task.description}
+          className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2 mb-2"
+        />
       )}
 
       {/* Footer: files / comments / first label */}

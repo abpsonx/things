@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import api from "@/lib/api";
 import TeamNav from "@/components/team/TeamNav";
+import { MarkdownToolbar, MarkdownText } from "@/components/ui/Markdown";
 import { useAuthStore } from "@/store/useAuthStore";
 import { formatDistanceToNow } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
@@ -461,15 +462,17 @@ export default function DesignBriefDetailPage() {
               onBlur={() => { if (form.visual_text !== (brief.visual_text || "")) saveHeader({ visual_text: form.visual_text }); }}
               textarea
               rows={3}
+              markdown
             />
             <Field
               label="Caption Posting"
               value={form.caption}
-              placeholder="Caption lengkap untuk posting…"
+              placeholder="Caption lengkap untuk posting…  (Bold **teks**  ·  Italic *teks*  ·  - list)"
               onChange={(v) => setForm({ ...form, caption: v })}
               onBlur={() => { if (form.caption !== (brief.caption || "")) saveHeader({ caption: form.caption }); }}
               textarea
               rows={6}
+              markdown
             />
             <Field
               label="Tanggal Publish"
@@ -893,7 +896,7 @@ export default function DesignBriefDetailPage() {
 }
 
 function Field({
-  label, value, onChange, onBlur, placeholder, type = "text", textarea = false, rows = 3,
+  label, value, onChange, onBlur, placeholder, type = "text", textarea = false, rows = 3, markdown = false,
 }: {
   label: string;
   value: string;
@@ -903,6 +906,7 @@ function Field({
   type?: string;
   textarea?: boolean;
   rows?: number;
+  markdown?: boolean;
 }) {
   const taRef = useRef<HTMLTextAreaElement>(null);
   // Auto-grow textarea: tinggi disesuaikan dengan scrollHeight setiap value
@@ -920,16 +924,25 @@ function Field({
     <div className="space-y-1">
       <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{label}</label>
       {textarea ? (
-        <textarea
-          ref={taRef}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onBlur={onBlur}
-          placeholder={placeholder}
-          rows={rows}
-          className="w-full px-3 py-2 bg-card border border-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all resize-y leading-relaxed overflow-hidden"
-          style={{ minHeight: `${rows * 28 + 20}px` }}
-        />
+        <div className="space-y-1.5">
+          {markdown && <MarkdownToolbar taRef={taRef} value={value} onChange={onChange} />}
+          <textarea
+            ref={taRef}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onBlur={onBlur}
+            placeholder={placeholder}
+            rows={rows}
+            className="w-full px-3 py-2 bg-card border border-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all resize-y leading-relaxed overflow-hidden"
+            style={{ minHeight: `${rows * 28 + 20}px` }}
+          />
+          {markdown && value.trim() && (
+            <details className="text-[10px]">
+              <summary className="cursor-pointer text-muted-foreground hover:text-foreground select-none">Pratinjau format</summary>
+              <MarkdownText text={value} className="mt-1.5 p-3 rounded-lg bg-secondary/30 border border-border text-xs leading-relaxed" />
+            </details>
+          )}
+        </div>
       ) : (
         <input
           type={type}

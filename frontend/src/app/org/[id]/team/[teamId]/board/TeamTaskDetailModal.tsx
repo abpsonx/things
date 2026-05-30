@@ -446,8 +446,9 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
               onChange={setDescription}
               onBlur={() => { if (description !== (task?.description || "")) updateTask({ description }); }}
               members={(members || []).filter((m: any) => m.user).map((m: any) => ({ id: m.user_id || m.user.id, name: m.user.name, avatar_url: m.user.avatar_url }))}
-              placeholder="Tambahkan deskripsi tugas... ketik @ untuk tag orang"
+              placeholder="Tambahkan deskripsi tugas... ketik @ untuk tag orang. Pakai **bold**, *italic*, - list."
               className="w-full text-sm text-foreground leading-relaxed bg-secondary/20 border border-transparent hover:border-border focus:bg-background focus:border-primary p-3 rounded-xl transition-all min-h-[160px] resize-none focus:outline-none"
+              withToolbar
             />
             <DescriptionLinkChips text={description} />
           </div>
@@ -575,7 +576,7 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <a 
-                      href={`https://dothings.id/api/uploads/${file.file_path}`} 
+                      href={`/api/${file.file_path}`}
                       target="_blank" 
                       rel="noreferrer"
                       className="p-1.5 hover:bg-background rounded-md text-muted-foreground hover:text-primary transition-colors"

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { MarkdownToolbar } from "./Markdown";
 
 export interface MentionMember {
   id: string;
@@ -18,6 +19,8 @@ interface Props {
   className?: string;
   /** Called with the list of mentioned member ids whenever the text changes. */
   onMentionsChange?: (ids: string[]) => void;
+  /** Tampilkan toolbar formatting markdown (Bold/Italic/list/dll) di atas textarea. */
+  withToolbar?: boolean;
 }
 
 /**
@@ -33,6 +36,7 @@ export default function MentionTextarea({
   placeholder,
   className,
   onMentionsChange,
+  withToolbar,
 }: Props) {
   const taRef = useRef<HTMLTextAreaElement>(null);
   const [query, setQuery] = useState<string | null>(null);
@@ -98,7 +102,10 @@ export default function MentionTextarea({
   };
 
   return (
-    <div className="relative">
+    <div className="relative space-y-1.5">
+      {withToolbar && (
+        <MarkdownToolbar taRef={taRef} value={value} onChange={(v) => { onChange(v); reportMentions(v); }} />
+      )}
       {query !== null && matches.length > 0 && (
         <div className="absolute top-full left-0 mt-1 min-w-[220px] bg-card border border-border rounded-2xl shadow-xl overflow-hidden z-50 max-h-[220px] overflow-y-auto">
           <div className="px-3 py-1.5 border-b border-border text-[10px] font-bold text-muted-foreground uppercase tracking-wide bg-secondary/30">Tag orang</div>
