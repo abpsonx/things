@@ -20,7 +20,10 @@ class ContentBrief(Base):
     creator_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     title = Column(String(255), nullable=False)
-    brand = Column(String(255), nullable=True)             # untuk brand campaign / klien
+    brand = Column(String(255), nullable=True)             # legacy free-text — dipertahankan
+    # FK ke design_brands (table dipakai bareng untuk content + design brief,
+    # supaya label brand 1× setup per tim bisa dipakai keduanya).
+    brand_id = Column(UUID(as_uuid=True), ForeignKey("design_brands.id", ondelete="SET NULL"), nullable=True)
     location = Column(String(255), nullable=True)          # legacy — UI tidak menampilkan lagi
     shoot_date = Column(Date, nullable=True)
     shoot_time = Column(String(64), nullable=True)        # free text, e.g. "06.00 - 15.00 WIB"
@@ -39,6 +42,7 @@ class ContentBrief(Base):
 
     team = relationship("Team")
     creator = relationship("User")
+    brand_label = relationship("DesignBrand")
     scenes = relationship(
         "BriefScene",
         back_populates="brief",

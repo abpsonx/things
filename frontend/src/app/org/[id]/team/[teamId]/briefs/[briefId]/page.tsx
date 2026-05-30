@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  Clapperboard, Loader2, ChevronLeft, Plus, Trash2, Save, Layers, X,
+  Clapperboard, Loader2, ChevronLeft, Plus, Trash2, Save, Layers, X, Tag,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -26,11 +26,15 @@ interface Scene {
   duration: string | null;
 }
 
+interface BrandLabel { id: string; name: string; color: string | null }
+
 interface Brief {
   id: string;
   team_id: string;
   title: string;
   brand: string | null;
+  brand_id: string | null;
+  brand_label: BrandLabel | null;
   shoot_date: string | null;
   shoot_time: string | null;
   video_duration: string | null;
@@ -41,6 +45,7 @@ interface Brief {
   status: string;
   scenes: Scene[];
   creator: { id: string; name: string; avatar_url?: string } | null;
+  created_at?: string;
   // Legacy — backend masih simpan tapi UI gak nampilin.
   location?: string | null;
   tone?: string | null;
@@ -75,6 +80,8 @@ export default function BriefDetailPage() {
   const [loading, setLoading] = useState(true);
   const [savingHeader, setSavingHeader] = useState(false);
   const [addingScene, setAddingScene] = useState(false);
+  const [brands, setBrands] = useState<BrandLabel[]>([]);
+  const [newBrandName, setNewBrandName] = useState("");
 
   // Local editing state for header fields (save on blur).
   const [form, setForm] = useState({
@@ -110,6 +117,38 @@ export default function BriefDetailPage() {
   useEffect(() => {
     if (briefId) fetchBrief();
   }, [briefId, fetchBrief]);
+
+  const fetchBrands = useCallback(async () => {
+    try {
+      const res = await api.get(`${base}/_brands`);
+      setBrands(res.data || []);
+    } catch {/* silent */}
+  }, [base]);
+
+  useEffect(() => { fetchBrands(); }, [fetchBrands]);
+
+  const assignBrand = async (brandId: string | null) => {
+    try {
+      const res = await api.patch(`${base}/${briefId}`, { brand_id: brandId });
+      setBrief(res.data);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || "Gagal mengubah brand");
+    }
+  };
+
+  const createBrandInline = async () => {
+    const name = newBrandName.trim();
+    if (!name) return;
+    try {
+      const res = await api.post(`${base}/_brands`, { name });
+      const created: BrandLabel = res.data;
+      setBrands((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+      setNewBrandName("");
+      assignBrand(created.id);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || "Gagal menambah brand");
+    }
+  };
 
   const saveHeader = async (patch: Partial<typeof form>) => {
     setSavingHeader(true);
@@ -246,15 +285,67 @@ export default function BriefDetailPage() {
         />
       </div>
 
+      {/* Creator banner — siapa yang bikin brief ini */}
+      {brief.creator && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span className="w-6 h-6 rounded-full bg-secondary border border-border flex items-center justify-center text-[10px] font-bold overflow-hidden">
+            {brief.creator.avatar_url
+              ? <img src={brief.creator.avatar_url} alt="" className="w-full h-full object-cover" />
+              : (brief.creator.name || "?").charAt(0)}
+          </span>
+          <span>Dibuat oleh <strong className="text-foreground">{brief.creator.name}</strong>
+            {brief.created_at && (
+              <> · {new Date(brief.created_at).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}</>
+            )}
+          </span>
+        </div>
+      )}
+
       {/* Metadata grid */}
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 p-4 rounded-2xl border border-border bg-secondary/20">
-        <Field
-          label="Brand"
-          value={form.brand}
-          placeholder="mis. Kopi Kenangan / Klien"
-          onChange={(v) => setForm({ ...form, brand: v })}
-          onBlur={() => { if (form.brand !== (brief.brand || "")) saveHeader({ brand: form.brand }); }}
-        />
+        {/* Brand selector — share label dari design briefs.
+            User bisa pilih dari list ATAU ketik nama baru auto-create. */}
+        <div className="space-y-1">
+          <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground inline-flex items-center gap-1">
+            <Tag className="w-3 h-3" /> Brand
+          </label>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <select
+              value={brief.brand_id || ""}
+              onChange={(e) => assignBrand(e.target.value || null)}
+              className="px-3 py-2 bg-card border border-border rounded-xl text-sm outline-none focus:border-primary"
+            >
+              <option value="">— Tanpa brand —</option>
+              {brands.map((br) => (
+                <option key={br.id} value={br.id}>{br.name}</option>
+              ))}
+            </select>
+            {brief.brand_label?.color && (
+              <span
+                className="inline-block w-3 h-3 rounded-full border border-border"
+                style={{ backgroundColor: brief.brand_label.color }}
+              />
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 pt-1">
+            <input
+              value={newBrandName}
+              onChange={(e) => setNewBrandName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); createBrandInline(); } }}
+              placeholder="+ Brand baru…"
+              className="flex-1 px-2.5 py-1.5 text-xs bg-secondary/30 border border-dashed border-border rounded-lg outline-none focus:border-primary focus:bg-card"
+            />
+            <button
+              type="button"
+              onClick={createBrandInline}
+              disabled={!newBrandName.trim()}
+              className="p-1.5 rounded-lg bg-primary text-primary-foreground disabled:opacity-30 hover:shadow-md transition-all"
+              title="Tambah brand & tautkan"
+            >
+              <Plus className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
         <Field
           label="Tanggal Syuting"
           type="date"

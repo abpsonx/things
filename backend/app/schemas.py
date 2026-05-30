@@ -547,9 +547,31 @@ class BriefSceneResponse(BriefSceneBase):
         from_attributes = True
 
 
+class DesignBrandCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    color: Optional[str] = None
+
+
+class DesignBrandUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    color: Optional[str] = None
+
+
+class DesignBrandResponse(BaseModel):
+    id: UUID
+    team_id: UUID
+    name: str
+    color: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class ContentBriefBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     brand: Optional[str] = None
+    brand_id: Optional[UUID] = None
     location: Optional[str] = None  # legacy — disimpan tapi UI tidak menampilkan
     shoot_date: Optional[date] = None
     shoot_time: Optional[str] = None
@@ -569,6 +591,7 @@ class ContentBriefCreate(ContentBriefBase):
 class ContentBriefUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=255)
     brand: Optional[str] = None
+    brand_id: Optional[UUID] = None
     location: Optional[str] = None
     shoot_date: Optional[date] = None
     shoot_time: Optional[str] = None
@@ -587,6 +610,7 @@ class ContentBriefResponse(ContentBriefBase):
     team_id: UUID
     creator_id: Optional[UUID] = None
     creator: Optional[UserResponse] = None
+    brand_label: Optional[DesignBrandResponse] = None
     created_at: datetime
     updated_at: datetime
     scenes: List[BriefSceneResponse] = []
@@ -601,6 +625,9 @@ class ContentBriefListItem(BaseModel):
     org_id: UUID
     team_id: UUID
     title: str
+    brand: Optional[str] = None
+    brand_id: Optional[UUID] = None
+    brand_label: Optional[DesignBrandResponse] = None
     status: str
     shoot_date: Optional[date] = None
     video_format: Optional[str] = None
@@ -625,26 +652,8 @@ class TaskBriefLinksUpdate(BaseModel):
 
 
 # ============ Design Brief Schemas ============
-
-class DesignBrandCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    color: Optional[str] = None
-
-
-class DesignBrandUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=1, max_length=255)
-    color: Optional[str] = None
-
-
-class DesignBrandResponse(BaseModel):
-    id: UUID
-    team_id: UUID
-    name: str
-    color: Optional[str] = None
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
+# DesignBrand* sudah didefinisikan di atas (sebelum ContentBriefBase) supaya
+# bisa di-reference oleh ContentBriefResponse/ListItem.
 
 
 class DesignBriefBase(BaseModel):

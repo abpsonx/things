@@ -113,6 +113,15 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"[migration] design brief multi-image backfill skipped: {e}")
 
+        # content brief — brand_id FK ke design_brands (share table dgn design brief).
+        try:
+            await conn.execute(text(
+                "ALTER TABLE content_briefs ADD COLUMN IF NOT EXISTS brand_id UUID "
+                "REFERENCES design_brands(id) ON DELETE SET NULL"
+            ))
+        except Exception:
+            pass
+
         # design brief — brand_id FK ke design_brands (foldering per brand).
         # Tabel design_brands sendiri dibuat otomatis lewat create_all.
         try:
