@@ -309,18 +309,25 @@ export default function DesignBriefsListPage() {
                     <h3 className="font-bold text-xs leading-tight line-clamp-2 group-hover:text-primary transition-colors">
                       {b.title}
                     </h3>
-                    {b.brand_label ? (
-                      <span
-                        className="inline-flex items-center gap-1 px-1.5 py-0 rounded text-[9px] font-bold"
-                        style={b.brand_label.color
-                          ? { backgroundColor: `${b.brand_label.color}1a`, color: b.brand_label.color }
-                          : undefined}
-                      >
-                        <Tag className="w-2.5 h-2.5" /> {b.brand_label.name}
-                      </span>
-                    ) : b.brand ? (
-                      <p className="text-[10px] text-primary font-semibold truncate">{b.brand}</p>
-                    ) : null}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {b.brand_label ? (
+                        <span
+                          className="inline-flex items-center gap-1 px-1.5 py-0 rounded text-[9px] font-bold"
+                          style={b.brand_label.color
+                            ? { backgroundColor: `${b.brand_label.color}1a`, color: b.brand_label.color }
+                            : undefined}
+                        >
+                          <Tag className="w-2.5 h-2.5" /> {b.brand_label.name}
+                        </span>
+                      ) : b.brand ? (
+                        <span className="text-[10px] text-primary font-semibold truncate">{b.brand}</span>
+                      ) : null}
+                      {b.creator?.name && (
+                        <span className="text-[9px] text-muted-foreground truncate" title={`Dibuat oleh ${b.creator.name}`}>
+                          · {b.creator.name}
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center justify-between text-[9px] text-muted-foreground pt-0.5">
                       <span className="inline-flex items-center gap-2 truncate">
                         {b.publish_date && (
