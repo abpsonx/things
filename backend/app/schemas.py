@@ -623,10 +623,35 @@ class TaskBriefLinksUpdate(BaseModel):
 
 # ============ Design Brief Schemas ============
 
+class DesignBrandCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    color: Optional[str] = None
+
+
+class DesignBrandUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    color: Optional[str] = None
+
+
+class DesignBrandResponse(BaseModel):
+    id: UUID
+    team_id: UUID
+    name: str
+    color: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class DesignBriefBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     brand: Optional[str] = None
-    visual_text: Optional[str] = None
+    brand_id: Optional[UUID] = None
+    visual_text: Optional[str] = None  # legacy — UI sekarang pakai headline/sub_headline/body_text
+    headline: Optional[str] = None
+    sub_headline: Optional[str] = None
+    body_text: Optional[str] = None
     caption: Optional[str] = None
     publish_date: Optional[date] = None
     hashtag: Optional[str] = None
@@ -644,7 +669,11 @@ class DesignBriefCreate(DesignBriefBase):
 class DesignBriefUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=255)
     brand: Optional[str] = None
+    brand_id: Optional[UUID] = None
     visual_text: Optional[str] = None
+    headline: Optional[str] = None
+    sub_headline: Optional[str] = None
+    body_text: Optional[str] = None
     caption: Optional[str] = None
     publish_date: Optional[date] = None
     hashtag: Optional[str] = None
@@ -716,6 +745,7 @@ class DesignBriefResponse(DesignBriefBase):
     team_id: UUID
     creator_id: Optional[UUID] = None
     creator: Optional[UserResponse] = None
+    brand_label: Optional[DesignBrandResponse] = None
     created_at: datetime
     updated_at: datetime
     images: List[DesignBriefImageResponse] = []
@@ -734,6 +764,8 @@ class DesignBriefListItem(BaseModel):
     team_id: UUID
     title: str
     brand: Optional[str] = None
+    brand_id: Optional[UUID] = None
+    brand_label: Optional[DesignBrandResponse] = None
     status: str
     publish_date: Optional[date] = None
     final_image_url: Optional[str] = None

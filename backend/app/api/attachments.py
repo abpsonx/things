@@ -107,14 +107,24 @@ async def delete_attachment(
     current_user: User = Depends(get_current_user),
 ):
     """Delete an attachment."""
-    result = await db.execute(select(Attachment).where(Attachment.id == attachment_id))
+    # Eager-load .task — sebelumnya lazy-load di async context bikin
+    # MissingGreenlet error sehingga delete diam-diam gagal di prod.
+    from sqlalchemy.orm import selectinload
+    result = await db.execute(
+        select(Attachment)
+        .options(selectinload(Attachment.task))
+        .where(Attachment.id == attachment_id)
+    )
     attachment = result.scalar_one_or_none()
     if not attachment:
         raise HTTPException(status_code=404, detail="Lampiran tidak ditemukan")
 
-    # Remove physical file
-    if os.path.exists(attachment.file_path):
-        os.remove(attachment.file_path)
+    # Remove physical file (best-effort: kalau file hilang, tetap hapus row).
+    try:
+        if attachment.file_path and os.path.exists(attachment.file_path):
+            os.remove(attachment.file_path)
+    except OSError:
+        pass
 
     # Log activity
     from app.services import log_activity

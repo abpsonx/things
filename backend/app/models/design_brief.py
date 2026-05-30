@@ -12,6 +12,20 @@ from sqlalchemy.orm import relationship
 from app.core.database import Base
 
 
+class DesignBrand(Base):
+    """Label brand per tim untuk foldering brief design.
+    name di-unique per team supaya gak duplikat."""
+    __tablename__ = "design_brands"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    team_id = Column(UUID(as_uuid=True), ForeignKey("teams.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(255), nullable=False)
+    color = Column(String(16), nullable=True)  # hex (#3b82f6) — opsional
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    team = relationship("Team")
+
+
 class DesignBrief(Base):
     __tablename__ = "design_briefs"
 
@@ -21,8 +35,15 @@ class DesignBrief(Base):
     creator_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     title = Column(String(255), nullable=False)
-    brand = Column(String(255), nullable=True)
-    visual_text = Column(Text, nullable=True)             # teks pendek yang muncul di artwork
+    brand = Column(String(255), nullable=True)  # legacy free-text, dipertahankan
+    brand_id = Column(UUID(as_uuid=True), ForeignKey("design_brands.id", ondelete="SET NULL"), nullable=True)
+    # visual_text dipertahankan untuk data lama; field baru memecah jadi
+    # 3 bagian yang biasa dipakai designer: headline (big text), sub headline,
+    # body text (detail kecil).
+    visual_text = Column(Text, nullable=True)
+    headline = Column(Text, nullable=True)
+    sub_headline = Column(Text, nullable=True)
+    body_text = Column(Text, nullable=True)
     caption = Column(Text, nullable=True)                 # caption posting (long form)
     publish_date = Column(Date, nullable=True)            # rencana tanggal publish
     hashtag = Column(Text, nullable=True)                 # daftar #tag, free text
@@ -40,6 +61,7 @@ class DesignBrief(Base):
 
     team = relationship("Team")
     creator = relationship("User")
+    brand_label = relationship("DesignBrand")
     annotations = relationship(
         "DesignBriefAnnotation",
         back_populates="brief",

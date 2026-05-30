@@ -81,11 +81,20 @@ export function renderMarkdownToHtml(src: string): string {
   return out.join("");
 }
 
+/** Heuristik kasar: kalau string mengandung tag HTML pembuka (mis. `<p>`,
+ *  `<strong>`, `<ul>`), perlakukan sebagai HTML mentah (output TipTap).
+ *  Kalau tidak, render via markdown converter. */
+function looksLikeHtml(s: string): boolean {
+  return /<(p|div|span|strong|em|b|i|u|ul|ol|li|h[1-6]|a|br|blockquote|code|pre|hr|img)(\s|>|\/)/i.test(s);
+}
+
 export function MarkdownText({ text, className }: { text: string; className?: string }) {
+  if (!text) return null;
+  const html = looksLikeHtml(text) ? text : renderMarkdownToHtml(text);
   return (
     <div
       className={cn("whitespace-pre-wrap break-words [&_p]:m-0 [&_p+p]:mt-1", className)}
-      dangerouslySetInnerHTML={{ __html: renderMarkdownToHtml(text) }}
+      dangerouslySetInnerHTML={{ __html: html }}
     />
   );
 }

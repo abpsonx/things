@@ -15,7 +15,7 @@ from app.dependencies import get_current_user
 from app.models.user import User
 from app.models.team import Team, TeamMember
 from app.models.organization import OrgMember
-from app.models.design_brief import DesignBrief, DesignBriefAnnotation, DesignBriefImage
+from app.models.design_brief import DesignBrief, DesignBriefAnnotation, DesignBriefImage, DesignBrand
 from app.schemas import (
     DesignBriefCreate,
     DesignBriefUpdate,
@@ -26,6 +26,9 @@ from app.schemas import (
     DesignBriefAnnotationResponse,
     DesignBriefImageResponse,
     DesignBriefImageReorder,
+    DesignBrandCreate,
+    DesignBrandUpdate,
+    DesignBrandResponse,
 )
 from app.services import log_activity
 
@@ -62,6 +65,7 @@ async def _get_brief(db: AsyncSession, team_id: str, brief_id: str) -> DesignBri
         select(DesignBrief)
         .options(
             selectinload(DesignBrief.creator),
+            selectinload(DesignBrief.brand_label),
             selectinload(DesignBrief.annotations).selectinload(DesignBriefAnnotation.creator),
             selectinload(DesignBrief.images)
             .selectinload(DesignBriefImage.annotations)
@@ -73,6 +77,102 @@ async def _get_brief(db: AsyncSession, team_id: str, brief_id: str) -> DesignBri
     if not brief:
         raise HTTPException(status_code=404, detail="Brief tidak ditemukan")
     return brief
+
+
+# ---------- Brand labels ----------
+
+@router.get("/_brands", response_model=List[DesignBrandResponse])
+async def list_brands(
+    org_id: str, team_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List brand labels untuk foldering brief."""
+    await _require_team_access(db, org_id, team_id, current_user)
+    res = await db.execute(
+        select(DesignBrand).where(DesignBrand.team_id == team_id).order_by(DesignBrand.name)
+    )
+    return list(res.scalars().all())
+
+
+@router.post("/_brands", response_model=DesignBrandResponse, status_code=status.HTTP_201_CREATED)
+async def create_brand(
+    org_id: str, team_id: str,
+    data: DesignBrandCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await _require_team_access(db, org_id, team_id, current_user)
+    name = data.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Nama brand wajib")
+    # Cek duplikat case-insensitive per team.
+    dup = await db.execute(
+        select(DesignBrand).where(
+            DesignBrand.team_id == team_id,
+            safunc.lower(DesignBrand.name) == name.lower(),
+        )
+    )
+    if dup.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Brand dengan nama itu sudah ada")
+    brand = DesignBrand(team_id=team_id, name=name, color=data.color)
+    db.add(brand)
+    await db.commit()
+    return brand
+
+
+@router.patch("/_brands/{brand_id}", response_model=DesignBrandResponse)
+async def update_brand(
+    org_id: str, team_id: str, brand_id: str,
+    data: DesignBrandUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await _require_team_access(db, org_id, team_id, current_user)
+    res = await db.execute(
+        select(DesignBrand).where(DesignBrand.id == brand_id, DesignBrand.team_id == team_id)
+    )
+    brand = res.scalar_one_or_none()
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand tidak ditemukan")
+    payload = data.model_dump(exclude_unset=True)
+    if "name" in payload:
+        new_name = (payload["name"] or "").strip()
+        if not new_name:
+            raise HTTPException(status_code=400, detail="Nama brand wajib")
+        if new_name.lower() != brand.name.lower():
+            dup = await db.execute(
+                select(DesignBrand).where(
+                    DesignBrand.team_id == team_id,
+                    safunc.lower(DesignBrand.name) == new_name.lower(),
+                )
+            )
+            if dup.scalar_one_or_none():
+                raise HTTPException(status_code=400, detail="Brand dengan nama itu sudah ada")
+        brand.name = new_name
+    if "color" in payload:
+        brand.color = payload["color"]
+    await db.commit()
+    return brand
+
+
+@router.delete("/_brands/{brand_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_brand(
+    org_id: str, team_id: str, brand_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Hapus brand. Brief yang ditautkan otomatis brand_id=NULL (ON DELETE SET NULL)."""
+    await _require_team_access(db, org_id, team_id, current_user)
+    res = await db.execute(
+        select(DesignBrand).where(DesignBrand.id == brand_id, DesignBrand.team_id == team_id)
+    )
+    brand = res.scalar_one_or_none()
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand tidak ditemukan")
+    await db.delete(brand)
+    await db.commit()
+    return None
 
 
 # ---------- Briefs ----------
@@ -103,7 +203,10 @@ async def list_design_briefs(
 
     res = await db.execute(
         select(DesignBrief)
-        .options(selectinload(DesignBrief.creator))
+        .options(
+            selectinload(DesignBrief.creator),
+            selectinload(DesignBrief.brand_label),
+        )
         .where(DesignBrief.team_id == team_id)
         .order_by(DesignBrief.updated_at.desc())
     )
@@ -133,7 +236,11 @@ async def create_design_brief(
         creator_id=current_user.id,
         title=data.title,
         brand=data.brand,
+        brand_id=data.brand_id,
         visual_text=data.visual_text,
+        headline=data.headline,
+        sub_headline=data.sub_headline,
+        body_text=data.body_text,
         caption=data.caption,
         publish_date=data.publish_date,
         hashtag=data.hashtag,

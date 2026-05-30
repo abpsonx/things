@@ -5,7 +5,8 @@ import Modal from "@/components/ui/Modal";
 import CustomSelect from "@/components/ui/Select";
 import Popover from "@/components/ui/Popover";
 import api from "@/lib/api";
-import MentionTextarea from "@/components/ui/MentionTextarea";
+import { RichTextEditor } from "@/components/ui/RichTextEditor";
+import FileViewerModal from "@/components/ui/FileViewerModal";
 import TaskLinksSection, { DescriptionLinkChips } from "@/components/board/TaskLinksSection";
 import TaskActivityLog from "@/components/board/TaskActivityLog";
 import TaskEditBanner from "@/components/board/TaskEditBanner";
@@ -76,6 +77,7 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
   const [newLabelName, setNewLabelName] = useState("");
   const [newLabelColor, setNewLabelColor] = useState("#3b82f6");
   const [teamBriefs, setTeamBriefs] = useState<any[]>([]);
+  const [previewFile, setPreviewFile] = useState<any | null>(null);
   const [resultUrl, setResultUrl] = useState<string>("");
   const [propDraftName, setPropDraftName] = useState("");
   const [propDraftValue, setPropDraftValue] = useState("");
@@ -100,6 +102,15 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
       fetchContextData();
     }
   }, [isOpen, taskId]);
+
+  // Debounce autosave deskripsi (RichTextEditor cuma punya onChange).
+  useEffect(() => {
+    if (!task) return;
+    if (description === (task.description || "")) return;
+    const t = setTimeout(() => updateTask({ description }), 1000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [description]);
 
   const fetchTaskDetail = async () => {
     setLoading(true);
@@ -147,10 +158,11 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
     if (!confirm("Hapus lampiran ini?")) return;
     try {
       await api.delete(`/tasks/${taskId}/attachments/${attachmentId}`);
-      setAttachments(attachments.filter(a => a.id !== attachmentId));
+      setAttachments((prev) => prev.filter((a) => a.id !== attachmentId));
       onUpdate();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to delete attachment", err);
+      alert(err?.response?.data?.detail || "Gagal menghapus lampiran. Coba refresh lalu coba lagi.");
     }
   };
 
@@ -441,14 +453,11 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
               <AlignLeft className="w-4 h-4" />
               Deskripsi
             </div>
-            <MentionTextarea
-              value={description}
+            <RichTextEditor
+              content={description}
               onChange={setDescription}
-              onBlur={() => { if (description !== (task?.description || "")) updateTask({ description }); }}
+              placeholder="Tambahkan deskripsi tugas... ketik @ untuk tag orang."
               members={(members || []).filter((m: any) => m.user).map((m: any) => ({ id: m.user_id || m.user.id, name: m.user.name, avatar_url: m.user.avatar_url }))}
-              placeholder="Tambahkan deskripsi tugas... ketik @ untuk tag orang. Pakai **bold**, *italic*, - list."
-              className="w-full text-sm text-foreground leading-relaxed bg-secondary/20 border border-transparent hover:border-border focus:bg-background focus:border-primary p-3 rounded-xl transition-all min-h-[160px] resize-none focus:outline-none"
-              withToolbar
             />
             <DescriptionLinkChips text={description} />
           </div>
@@ -565,33 +574,53 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {attachments.map((file) => (
-                <div key={file.id} className="group flex items-center gap-3 p-3 bg-secondary/20 border border-border rounded-xl hover:border-primary/30 transition-all">
-                  <div className="w-10 h-10 bg-background rounded-lg flex items-center justify-center border border-border shrink-0">
-                    <FileIcon className="w-5 h-5 text-muted-foreground" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold truncate">{file.file_name}</p>
-                    <p className="text-[10px] text-muted-foreground">{(file.file_size / 1024).toFixed(1)} KB</p>
-                  </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <a 
-                      href={`/api/${file.file_path}`}
-                      target="_blank" 
-                      rel="noreferrer"
-                      className="p-1.5 hover:bg-background rounded-md text-muted-foreground hover:text-primary transition-colors"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                    </a>
-                    <button 
-                      onClick={() => handleDeleteAttachment(file.id)}
-                      className="p-1.5 hover:bg-background rounded-md text-muted-foreground hover:text-destructive transition-colors"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ))}
+              {attachments.map((file) => {
+                const url = `/api/${file.file_path}`;
+                const ext = (file.file_name || "").toLowerCase().split(".").pop() || "";
+                const isImage = ["png","jpg","jpeg","gif","webp","bmp","svg"].includes(ext);
+                const isVideo = ["mp4","mov","webm","mkv"].includes(ext);
+                const isAudio = ["mp3","wav","ogg","m4a"].includes(ext);
+                const isPdf = ext === "pdf";
+                return (
+                  <button
+                    type="button"
+                    key={file.id}
+                    onClick={() => setPreviewFile({ ...file, url, isImage, isVideo, isAudio, isPdf })}
+                    className="group flex items-center gap-3 p-3 bg-secondary/20 border border-border rounded-xl hover:border-primary/40 hover:bg-secondary/40 transition-all text-left w-full"
+                  >
+                    {isImage ? (
+                      <img src={url} alt="" className="w-10 h-10 rounded-lg object-cover border border-border shrink-0" />
+                    ) : (
+                      <div className="w-10 h-10 bg-background rounded-lg flex items-center justify-center border border-border shrink-0">
+                        <FileIcon className="w-5 h-5 text-muted-foreground" />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold truncate">{file.file_name}</p>
+                      <p className="text-[10px] text-muted-foreground">{(file.file_size / 1024).toFixed(1)} KB · klik untuk lihat</p>
+                    </div>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <a
+                        href={url}
+                        download={file.file_name}
+                        onClick={(e) => e.stopPropagation()}
+                        title="Unduh"
+                        className="p-1.5 hover:bg-background rounded-md text-muted-foreground hover:text-primary transition-colors"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                      </a>
+                      <span
+                        role="button"
+                        onClick={(e) => { e.stopPropagation(); handleDeleteAttachment(file.id); }}
+                        title="Hapus"
+                        className="p-1.5 hover:bg-background rounded-md text-muted-foreground hover:text-destructive transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
               
               {attachments.length === 0 && !isUploading && (
                 <div className="col-span-full py-8 border border-dashed border-border rounded-2xl flex flex-col items-center justify-center text-muted-foreground space-y-2">
@@ -1076,6 +1105,18 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
           </div>
         </div>
       </div>
+      {previewFile && (
+        <FileViewerModal
+          isOpen={!!previewFile}
+          onClose={() => setPreviewFile(null)}
+          fileUrl={previewFile.url}
+          fileName={previewFile.file_name}
+          isImage={previewFile.isImage}
+          isVideo={previewFile.isVideo}
+          isAudio={previewFile.isAudio}
+          isPdf={previewFile.isPdf}
+        />
+      )}
     </Modal>
   );
 }

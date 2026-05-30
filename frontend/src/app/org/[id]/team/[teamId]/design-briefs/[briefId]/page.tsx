@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import api from "@/lib/api";
 import TeamNav from "@/components/team/TeamNav";
 import { MarkdownToolbar, MarkdownText } from "@/components/ui/Markdown";
+import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { useAuthStore } from "@/store/useAuthStore";
 import { formatDistanceToNow } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
@@ -42,12 +43,19 @@ interface BriefImage {
 
 interface CustomProp { name: string; value: string }
 
+interface BrandLabel { id: string; name: string; color: string | null }
+
 interface Brief {
   id: string;
   team_id: string;
   title: string;
   brand: string | null;
-  visual_text: string | null;
+  brand_id: string | null;
+  brand_label: BrandLabel | null;
+  visual_text: string | null; // legacy — gak ditampilkan lagi
+  headline: string | null;
+  sub_headline: string | null;
+  body_text: string | null;
   caption: string | null;
   publish_date: string | null;
   hashtag: string | null;
@@ -77,9 +85,21 @@ export default function DesignBriefDetailPage() {
   const [savingHeader, setSavingHeader] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [form, setForm] = useState({
-    title: "", brand: "", visual_text: "", caption: "", publish_date: "",
+    title: "", brand: "", visual_text: "",
+    headline: "", sub_headline: "", body_text: "",
+    caption: "", publish_date: "",
     hashtag: "", reference_url: "", status: "draft",
   });
+
+  // Debounce autosave Caption Posting (RichTextEditor cuma punya onChange,
+  // tidak onBlur). 800ms setelah keystroke terakhir → patch ke server.
+  useEffect(() => {
+    if (!brief) return;
+    if (form.caption === (brief.caption || "")) return;
+    const t = setTimeout(() => saveHeader({ caption: form.caption }), 800);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.caption]);
 
   // Annotation state — drag-to-box. pendingPin sekarang berbentuk:
   //   { x, y, w?, h? } — saat mousedown set anchor, drag bikin width/height,
@@ -90,6 +110,8 @@ export default function DesignBriefDetailPage() {
   const [pendingNote, setPendingNote] = useState("");
   const [activeAnnotation, setActiveAnnotation] = useState<string | null>(null);
   const [activeImageId, setActiveImageId] = useState<string | null>(null);
+  const [brands, setBrands] = useState<BrandLabel[]>([]);
+  const [newBrandName, setNewBrandName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Custom properties draft (Notion-style add row)
   const [propDraftName, setPropDraftName] = useState("");
@@ -118,6 +140,10 @@ export default function DesignBriefDetailPage() {
         title: data.title || "",
         brand: data.brand || "",
         visual_text: data.visual_text || "",
+        // Backfill ke headline jika data lama hanya punya visual_text.
+        headline: data.headline ?? (data.visual_text || ""),
+        sub_headline: data.sub_headline || "",
+        body_text: data.body_text || "",
         caption: data.caption || "",
         publish_date: data.publish_date || "",
         hashtag: data.hashtag || "",
@@ -138,6 +164,39 @@ export default function DesignBriefDetailPage() {
   useEffect(() => {
     if (briefId) fetchBrief();
   }, [briefId, fetchBrief]);
+
+  const fetchBrands = useCallback(async () => {
+    try {
+      const res = await api.get(`${base}/_brands`);
+      setBrands(res.data || []);
+    } catch {/* silent */}
+  }, [base]);
+
+  useEffect(() => { fetchBrands(); }, [fetchBrands]);
+
+  const assignBrand = async (brandId: string | null) => {
+    try {
+      const res = await api.patch(`${base}/${briefId}`, { brand_id: brandId });
+      setBrief(res.data);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || "Gagal mengubah brand");
+    }
+  };
+
+  const createBrandInline = async () => {
+    const name = newBrandName.trim();
+    if (!name) return;
+    try {
+      const res = await api.post(`${base}/_brands`, { name });
+      const created: BrandLabel = res.data;
+      setBrands((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+      setNewBrandName("");
+      // langsung tautkan brief ke brand baru
+      assignBrand(created.id);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || "Gagal menambah brand");
+    }
+  };
 
   const saveHeader = async (patch: Partial<typeof form>) => {
     setSavingHeader(true);
@@ -447,33 +506,87 @@ export default function DesignBriefDetailPage() {
         <div className="grid lg:grid-cols-[560px_1fr] gap-6">
           {/* Form panel */}
           <div className="space-y-3 p-4 rounded-2xl border border-border bg-secondary/20 h-fit lg:sticky lg:top-4">
+            {/* Brand selector — pilih dari label tim, atau ketik nama baru
+                untuk auto-create. Brand di-link via brand_id (label resmi).
+                Field free-text lama (brief.brand) tetap dipertahankan di DB. */}
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Brand</label>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <select
+                  value={brief.brand_id || ""}
+                  onChange={(e) => assignBrand(e.target.value || null)}
+                  className="px-3 py-2 bg-card border border-border rounded-xl text-sm outline-none focus:border-primary"
+                >
+                  <option value="">— Tanpa brand —</option>
+                  {brands.map((br) => (
+                    <option key={br.id} value={br.id}>{br.name}</option>
+                  ))}
+                </select>
+                {brief.brand_label && brief.brand_label.color && (
+                  <span
+                    className="inline-block w-3 h-3 rounded-full border border-border"
+                    style={{ backgroundColor: brief.brand_label.color }}
+                    title={brief.brand_label.color}
+                  />
+                )}
+              </div>
+              <div className="flex items-center gap-1.5 pt-1">
+                <input
+                  value={newBrandName}
+                  onChange={(e) => setNewBrandName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); createBrandInline(); } }}
+                  placeholder="+ Brand baru…"
+                  className="flex-1 px-2.5 py-1.5 text-xs bg-secondary/30 border border-dashed border-border rounded-lg outline-none focus:border-primary focus:bg-card"
+                />
+                <button
+                  type="button"
+                  onClick={createBrandInline}
+                  disabled={!newBrandName.trim()}
+                  className="p-1.5 rounded-lg bg-primary text-primary-foreground disabled:opacity-30 hover:shadow-md transition-all"
+                  title="Tambah brand & tautkan"
+                >
+                  <Plus className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+            {/* Visual Text dipecah jadi 3: headline / sub headline / body text
+                — biar designer langsung tahu hierarki tipografi-nya. */}
             <Field
-              label="Brand"
-              value={form.brand}
-              placeholder="mis. Gokuah / Klien X"
-              onChange={(v) => setForm({ ...form, brand: v })}
-              onBlur={() => { if (form.brand !== (brief.brand || "")) saveHeader({ brand: form.brand }); }}
+              label="Headline"
+              value={form.headline}
+              placeholder="Teks utama / big title (mis. 'DISKON 15%')"
+              onChange={(v) => setForm({ ...form, headline: v })}
+              onBlur={() => { if (form.headline !== (brief.headline || "")) saveHeader({ headline: form.headline }); }}
+              textarea
+              rows={2}
             />
             <Field
-              label="Visual Text"
-              value={form.visual_text}
-              placeholder="Teks yang muncul di artwork (mis. 'DISKON 15%')"
-              onChange={(v) => setForm({ ...form, visual_text: v })}
-              onBlur={() => { if (form.visual_text !== (brief.visual_text || "")) saveHeader({ visual_text: form.visual_text }); }}
+              label="Sub Headline"
+              value={form.sub_headline}
+              placeholder="Tagline / penjelas singkat (mis. 'Berlaku 1–7 Juni')"
+              onChange={(v) => setForm({ ...form, sub_headline: v })}
+              onBlur={() => { if (form.sub_headline !== (brief.sub_headline || "")) saveHeader({ sub_headline: form.sub_headline }); }}
+              textarea
+              rows={2}
+            />
+            <Field
+              label="Body Text"
+              value={form.body_text}
+              placeholder="Detail kecil / syarat & ketentuan, dst."
+              onChange={(v) => setForm({ ...form, body_text: v })}
+              onBlur={() => { if (form.body_text !== (brief.body_text || "")) saveHeader({ body_text: form.body_text }); }}
               textarea
               rows={3}
-              markdown
             />
-            <Field
-              label="Caption Posting"
-              value={form.caption}
-              placeholder="Caption lengkap untuk posting…  (Bold **teks**  ·  Italic *teks*  ·  - list)"
-              onChange={(v) => setForm({ ...form, caption: v })}
-              onBlur={() => { if (form.caption !== (brief.caption || "")) saveHeader({ caption: form.caption }); }}
-              textarea
-              rows={6}
-              markdown
-            />
+            {/* Caption Posting → RichTextEditor (TipTap) — autosave 800ms debounced. */}
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Caption Posting</label>
+              <RichTextEditor
+                content={form.caption}
+                onChange={(v) => setForm((f) => ({ ...f, caption: v }))}
+                placeholder="Caption lengkap untuk posting…"
+              />
+            </div>
             <Field
               label="Tanggal Publish"
               type="date"

@@ -113,6 +113,34 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"[migration] design brief multi-image backfill skipped: {e}")
 
+        # design brief — brand_id FK ke design_brands (foldering per brand).
+        # Tabel design_brands sendiri dibuat otomatis lewat create_all.
+        try:
+            await conn.execute(text(
+                "ALTER TABLE design_briefs ADD COLUMN IF NOT EXISTS brand_id UUID "
+                "REFERENCES design_brands(id) ON DELETE SET NULL"
+            ))
+        except Exception:
+            pass
+
+        # design brief — split visual_text → headline + sub_headline + body_text.
+        # Backfill: kalau brief lama punya visual_text tapi headline kosong,
+        # taruh visual_text ke headline (tetap reversible — kolom lama dipertahankan).
+        for col in ("headline", "sub_headline", "body_text"):
+            try:
+                await conn.execute(text(
+                    f"ALTER TABLE design_briefs ADD COLUMN IF NOT EXISTS {col} TEXT"
+                ))
+            except Exception:
+                pass
+        try:
+            await conn.execute(text(
+                "UPDATE design_briefs SET headline = visual_text "
+                "WHERE headline IS NULL AND visual_text IS NOT NULL"
+            ))
+        except Exception:
+            pass
+
         # tasks — result_url + custom_properties JSONB
         try:
             await conn.execute(text(

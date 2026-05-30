@@ -3,16 +3,20 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { Image as ImageIcon, Plus, Loader2, Calendar, MessageCircle, ChevronRight, Trash2, AlertCircle } from "lucide-react";
+import { Image as ImageIcon, Plus, Loader2, Calendar, MessageCircle, ChevronRight, Trash2, AlertCircle, Tag, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import api from "@/lib/api";
 import TeamNav from "@/components/team/TeamNav";
 
+interface BrandLabel { id: string; name: string; color: string | null }
+
 interface BriefListItem {
   id: string;
   title: string;
   brand: string | null;
+  brand_id: string | null;
+  brand_label: BrandLabel | null;
   status: string;
   publish_date: string | null;
   final_image_url: string | null;
@@ -35,15 +39,23 @@ export default function DesignBriefsListPage() {
   const router = useRouter();
   const base = `/organizations/${orgId}/teams/${teamId}/design-briefs`;
   const [briefs, setBriefs] = useState<BriefListItem[]>([]);
+  const [brands, setBrands] = useState<BrandLabel[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [brandFilter, setBrandFilter] = useState<string>("all");  // "all" | brand_id | "_none_"
+  const [showManageBrands, setShowManageBrands] = useState(false);
+  const [newBrandName, setNewBrandName] = useState("");
 
   const fetchBriefs = async () => {
     try {
-      const res = await api.get(base);
-      setBriefs(res.data || []);
+      const [bRes, brRes] = await Promise.all([
+        api.get(base),
+        api.get(`${base}/_brands`),
+      ]);
+      setBriefs(bRes.data || []);
+      setBrands(brRes.data || []);
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || "Gagal memuat brief");
     } finally {
@@ -54,6 +66,31 @@ export default function DesignBriefsListPage() {
   useEffect(() => {
     if (teamId) fetchBriefs();
   }, [teamId]);
+
+  const addBrand = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = newBrandName.trim();
+    if (!name) return;
+    try {
+      const res = await api.post(`${base}/_brands`, { name });
+      setBrands((prev) => [...prev, res.data].sort((a, b) => a.name.localeCompare(b.name)));
+      setNewBrandName("");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || "Gagal menambah brand");
+    }
+  };
+
+  const removeBrand = async (id: string, name: string) => {
+    if (!confirm(`Hapus brand "${name}"? Brief yang ditautkan akan jadi tanpa brand.`)) return;
+    try {
+      await api.delete(`${base}/_brands/${id}`);
+      setBrands((prev) => prev.filter((b) => b.id !== id));
+      setBriefs((prev) => prev.map((b) => b.brand_id === id ? { ...b, brand_id: null, brand_label: null } : b));
+      if (brandFilter === id) setBrandFilter("all");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || "Gagal hapus brand");
+    }
+  };
 
   const createBrief = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,7 +120,12 @@ export default function DesignBriefsListPage() {
     }
   };
 
-  const visible = statusFilter === "all" ? briefs : briefs.filter((b) => b.status === statusFilter);
+  const visible = briefs.filter((b) => {
+    if (statusFilter !== "all" && b.status !== statusFilter) return false;
+    if (brandFilter === "_none_") return !b.brand_id;
+    if (brandFilter !== "all" && b.brand_id !== brandFilter) return false;
+    return true;
+  });
 
   return (
     <div className="flex-1 flex flex-col min-h-screen bg-background">
@@ -134,6 +176,88 @@ export default function DesignBriefsListPage() {
               );
             })}
           </div>
+
+          {/* Brand filter row */}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <span className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground inline-flex items-center gap-1">
+              <Tag className="w-3 h-3" /> Brand
+            </span>
+            <button
+              onClick={() => setBrandFilter("all")}
+              className={cn(
+                "px-2.5 py-0.5 rounded-full text-[10px] font-bold border transition-all",
+                brandFilter === "all"
+                  ? "bg-foreground text-background border-foreground"
+                  : "bg-secondary/30 text-muted-foreground border-border hover:border-primary/40"
+              )}
+            >Semua</button>
+            {brands.map((br) => (
+              <button
+                key={br.id}
+                onClick={() => setBrandFilter(br.id)}
+                style={brandFilter === br.id && br.color ? { backgroundColor: br.color, borderColor: br.color } : undefined}
+                className={cn(
+                  "px-2.5 py-0.5 rounded-full text-[10px] font-bold border transition-all",
+                  brandFilter === br.id
+                    ? "text-white"
+                    : "bg-secondary/30 text-muted-foreground border-border hover:border-primary/40",
+                  brandFilter === br.id && !br.color && "bg-primary border-primary text-primary-foreground",
+                )}
+              >
+                {br.name} <span className="opacity-70">({briefs.filter((b) => b.brand_id === br.id).length})</span>
+              </button>
+            ))}
+            <button
+              onClick={() => setBrandFilter("_none_")}
+              className={cn(
+                "px-2.5 py-0.5 rounded-full text-[10px] font-bold border transition-all italic",
+                brandFilter === "_none_"
+                  ? "bg-muted text-foreground border-muted-foreground"
+                  : "bg-secondary/30 text-muted-foreground border-border hover:border-primary/40"
+              )}
+            >Tanpa brand ({briefs.filter((b) => !b.brand_id).length})</button>
+            <button
+              type="button"
+              onClick={() => setShowManageBrands((v) => !v)}
+              className="ml-auto inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border border-dashed border-border text-muted-foreground hover:border-primary hover:text-primary transition-all"
+            >
+              <Plus className="w-3 h-3" /> Kelola brand
+            </button>
+          </div>
+
+          {showManageBrands && (
+            <div className="p-3 rounded-2xl border border-border bg-secondary/20 space-y-2">
+              <form onSubmit={addBrand} className="flex gap-2">
+                <input
+                  value={newBrandName}
+                  onChange={(e) => setNewBrandName(e.target.value)}
+                  placeholder="Nama brand baru (mis. 'Gokuah', 'Klien X')…"
+                  className="flex-1 px-3 py-1.5 rounded-lg border border-border bg-card text-xs outline-none focus:border-primary"
+                />
+                <button
+                  type="submit"
+                  disabled={!newBrandName.trim()}
+                  className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold disabled:opacity-50"
+                >Tambah</button>
+              </form>
+              {brands.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {brands.map((br) => (
+                    <span key={br.id} className="group inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-card border border-border text-[11px]">
+                      <span className="font-bold">{br.name}</span>
+                      <button
+                        onClick={() => removeBrand(br.id, br.name)}
+                        title="Hapus brand"
+                        className="opacity-50 group-hover:opacity-100 hover:text-destructive"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {loading ? (
@@ -177,9 +301,18 @@ export default function DesignBriefsListPage() {
                         {meta.label}
                       </span>
                     </div>
-                    {b.brand && (
+                    {b.brand_label ? (
+                      <span
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold"
+                        style={b.brand_label.color
+                          ? { backgroundColor: `${b.brand_label.color}1a`, color: b.brand_label.color }
+                          : undefined}
+                      >
+                        <Tag className="w-3 h-3" /> {b.brand_label.name}
+                      </span>
+                    ) : b.brand ? (
                       <p className="text-[11px] text-primary font-semibold">{b.brand}</p>
-                    )}
+                    ) : null}
                     <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground pt-1">
                       {b.publish_date && (
                         <span className="inline-flex items-center gap-1">
