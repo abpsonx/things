@@ -655,6 +655,10 @@ class DesignBriefUpdate(BaseModel):
 
 
 class DesignBriefAnnotationCreate(BaseModel):
+    # image_id: gambar mana di brief carousel ini yang di-annotate. Opsional
+    # untuk backward compat (annotation lama pre-multi-image). Bila NULL,
+    # backend akan ambil gambar pertama brief.
+    image_id: Optional[UUID] = None
     x_pct: float = Field(..., ge=0, le=100)
     y_pct: float = Field(..., ge=0, le=100)
     # Opsional: kalau ada, annotation berupa rectangle (drag-to-box).
@@ -672,6 +676,7 @@ class DesignBriefAnnotationUpdate(BaseModel):
 class DesignBriefAnnotationResponse(BaseModel):
     id: UUID
     brief_id: UUID
+    image_id: Optional[UUID] = None
     creator_id: Optional[UUID] = None
     creator: Optional[UserResponse] = None
     x_pct: float
@@ -687,6 +692,24 @@ class DesignBriefAnnotationResponse(BaseModel):
         from_attributes = True
 
 
+class DesignBriefImageResponse(BaseModel):
+    id: UUID
+    brief_id: UUID
+    image_url: str
+    position: int
+    created_at: datetime
+    annotations: List[DesignBriefAnnotationResponse] = []
+
+    class Config:
+        from_attributes = True
+
+
+class DesignBriefImageReorder(BaseModel):
+    # Daftar image_id urut sesuai posisi yang diinginkan. Backend tinggal
+    # set position = index dalam list ini.
+    image_ids: List[UUID]
+
+
 class DesignBriefResponse(DesignBriefBase):
     id: UUID
     org_id: UUID
@@ -695,6 +718,10 @@ class DesignBriefResponse(DesignBriefBase):
     creator: Optional[UserResponse] = None
     created_at: datetime
     updated_at: datetime
+    images: List[DesignBriefImageResponse] = []
+    # annotations dipertahankan demi backward compat — sekarang berisi
+    # union dari semua annotation di semua image brief ini. Frontend baru
+    # cukup pakai `images[i].annotations`.
     annotations: List[DesignBriefAnnotationResponse] = []
 
     class Config:

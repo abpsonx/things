@@ -81,6 +81,38 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
 
+        # design brief multi-image (carousel).
+        # 1. design_brief_images table dibuat otomatis oleh create_all di atas.
+        # 2. image_id (FK ke images) ditambahkan ke annotations table.
+        # 3. Backfill: untuk tiap brief lama yang punya final_image_url,
+        #    insert 1 row di images & set image_id pada annotation yang masih
+        #    NULL — sehingga annotation lama tetap terhubung ke gambar pertama.
+        try:
+            await conn.execute(text(
+                "ALTER TABLE design_brief_annotations ADD COLUMN IF NOT EXISTS image_id UUID "
+                "REFERENCES design_brief_images(id) ON DELETE CASCADE"
+            ))
+        except Exception:
+            pass
+        try:
+            # Hanya backfill brief yang belum punya image rows sama sekali.
+            await conn.execute(text(
+                "INSERT INTO design_brief_images (id, brief_id, image_url, position, created_at) "
+                "SELECT gen_random_uuid(), b.id, b.final_image_url, 0, b.created_at "
+                "FROM design_briefs b "
+                "WHERE b.final_image_url IS NOT NULL "
+                "AND NOT EXISTS (SELECT 1 FROM design_brief_images i WHERE i.brief_id = b.id)"
+            ))
+            # Hubungkan annotation lama ke gambar pertama brief-nya.
+            await conn.execute(text(
+                "UPDATE design_brief_annotations a "
+                "SET image_id = (SELECT i.id FROM design_brief_images i "
+                "                WHERE i.brief_id = a.brief_id ORDER BY i.position LIMIT 1) "
+                "WHERE a.image_id IS NULL"
+            ))
+        except Exception as e:
+            print(f"[migration] design brief multi-image backfill skipped: {e}")
+
         # tasks — result_url + custom_properties JSONB
         try:
             await conn.execute(text(

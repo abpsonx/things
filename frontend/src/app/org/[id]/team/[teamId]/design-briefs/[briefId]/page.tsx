@@ -18,6 +18,7 @@ import { id as idLocale } from "date-fns/locale";
 interface Annotation {
   id: string;
   brief_id: string;
+  image_id: string | null;
   creator_id: string | null;
   creator: { id: string; name: string; avatar_url?: string } | null;
   x_pct: number;
@@ -27,6 +28,15 @@ interface Annotation {
   content: string;
   resolved: boolean;
   created_at: string;
+}
+
+interface BriefImage {
+  id: string;
+  brief_id: string;
+  image_url: string;
+  position: number;
+  created_at: string;
+  annotations: Annotation[];
 }
 
 interface CustomProp { name: string; value: string }
@@ -44,7 +54,8 @@ interface Brief {
   final_image_url: string | null;
   custom_properties: CustomProp[];
   status: string;
-  annotations: Annotation[];
+  images: BriefImage[];
+  annotations: Annotation[]; // union semua image annotations (legacy)
   creator: { id: string; name: string; avatar_url?: string } | null;
 }
 
@@ -77,6 +88,7 @@ export default function DesignBriefDetailPage() {
   const [pendingPin, setPendingPin] = useState<{ x: number; y: number; w?: number; h?: number } | null>(null);
   const [pendingNote, setPendingNote] = useState("");
   const [activeAnnotation, setActiveAnnotation] = useState<string | null>(null);
+  const [activeImageId, setActiveImageId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Custom properties draft (Notion-style add row)
   const [propDraftName, setPropDraftName] = useState("");
@@ -85,22 +97,36 @@ export default function DesignBriefDetailPage() {
   const fetchBrief = useCallback(async () => {
     try {
       const res = await api.get(`${base}/${briefId}`);
-      setBrief(res.data);
-      setForm({
-        title: res.data.title || "",
-        brand: res.data.brand || "",
-        visual_text: res.data.visual_text || "",
-        caption: res.data.caption || "",
-        publish_date: res.data.publish_date || "",
-        hashtag: res.data.hashtag || "",
-        reference_url: res.data.reference_url || "",
-        status: res.data.status || "draft",
-      });
-      // Pastikan custom_properties bentuknya selalu array (backend bisa
-      // return null kalau row dibuat sebelum migrasi).
-      if (!Array.isArray(res.data.custom_properties)) {
-        res.data.custom_properties = [];
+      const data = res.data;
+      if (!Array.isArray(data.custom_properties)) data.custom_properties = [];
+      if (!Array.isArray(data.images)) data.images = [];
+      // Defensive: kalau backend lama (sebelum migration jalan) cuma kasih
+      // final_image_url, sintesis 1 image biar UI tetap render.
+      if (data.images.length === 0 && data.final_image_url) {
+        data.images = [{
+          id: `__legacy__${data.id}`,
+          brief_id: data.id,
+          image_url: data.final_image_url,
+          position: 0,
+          created_at: data.created_at,
+          annotations: data.annotations || [],
+        }];
       }
+      setBrief(data);
+      setForm({
+        title: data.title || "",
+        brand: data.brand || "",
+        visual_text: data.visual_text || "",
+        caption: data.caption || "",
+        publish_date: data.publish_date || "",
+        hashtag: data.hashtag || "",
+        reference_url: data.reference_url || "",
+        status: data.status || "draft",
+      });
+      setActiveImageId((cur) => {
+        if (cur && data.images.some((i: BriefImage) => i.id === cur)) return cur;
+        return data.images[0]?.id || null;
+      });
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || "Gagal memuat brief");
     } finally {
@@ -133,15 +159,54 @@ export default function DesignBriefDetailPage() {
     try {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await api.post(`${base}/${briefId}/image`, fd, {
+      // POST /images — append ke carousel (tidak replace yang sudah ada).
+      const res = await api.post(`${base}/${briefId}/images`, fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      setBrief(res.data);
-      toast.success("Image ter-upload");
+      const newImg: BriefImage = { ...res.data, annotations: res.data.annotations || [] };
+      setBrief((prev) => prev ? {
+        ...prev,
+        images: [...prev.images, newImg],
+        final_image_url: prev.final_image_url || newImg.image_url,
+      } : prev);
+      setActiveImageId(newImg.id);
+      toast.success("Gambar ter-upload");
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || "Gagal upload image");
+      toast.error(err?.response?.data?.detail || "Gagal upload gambar");
     } finally {
       setUploading(false);
+    }
+  };
+
+  const deleteImage = async (imageId: string) => {
+    if (!brief) return;
+    const img = brief.images.find((i) => i.id === imageId);
+    if (!img) return;
+    const openCount = img.annotations.filter((a) => !a.resolved).length;
+    const warn = openCount > 0
+      ? `Gambar ini punya ${openCount} revisi aktif. Hapus tetap?`
+      : "Hapus gambar ini dari brief?";
+    if (!confirm(warn)) return;
+    try {
+      await api.delete(`${base}/${briefId}/images/${imageId}`);
+      setBrief((prev) => {
+        if (!prev) return prev;
+        const nextImages = prev.images.filter((i) => i.id !== imageId);
+        return {
+          ...prev,
+          images: nextImages,
+          final_image_url: nextImages[0]?.image_url || null,
+        };
+      });
+      // Pindahkan active ke sibling kalau yang dihapus adalah yang aktif.
+      setActiveImageId((cur) => {
+        if (cur !== imageId) return cur;
+        const idx = brief.images.findIndex((i) => i.id === imageId);
+        const nextImages = brief.images.filter((i) => i.id !== imageId);
+        return nextImages[Math.min(idx, nextImages.length - 1)]?.id || null;
+      });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || "Gagal menghapus gambar");
     }
   };
 
@@ -153,7 +218,7 @@ export default function DesignBriefDetailPage() {
     return { x: Math.max(0, Math.min(100, x)), y: Math.max(0, Math.min(100, y)) };
   };
   const onImageMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!brief?.final_image_url || activeAnnotation || pendingPin) return;
+    if (!activeImageId || activeAnnotation || pendingPin) return;
     if (e.button !== 0) return;
     const { x, y } = pctFromEvent(e);
     dragStart.current = { x, y };
@@ -200,9 +265,10 @@ export default function DesignBriefDetailPage() {
 
   const submitAnnotation = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!pendingPin || !pendingNote.trim()) return;
+    if (!pendingPin || !pendingNote.trim() || !activeImageId) return;
     try {
       const payload: any = {
+        image_id: activeImageId,
         x_pct: pendingPin.x,
         y_pct: pendingPin.y,
         content: pendingNote.trim(),
@@ -212,7 +278,15 @@ export default function DesignBriefDetailPage() {
         payload.h_pct = pendingPin.h;
       }
       const res = await api.post(`${base}/${briefId}/annotations`, payload);
-      setBrief((prev) => prev ? { ...prev, annotations: [...prev.annotations, res.data] } : prev);
+      const created: Annotation = res.data;
+      setBrief((prev) => prev ? {
+        ...prev,
+        annotations: [...prev.annotations, created],
+        images: prev.images.map((i) => i.id === activeImageId
+          ? { ...i, annotations: [...i.annotations, created] }
+          : i,
+        ),
+      } : prev);
       setPendingPin(null);
       setPendingNote("");
     } catch (err: any) {
@@ -250,9 +324,14 @@ export default function DesignBriefDetailPage() {
   const toggleResolved = async (a: Annotation) => {
     try {
       const res = await api.patch(`${base}/${briefId}/annotations/${a.id}`, { resolved: !a.resolved });
+      const updated: Annotation = res.data;
       setBrief((prev) => prev ? {
         ...prev,
-        annotations: prev.annotations.map((x) => x.id === a.id ? res.data : x),
+        annotations: prev.annotations.map((x) => x.id === a.id ? updated : x),
+        images: prev.images.map((i) => ({
+          ...i,
+          annotations: i.annotations.map((x) => x.id === a.id ? updated : x),
+        })),
       } : prev);
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || "Gagal mengubah status");
@@ -266,6 +345,10 @@ export default function DesignBriefDetailPage() {
       setBrief((prev) => prev ? {
         ...prev,
         annotations: prev.annotations.filter((a) => a.id !== id),
+        images: prev.images.map((i) => ({
+          ...i,
+          annotations: i.annotations.filter((a) => a.id !== id),
+        })),
       } : prev);
       if (activeAnnotation === id) setActiveAnnotation(null);
     } catch (err: any) {
@@ -292,9 +375,13 @@ export default function DesignBriefDetailPage() {
   );
   if (!brief) return null;
 
-  const openAnnotations = brief.annotations.filter((a) => !a.resolved);
-  const resolvedAnnotations = brief.annotations.filter((a) => a.resolved);
+  // Annotations sekarang per-image (carousel). Aktif → filter ke gambar aktif.
+  const activeImage = brief.images.find((i) => i.id === activeImageId) || brief.images[0] || null;
+  const imageAnnotations = activeImage?.annotations || [];
+  const openAnnotations = imageAnnotations.filter((a) => !a.resolved);
+  const resolvedAnnotations = imageAnnotations.filter((a) => a.resolved);
   const active = brief.annotations.find((a) => a.id === activeAnnotation) || null;
+  const isCreator = !!(brief.creator?.id && currentUser?.id && String(brief.creator.id) === String(currentUser.id));
 
   return (
     <div className="flex-1 flex flex-col min-h-screen bg-background">
@@ -336,8 +423,9 @@ export default function DesignBriefDetailPage() {
           />
         </div>
 
-        {/* 2-column: form (left) + image (right) */}
-        <div className="grid lg:grid-cols-[400px_1fr] gap-6">
+        {/* 2-column: form (left) + image carousel (right). Form sengaja
+            dilebarin ke 560px supaya caption/visual text gak cramped. */}
+        <div className="grid lg:grid-cols-[560px_1fr] gap-6">
           {/* Form panel */}
           <div className="space-y-3 p-4 rounded-2xl border border-border bg-secondary/20 h-fit lg:sticky lg:top-4">
             <Field
@@ -448,15 +536,69 @@ export default function DesignBriefDetailPage() {
             </div>
           </div>
 
-          {/* Image + annotation panel */}
+          {/* Image carousel + annotation panel */}
           <div className="space-y-3">
-            {brief.final_image_url ? (
+            {brief.images.length > 0 && activeImage ? (
               <>
+                {/* Thumbnail strip — horizontal scroll. Active highlighted. */}
+                <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin">
+                  {brief.images.map((img, idx) => {
+                    const openCount = img.annotations.filter((a) => !a.resolved).length;
+                    const isActive = img.id === activeImageId;
+                    return (
+                      <button
+                        key={img.id}
+                        type="button"
+                        onClick={() => { setActiveImageId(img.id); setActiveAnnotation(null); setPendingPin(null); }}
+                        className={cn(
+                          "group relative shrink-0 w-20 h-20 rounded-xl border-2 overflow-hidden transition-all",
+                          isActive
+                            ? "border-primary ring-2 ring-primary/30"
+                            : "border-border hover:border-primary/40 opacity-80 hover:opacity-100",
+                        )}
+                        title={`Gambar ${idx + 1}`}
+                      >
+                        <img src={img.image_url} alt="" className="w-full h-full object-cover" />
+                        <span className={cn(
+                          "absolute top-0.5 left-0.5 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-extrabold text-white ring-1 ring-white",
+                          isActive ? "bg-primary" : "bg-foreground/60",
+                        )}>{idx + 1}</span>
+                        {openCount > 0 && (
+                          <span className="absolute top-0.5 right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[9px] font-extrabold flex items-center justify-center ring-1 ring-white">
+                            {openCount}
+                          </span>
+                        )}
+                        {isCreator && (
+                          <span
+                            role="button"
+                            onClick={(e) => { e.stopPropagation(); deleteImage(img.id); }}
+                            title="Hapus gambar"
+                            className="absolute bottom-0.5 right-0.5 w-5 h-5 rounded bg-card/90 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                  <label className="shrink-0 w-20 h-20 rounded-xl border-2 border-dashed border-border hover:border-primary hover:bg-secondary/30 cursor-pointer flex flex-col items-center justify-center text-muted-foreground hover:text-primary transition-all">
+                    {uploading
+                      ? <Loader2 className="w-5 h-5 animate-spin" />
+                      : <><Plus className="w-5 h-5" /><span className="text-[9px] font-bold mt-1">Tambah</span></>
+                    }
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) { uploadImage(f); e.currentTarget.value = ""; } }}
+                    />
+                  </label>
+                </div>
+
+                {/* Main canvas (active image) */}
                 <div className="rounded-2xl border border-border bg-card overflow-hidden">
-                  {/* Image container: tinggi maks supaya artwork vertikal/
-                      ukuran besar tidak meluap. object-contain menjaga aspect
-                      ratio, bg-black-grid biar area kosong (letterbox) jelas. */}
                   <div
+                    key={activeImage.id}
                     className="relative cursor-crosshair select-none bg-secondary/40 flex items-center justify-center"
                     style={{ maxHeight: "min(70vh, 720px)" }}
                     onMouseDown={onImageMouseDown}
@@ -466,14 +608,13 @@ export default function DesignBriefDetailPage() {
                   >
                     <img
                       ref={imgRef}
-                      src={brief.final_image_url}
-                      alt={brief.title}
+                      src={activeImage.image_url}
+                      alt={`${brief.title} #${(brief.images.findIndex((i) => i.id === activeImage.id) + 1)}`}
                       className="block max-w-full object-contain"
                       style={{ maxHeight: "min(70vh, 720px)" }}
                       draggable={false}
                     />
-                    {/* Existing annotations: pin atau box */}
-                    {brief.annotations.map((a, idx) => {
+                    {imageAnnotations.map((a, idx) => {
                       const isBox = a.w_pct != null && a.h_pct != null && (Number(a.w_pct) > 0 || Number(a.h_pct) > 0);
                       if (isBox) {
                         return (
@@ -540,18 +681,11 @@ export default function DesignBriefDetailPage() {
                     )}
                   </div>
                   <div className="flex items-center justify-between gap-3 p-3 border-t border-border text-[11px] text-muted-foreground">
-                    <span><strong>Klik</strong> = pin titik · <strong>Drag</strong> = kotak revisi area.</span>
-                    <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary hover:bg-secondary/80 cursor-pointer text-xs font-bold transition-colors">
-                      {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                      Ganti Image
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadImage(f); }}
-                      />
-                    </label>
+                    <span>
+                      Gambar <strong>{(brief.images.findIndex((i) => i.id === activeImage.id) + 1)}/{brief.images.length}</strong>
+                      <span className="mx-2 opacity-50">·</span>
+                      <strong>Klik</strong> = pin titik · <strong>Drag</strong> = kotak revisi area.
+                    </span>
                   </div>
                 </div>
 
@@ -591,20 +725,20 @@ export default function DesignBriefDetailPage() {
                   </form>
                 )}
 
-                {/* Annotation list */}
+                {/* Annotation list (untuk gambar aktif saja) */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                      Revisi ({openAnnotations.length} aktif, {resolvedAnnotations.length} selesai)
+                      Revisi gambar #{(brief.images.findIndex((i) => i.id === activeImage.id) + 1)} ({openAnnotations.length} aktif, {resolvedAnnotations.length} selesai)
                     </h3>
                   </div>
-                  {brief.annotations.length === 0 ? (
+                  {imageAnnotations.length === 0 ? (
                     <p className="text-[11px] italic text-muted-foreground p-3 border border-dashed border-border rounded-xl">
-                      Belum ada revisi. Klik di gambar untuk mulai memberi catatan.
+                      Belum ada revisi untuk gambar ini. Klik di gambar untuk mulai memberi catatan.
                     </p>
                   ) : (
                     <div className="space-y-1.5">
-                      {brief.annotations.map((a, idx) => {
+                      {imageAnnotations.map((a, idx) => {
                         const isMine = currentUser?.id && a.creator?.id === currentUser.id;
                         return (
                           <div
@@ -669,15 +803,15 @@ export default function DesignBriefDetailPage() {
                     <Upload className="w-10 h-10 text-muted-foreground mx-auto" />
                   )}
                   <div>
-                    <p className="font-bold text-sm">Upload final image</p>
-                    <p className="text-xs text-muted-foreground mt-1">Setelah image masuk, tim bisa klik di mana saja untuk kasih pin revisi.</p>
+                    <p className="font-bold text-sm">Upload gambar pertama</p>
+                    <p className="text-xs text-muted-foreground mt-1">Bisa upload banyak gambar (carousel). Tiap gambar punya revisi sendiri.</p>
                   </div>
                 </div>
                 <input
                   type="file"
                   accept="image/*"
                   className="hidden"
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadImage(f); }}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) { uploadImage(f); e.currentTarget.value = ""; } }}
                 />
               </label>
             )}
@@ -693,7 +827,7 @@ export default function DesignBriefDetailPage() {
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <MessageCircle className="w-4 h-4 text-primary" />
-              <span className="text-xs font-bold">Revisi #{brief.annotations.findIndex((x) => x.id === active.id) + 1}</span>
+              <span className="text-xs font-bold">Revisi #{imageAnnotations.findIndex((x) => x.id === active.id) + 1}</span>
             </div>
             <button onClick={() => setActiveAnnotation(null)} className="p-1 rounded text-muted-foreground hover:bg-secondary">
               <X className="w-3.5 h-3.5" />

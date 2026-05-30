@@ -15,7 +15,7 @@ from app.dependencies import get_current_user
 from app.models.user import User
 from app.models.team import Team, TeamMember
 from app.models.organization import OrgMember
-from app.models.design_brief import DesignBrief, DesignBriefAnnotation
+from app.models.design_brief import DesignBrief, DesignBriefAnnotation, DesignBriefImage
 from app.schemas import (
     DesignBriefCreate,
     DesignBriefUpdate,
@@ -24,6 +24,8 @@ from app.schemas import (
     DesignBriefAnnotationCreate,
     DesignBriefAnnotationUpdate,
     DesignBriefAnnotationResponse,
+    DesignBriefImageResponse,
+    DesignBriefImageReorder,
 )
 from app.services import log_activity
 
@@ -61,6 +63,9 @@ async def _get_brief(db: AsyncSession, team_id: str, brief_id: str) -> DesignBri
         .options(
             selectinload(DesignBrief.creator),
             selectinload(DesignBrief.annotations).selectinload(DesignBriefAnnotation.creator),
+            selectinload(DesignBrief.images)
+            .selectinload(DesignBriefImage.annotations)
+            .selectinload(DesignBriefAnnotation.creator),
         )
         .where(DesignBrief.id == brief_id, DesignBrief.team_id == team_id)
     )
@@ -194,19 +199,9 @@ async def delete_design_brief(
     return None
 
 
-# ---------- Image upload ----------
+# ---------- Image upload (multi — carousel) ----------
 
-@router.post("/{brief_id}/image", response_model=DesignBriefResponse)
-async def upload_design_image(
-    org_id: str, team_id: str, brief_id: str,
-    file: UploadFile = File(...),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Upload final design image. Replaces any existing image (URL ditimpa)."""
-    await _require_team_access(db, org_id, team_id, current_user)
-    brief = await _get_brief(db, team_id, brief_id)
-
+def _save_image_file(file: UploadFile, team_id: str) -> str:
     ext = os.path.splitext(file.filename or "")[1].lower() or ".png"
     upload_dir = f"uploads/design-briefs/{team_id}"
     os.makedirs(upload_dir, exist_ok=True)
@@ -214,9 +209,123 @@ async def upload_design_image(
     fpath = f"{upload_dir}/{fname}"
     with open(fpath, "wb") as out:
         shutil.copyfileobj(file.file, out)
+    return f"/api/{fpath}"
 
-    brief.final_image_url = f"/api/{fpath}"
+
+@router.post("/{brief_id}/images", response_model=DesignBriefImageResponse, status_code=status.HTTP_201_CREATED)
+async def add_design_image(
+    org_id: str, team_id: str, brief_id: str,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Tambah gambar baru ke carousel brief. Position = next index (urut akhir)."""
+    await _require_team_access(db, org_id, team_id, current_user)
+    brief = await _get_brief(db, team_id, brief_id)
+
+    url = _save_image_file(file, team_id)
+
+    next_pos_q = await db.execute(
+        select(safunc.coalesce(safunc.max(DesignBriefImage.position), -1) + 1)
+        .where(DesignBriefImage.brief_id == brief_id)
+    )
+    next_pos = int(next_pos_q.scalar_one())
+
+    img = DesignBriefImage(brief_id=brief_id, image_url=url, position=next_pos)
+    db.add(img)
+    # Sekalian jaga final_image_url biar list/thumbnail brief lama tetap punya preview.
+    if not brief.final_image_url:
+        brief.final_image_url = url
     await db.commit()
+
+    res = await db.execute(
+        select(DesignBriefImage)
+        .options(selectinload(DesignBriefImage.annotations).selectinload(DesignBriefAnnotation.creator))
+        .where(DesignBriefImage.id == img.id)
+    )
+    return res.scalar_one()
+
+
+@router.delete("/{brief_id}/images/{image_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_design_image(
+    org_id: str, team_id: str, brief_id: str, image_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Hapus 1 gambar dari carousel (cascade ke annotation-nya)."""
+    await _require_team_access(db, org_id, team_id, current_user)
+    brief = await _get_brief(db, team_id, brief_id)
+    res = await db.execute(
+        select(DesignBriefImage).where(
+            DesignBriefImage.id == image_id,
+            DesignBriefImage.brief_id == brief_id,
+        )
+    )
+    img = res.scalar_one_or_none()
+    if not img:
+        raise HTTPException(status_code=404, detail="Gambar tidak ditemukan")
+    if str(brief.creator_id) != str(current_user.id) and not is_superuser(current_user):
+        raise HTTPException(status_code=403, detail="Hanya pembuat brief yang boleh menghapus gambar")
+    await db.delete(img)
+    # Re-sync final_image_url ke gambar pertama tersisa.
+    rest_q = await db.execute(
+        select(DesignBriefImage).where(DesignBriefImage.brief_id == brief_id, DesignBriefImage.id != image_id)
+        .order_by(DesignBriefImage.position)
+    )
+    rest = rest_q.scalars().first()
+    brief.final_image_url = rest.image_url if rest else None
+    await db.commit()
+    return None
+
+
+@router.patch("/{brief_id}/images/reorder", response_model=List[DesignBriefImageResponse])
+async def reorder_design_images(
+    org_id: str, team_id: str, brief_id: str,
+    data: DesignBriefImageReorder,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Set urutan gambar dalam carousel. data.image_ids harus berisi
+    semua image milik brief — tidak boleh ada yang missing."""
+    await _require_team_access(db, org_id, team_id, current_user)
+    brief = await _get_brief(db, team_id, brief_id)
+    if str(brief.creator_id) != str(current_user.id) and not is_superuser(current_user):
+        raise HTTPException(status_code=403, detail="Hanya pembuat brief yang boleh mengubah urutan")
+
+    res = await db.execute(
+        select(DesignBriefImage).where(DesignBriefImage.brief_id == brief_id)
+    )
+    images = {str(i.id): i for i in res.scalars().all()}
+    incoming = [str(i) for i in data.image_ids]
+    if set(incoming) != set(images.keys()):
+        raise HTTPException(status_code=400, detail="image_ids harus berisi seluruh gambar brief ini")
+
+    for idx, iid in enumerate(incoming):
+        images[iid].position = idx
+    # Sync final_image_url ke gambar paling depan setelah reorder.
+    brief.final_image_url = images[incoming[0]].image_url if incoming else None
+    await db.commit()
+
+    out_q = await db.execute(
+        select(DesignBriefImage)
+        .options(selectinload(DesignBriefImage.annotations).selectinload(DesignBriefAnnotation.creator))
+        .where(DesignBriefImage.brief_id == brief_id)
+        .order_by(DesignBriefImage.position)
+    )
+    return list(out_q.scalars().all())
+
+
+# Legacy endpoint dipertahankan agar deploy lama tidak rusak. Sekarang
+# ia delegate ke add_design_image — sehingga upload jadi "append carousel"
+# (tidak lagi replace single image).
+@router.post("/{brief_id}/image", response_model=DesignBriefResponse)
+async def upload_design_image_legacy(
+    org_id: str, team_id: str, brief_id: str,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await add_design_image(org_id, team_id, brief_id, file, db, current_user)
     return await _get_brief(db, team_id, brief_id)
 
 
@@ -230,9 +339,24 @@ async def add_annotation(
     current_user: User = Depends(get_current_user),
 ):
     await _require_team_access(db, org_id, team_id, current_user)
-    await _get_brief(db, team_id, brief_id)
+    brief = await _get_brief(db, team_id, brief_id)
+
+    # Validasi image_id: kalau dikirim, harus milik brief ini. Kalau tidak,
+    # fallback ke gambar pertama (untuk client lama yang belum kirim image_id).
+    image_id = data.image_id
+    if image_id:
+        ok = next((i for i in brief.images if str(i.id) == str(image_id)), None)
+        if not ok:
+            raise HTTPException(status_code=400, detail="image_id tidak ditemukan dalam brief ini")
+    else:
+        first = sorted(brief.images, key=lambda i: i.position)[:1]
+        if not first:
+            raise HTTPException(status_code=400, detail="Brief belum punya gambar — upload dulu")
+        image_id = first[0].id
+
     ann = DesignBriefAnnotation(
         brief_id=brief_id,
+        image_id=image_id,
         creator_id=current_user.id,
         x_pct=data.x_pct,
         y_pct=data.y_pct,

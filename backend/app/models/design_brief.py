@@ -6,7 +6,7 @@ status), 1 final_image_url saat designer upload artwork jadi, plus annotation
 ber-pin di atas gambar untuk review/revisi (mirip Figma comments)."""
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Text, DateTime, Date, ForeignKey, Boolean, Numeric
+from sqlalchemy import Column, String, Text, DateTime, Date, ForeignKey, Boolean, Numeric, Integer
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -46,6 +46,32 @@ class DesignBrief(Base):
         cascade="all, delete-orphan",
         order_by="DesignBriefAnnotation.created_at",
     )
+    images = relationship(
+        "DesignBriefImage",
+        back_populates="brief",
+        cascade="all, delete-orphan",
+        order_by="DesignBriefImage.position",
+    )
+
+
+class DesignBriefImage(Base):
+    """Satu artwork dari sebuah brief. Brief bisa punya banyak gambar
+    (mis. carousel IG). Tiap gambar punya kumpulan annotation sendiri."""
+    __tablename__ = "design_brief_images"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    brief_id = Column(UUID(as_uuid=True), ForeignKey("design_briefs.id", ondelete="CASCADE"), nullable=False)
+    image_url = Column(Text, nullable=False)
+    position = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    brief = relationship("DesignBrief", back_populates="images")
+    annotations = relationship(
+        "DesignBriefAnnotation",
+        back_populates="image",
+        cascade="all, delete-orphan",
+        order_by="DesignBriefAnnotation.created_at",
+    )
 
 
 class DesignBriefAnnotation(Base):
@@ -55,6 +81,10 @@ class DesignBriefAnnotation(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     brief_id = Column(UUID(as_uuid=True), ForeignKey("design_briefs.id", ondelete="CASCADE"), nullable=False)
+    # FK ke gambar tertentu dalam brief. Nullable supaya migration lama
+    # (annotation pre-carousel) tetap bisa di-load — backend backfill nanti
+    # akan menset image_id ke gambar pertama brief tersebut.
+    image_id = Column(UUID(as_uuid=True), ForeignKey("design_brief_images.id", ondelete="CASCADE"), nullable=True)
     creator_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     # Posisi pin dalam persentase (0-100). Numeric biar tidak hilang presisi
@@ -71,4 +101,5 @@ class DesignBriefAnnotation(Base):
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     brief = relationship("DesignBrief", back_populates="annotations")
+    image = relationship("DesignBriefImage", back_populates="annotations")
     creator = relationship("User")
