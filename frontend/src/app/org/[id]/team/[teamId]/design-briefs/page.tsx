@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { Image as ImageIcon, Plus, Loader2, Calendar, MessageCircle, ChevronRight, Trash2, AlertCircle, Tag, X } from "lucide-react";
+import { Image as ImageIcon, Plus, Loader2, Calendar, MessageCircle, ChevronRight, ChevronLeft, Trash2, AlertCircle, Tag, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import api from "@/lib/api";
@@ -45,6 +45,8 @@ export default function DesignBriefsListPage() {
   const [newTitle, setNewTitle] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [brandFilter, setBrandFilter] = useState<string>("all");  // "all" | brand_id | "_none_"
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 24;
   const [showManageBrands, setShowManageBrands] = useState(false);
   const [newBrandName, setNewBrandName] = useState("");
 
@@ -126,11 +128,19 @@ export default function DesignBriefsListPage() {
     if (brandFilter !== "all" && b.brand_id !== brandFilter) return false;
     return true;
   });
+  const totalPages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pageStart = (safePage - 1) * PAGE_SIZE;
+  const pageEnd = pageStart + PAGE_SIZE;
+  const paginated = visible.slice(pageStart, pageEnd);
+
+  // Reset ke page 1 kalau filter berubah (jumlah halaman bisa menyusut).
+  useEffect(() => { setPage(1); }, [statusFilter, brandFilter]);
 
   return (
     <div className="flex-1 flex flex-col min-h-screen bg-background">
       <TeamNav orgId={orgId as string} teamId={teamId as string} />
-      <div className="flex-1 p-8 max-w-6xl mx-auto w-full space-y-6">
+      <div className="flex-1 p-8 max-w-7xl mx-auto w-full space-y-6">
         <div className="space-y-2">
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
             <ImageIcon className="w-8 h-8 text-primary" />
@@ -270,81 +280,130 @@ export default function DesignBriefsListPage() {
             <h3 className="font-bold text-xl">{briefs.length === 0 ? "Belum ada brief design" : "Tidak ada brief di status ini"}</h3>
           </div>
         ) : (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {visible.map((b) => {
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2.5">
+            {paginated.map((b) => {
               const meta = STATUS_META[b.status] || STATUS_META.draft;
               return (
                 <Link
                   key={b.id}
                   href={`/org/${orgId}/team/${teamId}/design-briefs/${b.id}`}
-                  className="group block rounded-2xl border border-border bg-card hover:border-primary/30 hover:shadow-md transition-all overflow-hidden"
+                  className="group block rounded-xl border border-border bg-card hover:border-primary/40 hover:shadow-md transition-all overflow-hidden"
                 >
-                  {/* Thumbnail */}
+                  {/* Thumbnail — kompak, tetap aspect-square supaya grid rapi */}
                   <div className="aspect-square bg-secondary/30 border-b border-border flex items-center justify-center overflow-hidden relative">
                     {b.final_image_url ? (
                       <img src={b.final_image_url} alt={b.title} className="w-full h-full object-cover" />
                     ) : (
-                      <ImageIcon className="w-12 h-12 text-muted-foreground/40" />
+                      <ImageIcon className="w-8 h-8 text-muted-foreground/40" />
                     )}
                     {b.open_annotation_count > 0 && (
-                      <span className="absolute top-2 right-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-amber-500 text-white shadow">
-                        <AlertCircle className="w-3 h-3" /> {b.open_annotation_count} revisi
+                      <span className="absolute top-1 right-1 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-amber-500 text-white shadow">
+                        <AlertCircle className="w-2.5 h-2.5" /> {b.open_annotation_count}
                       </span>
                     )}
+                    <span className={cn("absolute top-1 left-1 px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-widest border", meta.cls)}>
+                      {meta.label}
+                    </span>
                   </div>
-                  <div className="p-4 space-y-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <h3 className="font-bold text-sm leading-snug flex-1 group-hover:text-primary transition-colors">
-                        {b.title}
-                      </h3>
-                      <span className={cn("shrink-0 px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase tracking-widest border", meta.cls)}>
-                        {meta.label}
-                      </span>
-                    </div>
+                  <div className="p-2 space-y-1">
+                    <h3 className="font-bold text-xs leading-tight line-clamp-2 group-hover:text-primary transition-colors">
+                      {b.title}
+                    </h3>
                     {b.brand_label ? (
                       <span
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold"
+                        className="inline-flex items-center gap-1 px-1.5 py-0 rounded text-[9px] font-bold"
                         style={b.brand_label.color
                           ? { backgroundColor: `${b.brand_label.color}1a`, color: b.brand_label.color }
                           : undefined}
                       >
-                        <Tag className="w-3 h-3" /> {b.brand_label.name}
+                        <Tag className="w-2.5 h-2.5" /> {b.brand_label.name}
                       </span>
                     ) : b.brand ? (
-                      <p className="text-[11px] text-primary font-semibold">{b.brand}</p>
+                      <p className="text-[10px] text-primary font-semibold truncate">{b.brand}</p>
                     ) : null}
-                    <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground pt-1">
-                      {b.publish_date && (
-                        <span className="inline-flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          {new Date(b.publish_date).toLocaleDateString("id-ID", { day: "numeric", month: "short" })}
-                        </span>
-                      )}
-                      {b.annotation_count > 0 && (
-                        <span className="inline-flex items-center gap-1">
-                          <MessageCircle className="w-3 h-3" /> {b.annotation_count}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center justify-between pt-2 border-t border-border/70">
-                      <span className="text-[10px] text-muted-foreground">
-                        {b.creator?.name || "Anonim"}
+                    <div className="flex items-center justify-between text-[9px] text-muted-foreground pt-0.5">
+                      <span className="inline-flex items-center gap-2 truncate">
+                        {b.publish_date && (
+                          <span className="inline-flex items-center gap-0.5">
+                            <Calendar className="w-2.5 h-2.5" />
+                            {new Date(b.publish_date).toLocaleDateString("id-ID", { day: "numeric", month: "short" })}
+                          </span>
+                        )}
+                        {b.annotation_count > 0 && (
+                          <span className="inline-flex items-center gap-0.5">
+                            <MessageCircle className="w-2.5 h-2.5" /> {b.annotation_count}
+                          </span>
+                        )}
                       </span>
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={(e) => deleteBrief(b.id, b.title, e)}
                           title="Hapus"
-                          className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-opacity"
+                          className="p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash2 className="w-3 h-3" />
                         </button>
-                        <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                        <ChevronRight className="w-3 h-3 text-muted-foreground group-hover:text-primary transition-colors" />
                       </div>
                     </div>
                   </div>
                 </Link>
               );
             })}
+          </div>
+        )}
+
+        {/* Pagination — tampil hanya kalau ada >1 halaman.
+            Window 5 nomor (current ±2), shortcut "Pertama"/"Terakhir". */}
+        {!loading && visible.length > 0 && totalPages > 1 && (
+          <div className="flex items-center justify-between gap-3 pt-4 border-t border-border">
+            <span className="text-[11px] text-muted-foreground">
+              Menampilkan <strong>{pageStart + 1}–{Math.min(pageEnd, visible.length)}</strong> dari <strong>{visible.length}</strong>
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={safePage <= 1}
+                className="p-1.5 rounded-lg border border-border bg-card hover:bg-secondary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                title="Sebelumnya"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              {(() => {
+                // Hitung window 5 angka di sekitar current page.
+                const items: (number | "...")[] = [];
+                const window = 2;
+                const start = Math.max(2, safePage - window);
+                const end = Math.min(totalPages - 1, safePage + window);
+                items.push(1);
+                if (start > 2) items.push("...");
+                for (let i = start; i <= end; i++) items.push(i);
+                if (end < totalPages - 1) items.push("...");
+                if (totalPages > 1) items.push(totalPages);
+                return items.map((it, i) => it === "..." ? (
+                  <span key={`d-${i}`} className="px-1.5 text-muted-foreground text-xs">…</span>
+                ) : (
+                  <button
+                    key={it}
+                    onClick={() => setPage(it)}
+                    className={cn(
+                      "min-w-[28px] px-2 py-1 rounded-lg text-[11px] font-bold border transition-colors",
+                      it === safePage
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-card border-border text-muted-foreground hover:bg-secondary",
+                    )}
+                  >{it}</button>
+                ));
+              })()}
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={safePage >= totalPages}
+                className="p-1.5 rounded-lg border border-border bg-card hover:bg-secondary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                title="Berikutnya"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         )}
       </div>
