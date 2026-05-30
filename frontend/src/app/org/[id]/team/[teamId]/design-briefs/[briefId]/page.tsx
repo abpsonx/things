@@ -154,8 +154,7 @@ export default function DesignBriefDetailPage() {
     }
   };
 
-  const uploadImage = async (file: File) => {
-    setUploading(true);
+  const uploadImage = async (file: File): Promise<BriefImage | null> => {
     try {
       const fd = new FormData();
       fd.append("file", file);
@@ -169,13 +168,32 @@ export default function DesignBriefDetailPage() {
         images: [...prev.images, newImg],
         final_image_url: prev.final_image_url || newImg.image_url,
       } : prev);
-      setActiveImageId(newImg.id);
-      toast.success("Gambar ter-upload");
+      return newImg;
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || "Gagal upload gambar");
-    } finally {
-      setUploading(false);
+      toast.error(err?.response?.data?.detail || `Gagal upload "${file.name}"`);
+      return null;
     }
+  };
+
+  // Batch upload — sequential supaya posisi urut sesuai pilihan user.
+  // Progress di-track via setUploading + counter biar UI bisa tampilkan
+  // "Upload 2/5".
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
+  const uploadFiles = async (files: File[]) => {
+    if (!files.length) return;
+    setUploading(true);
+    setUploadProgress({ done: 0, total: files.length });
+    let firstUploaded: BriefImage | null = null;
+    for (let i = 0; i < files.length; i++) {
+      const img = await uploadImage(files[i]);
+      if (img && !firstUploaded) firstUploaded = img;
+      setUploadProgress({ done: i + 1, total: files.length });
+    }
+    if (firstUploaded) setActiveImageId(firstUploaded.id);
+    setUploading(false);
+    setUploadProgress(null);
+    if (files.length > 1) toast.success(`${files.length} gambar ter-upload`);
+    else if (firstUploaded) toast.success("Gambar ter-upload");
   };
 
   const deleteImage = async (imageId: string) => {
@@ -442,6 +460,7 @@ export default function DesignBriefDetailPage() {
               onChange={(v) => setForm({ ...form, visual_text: v })}
               onBlur={() => { if (form.visual_text !== (brief.visual_text || "")) saveHeader({ visual_text: form.visual_text }); }}
               textarea
+              rows={3}
             />
             <Field
               label="Caption Posting"
@@ -450,7 +469,7 @@ export default function DesignBriefDetailPage() {
               onChange={(v) => setForm({ ...form, caption: v })}
               onBlur={() => { if (form.caption !== (brief.caption || "")) saveHeader({ caption: form.caption }); }}
               textarea
-              rows={4}
+              rows={6}
             />
             <Field
               label="Tanggal Publish"
@@ -582,15 +601,26 @@ export default function DesignBriefDetailPage() {
                     );
                   })}
                   <label className="shrink-0 w-20 h-20 rounded-xl border-2 border-dashed border-border hover:border-primary hover:bg-secondary/30 cursor-pointer flex flex-col items-center justify-center text-muted-foreground hover:text-primary transition-all">
-                    {uploading
-                      ? <Loader2 className="w-5 h-5 animate-spin" />
-                      : <><Plus className="w-5 h-5" /><span className="text-[9px] font-bold mt-1">Tambah</span></>
-                    }
+                    {uploading ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        {uploadProgress && (
+                          <span className="text-[9px] font-bold mt-1">{uploadProgress.done}/{uploadProgress.total}</span>
+                        )}
+                      </>
+                    ) : (
+                      <><Plus className="w-5 h-5" /><span className="text-[9px] font-bold mt-1">Tambah</span></>
+                    )}
                     <input
                       type="file"
                       accept="image/*"
+                      multiple
                       className="hidden"
-                      onChange={(e) => { const f = e.target.files?.[0]; if (f) { uploadImage(f); e.currentTarget.value = ""; } }}
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files || []);
+                        if (files.length) uploadFiles(files);
+                        e.currentTarget.value = "";
+                      }}
                     />
                   </label>
                 </div>
@@ -798,20 +828,30 @@ export default function DesignBriefDetailPage() {
               <label className="block aspect-video rounded-2xl border-2 border-dashed border-border bg-secondary/20 hover:border-primary/40 hover:bg-secondary/30 transition-all cursor-pointer flex items-center justify-center">
                 <div className="text-center space-y-3 p-8">
                   {uploading ? (
-                    <Loader2 className="w-10 h-10 animate-spin text-primary mx-auto" />
+                    <>
+                      <Loader2 className="w-10 h-10 animate-spin text-primary mx-auto" />
+                      {uploadProgress && (
+                        <p className="text-xs font-bold text-primary">Upload {uploadProgress.done}/{uploadProgress.total}</p>
+                      )}
+                    </>
                   ) : (
                     <Upload className="w-10 h-10 text-muted-foreground mx-auto" />
                   )}
                   <div>
-                    <p className="font-bold text-sm">Upload gambar pertama</p>
-                    <p className="text-xs text-muted-foreground mt-1">Bisa upload banyak gambar (carousel). Tiap gambar punya revisi sendiri.</p>
+                    <p className="font-bold text-sm">Upload gambar (bisa banyak sekaligus)</p>
+                    <p className="text-xs text-muted-foreground mt-1">Pilih 1 atau lebih file — semuanya jadi 1 carousel. Tiap gambar punya revisi sendiri.</p>
                   </div>
                 </div>
                 <input
                   type="file"
                   accept="image/*"
+                  multiple
                   className="hidden"
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) { uploadImage(f); e.currentTarget.value = ""; } }}
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files || []);
+                    if (files.length) uploadFiles(files);
+                    e.currentTarget.value = "";
+                  }}
                 />
               </label>
             )}
@@ -853,7 +893,7 @@ export default function DesignBriefDetailPage() {
 }
 
 function Field({
-  label, value, onChange, onBlur, placeholder, type = "text", textarea = false, rows = 2,
+  label, value, onChange, onBlur, placeholder, type = "text", textarea = false, rows = 3,
 }: {
   label: string;
   value: string;
@@ -864,17 +904,31 @@ function Field({
   textarea?: boolean;
   rows?: number;
 }) {
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  // Auto-grow textarea: tinggi disesuaikan dengan scrollHeight setiap value
+  // berubah (atau saat mount). User tetap bisa override via drag bawah
+  // textarea (resize-y).
+  useEffect(() => {
+    if (!textarea) return;
+    const el = taRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value, textarea]);
+
   return (
     <div className="space-y-1">
       <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{label}</label>
       {textarea ? (
         <textarea
+          ref={taRef}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onBlur={onBlur}
           placeholder={placeholder}
           rows={rows}
-          className="w-full px-3 py-2 bg-card border border-border rounded-xl text-xs outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all resize-y"
+          className="w-full px-3 py-2 bg-card border border-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all resize-y leading-relaxed overflow-hidden"
+          style={{ minHeight: `${rows * 28 + 20}px` }}
         />
       ) : (
         <input
@@ -883,7 +937,7 @@ function Field({
           onChange={(e) => onChange(e.target.value)}
           onBlur={onBlur}
           placeholder={placeholder}
-          className="w-full px-3 py-2 bg-card border border-border rounded-xl text-xs outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+          className="w-full px-3 py-2 bg-card border border-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
         />
       )}
     </div>
