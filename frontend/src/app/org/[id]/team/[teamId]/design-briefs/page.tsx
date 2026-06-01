@@ -140,7 +140,7 @@ export default function DesignBriefsListPage() {
   return (
     <div className="flex-1 flex flex-col min-h-screen bg-background">
       <TeamNav orgId={orgId as string} teamId={teamId as string} />
-      <div className="flex-1 p-8 max-w-7xl mx-auto w-full space-y-6">
+      <div className="flex-1 px-3 py-4 sm:px-6 sm:py-6 lg:p-8 max-w-7xl mx-auto w-full space-y-6">
         <div className="space-y-2">
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
             <ImageIcon className="w-8 h-8 text-primary" />

@@ -98,7 +98,7 @@ export default function TeamSettingsPage() {
   return (
     <div className="flex-1 flex flex-col min-h-screen bg-background">
       {/* Header */}
-      <div className="border-b border-border px-8 py-5 flex items-center justify-between bg-card/80 backdrop-blur-md sticky top-0 z-30">
+      <div className="border-b border-border px-3 py-3 sm:px-6 sm:py-4 lg:px-8 lg:py-5 flex items-center justify-between bg-card/80 backdrop-blur-md sticky top-0 z-30">
         <div className="flex items-center gap-4">
           <button
             onClick={() => router.back()}
@@ -120,7 +120,7 @@ export default function TeamSettingsPage() {
 
       <TeamNav orgId={orgId} teamId={teamId} />
 
-      <div className="flex-1 p-8 max-w-4xl mx-auto w-full space-y-8">
+      <div className="flex-1 px-3 py-4 sm:px-6 sm:py-6 lg:p-8 max-w-4xl mx-auto w-full space-y-8">
         {/* General Settings */}
         <div className="bg-card rounded-3xl border border-border shadow-sm overflow-hidden">
           <div className="p-8 border-b border-border bg-secondary/50">

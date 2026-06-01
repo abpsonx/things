@@ -158,7 +158,7 @@ export default function TeamFilesPage() {
   return (
     <div className="flex-1 flex flex-col min-h-screen bg-background dark:bg-background">
       {/* Header */}
-      <div className="border-b border-border px-8 py-5 flex items-center justify-between bg-card/80 dark:bg-card/60 backdrop-blur-md sticky top-0 z-30">
+      <div className="border-b border-border px-3 py-3 sm:px-6 sm:py-4 lg:px-8 lg:py-5 flex items-center justify-between bg-card/80 dark:bg-card/60 backdrop-blur-md sticky top-0 z-30">
         <div className="flex items-center gap-4">
           <button onClick={() => router.back()} className="p-2 rounded-xl hover:bg-secondary text-muted-foreground hover:text-foreground transition-all">
             <ArrowLeft className="w-4 h-4" />
@@ -189,7 +189,7 @@ export default function TeamFilesPage() {
 
       <TeamNav orgId={orgId} teamId={teamId} />
 
-      <div className="flex-1 p-8 max-w-5xl mx-auto w-full space-y-6">
+      <div className="flex-1 px-3 py-4 sm:px-6 sm:py-6 lg:p-8 max-w-5xl mx-auto w-full space-y-6">
         {/* Sub-tabs */}
         <div className="flex items-center gap-1 bg-secondary/40 p-1 rounded-2xl w-fit">
           {TABS.map((t) => (

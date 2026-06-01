@@ -173,9 +173,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        {/* Main Content */}
+        {/* Main Content — padding lebih kompak di mobile (12px) supaya
+            content gak ke-paksa nyempit; banyak page udah punya padding
+            sendiri di dalam, jadi padding wrapper ini cukup tipis. */}
         <main className="flex-1 overflow-y-auto">
-          <div className="p-4 md:p-8 w-full">
+          <div className="p-3 md:p-8 w-full">
             {children}
           </div>
         </main>

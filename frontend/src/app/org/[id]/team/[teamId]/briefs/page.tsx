@@ -139,7 +139,7 @@ export default function BriefsListPage() {
   return (
     <div className="flex-1 flex flex-col min-h-screen bg-background">
       <TeamNav orgId={orgId as string} teamId={teamId as string} />
-      <div className="flex-1 p-8 max-w-7xl mx-auto w-full space-y-6">
+      <div className="flex-1 px-3 py-4 sm:px-6 sm:py-6 lg:p-8 max-w-7xl mx-auto w-full space-y-6">
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-4">
           <div>

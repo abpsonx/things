@@ -121,7 +121,7 @@ export default function TeamSummaryPage() {
   return (
     <div className="flex-1 flex flex-col min-h-screen bg-background dark:bg-background">
       {/* Header */}
-      <div className="border-b border-border px-8 py-5 flex items-center justify-between bg-card/80 dark:bg-card/60 backdrop-blur-md sticky top-0 z-30">
+      <div className="border-b border-border px-3 py-3 sm:px-6 sm:py-4 lg:px-8 lg:py-5 flex items-center justify-between bg-card/80 dark:bg-card/60 backdrop-blur-md sticky top-0 z-30">
         <div className="flex items-center gap-4">
           <button
             onClick={() => router.back()}
@@ -143,7 +143,7 @@ export default function TeamSummaryPage() {
 
       <TeamNav orgId={orgId} teamId={teamId} />
 
-      <div className="flex-1 p-8 space-y-6 max-w-6xl mx-auto w-full">
+      <div className="flex-1 px-3 py-4 sm:px-6 sm:py-6 lg:p-8 space-y-6 max-w-6xl mx-auto w-full">
         {/* Status cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {STATUS_CARDS.map((c) => (
