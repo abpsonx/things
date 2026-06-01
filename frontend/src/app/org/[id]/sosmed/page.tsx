@@ -42,6 +42,7 @@ interface InsightsBlob {
     country?: Record<string, number>;
     age?: Record<string, number>;
   };
+  errors?: string[];
   fetched_at?: string;
 }
 
@@ -563,10 +564,17 @@ function InstagramDashboard({ accountId, m, posts }: { accountId: string; m: Acc
   const insights = m.insights || {};
   const profile = insights.profile || {};
   const demographics = insights.demographics || {};
-  const profileViews = profile.profile_views ?? 0;
+  const insightsErrors = insights.errors || [];
+  // Graph v22+ pakai `views` sebagai umbrella metric (gabung profile_views
+  // + impression context). website_clicks tetap ada.
+  const profileViews = profile.views ?? profile.profile_views ?? 0;
   const websiteClicks = profile.website_clicks ?? 0;
   const accountsEngaged = profile.accounts_engaged ?? 0;
   const profileReach = profile.reach ?? 0;
+  // Error spesifik per area, di-extract dari errors[] yang punya prefix.
+  const profileErr = insightsErrors.find((e: string) => e.startsWith("profile:"))?.replace(/^profile:\s*/, "");
+  const demoErr = (key: string) =>
+    insightsErrors.find((e: string) => e.startsWith(`demographics.${key}:`))?.replace(/^demographics\.[^:]+:\s*/, "");
 
   // Audience growth chart (followers only — kalau backend nantinya simpan
   // reach harian, tinggal tambah dataKey "reach").
@@ -632,9 +640,11 @@ function InstagramDashboard({ accountId, m, posts }: { accountId: string; m: Acc
             { label: "Profile visits", value: profileViews },
             { label: "External link taps", value: websiteClicks },
           ]}
-          note={profileViews === 0 && websiteClicks === 0
-            ? "Belum ada data. Akun butuh ≥ 100 follower + Business mode untuk insights."
-            : undefined}
+          note={profileErr
+            ? `Graph API: ${profileErr}`
+            : (profileViews === 0 && websiteClicks === 0
+              ? "Belum ada data. Akun butuh Business mode (bukan Creator/Personal)."
+              : undefined)}
         />
         <IgKpiCard
           label="Engagement"
@@ -719,24 +729,13 @@ function InstagramDashboard({ accountId, m, posts }: { accountId: string; m: Acc
         </ChartCard>
 
         <ChartCard title="Gender Split" subtitle="Audience demographics">
-          {/* gender_age key di-format \"AGE · GENDER\" — agregasi by gender saja. */}
           <DemoBars
-            data={(() => {
-              const ga = demographics.gender_age || {};
-              const agg: Record<string, number> = {};
-              for (const [k, v] of Object.entries(ga)) {
-                // ambil bagian gender (terakhir setelah " · ")
-                const parts = k.split(" · ");
-                const gender = parts[parts.length - 1] || "?";
-                agg[gender] = (agg[gender] || 0) + Number(v || 0);
-              }
-              return agg;
-            })()}
+            data={demographics.gender_age || {}}
             colorOf={(label: string) => label.toLowerCase() === "f" || label.toLowerCase().startsWith("female") ? "bg-rose-500"
               : label.toLowerCase() === "m" || label.toLowerCase().startsWith("male") ? "bg-slate-700 dark:bg-slate-300"
               : "bg-amber-500"}
             labelOf={(label: string) => label === "F" ? "Female" : label === "M" ? "Male" : label === "U" ? "Other" : label}
-            emptyNote="Belum tersedia — butuh ≥ 100 follower & Business mode."
+            emptyNote={demoErr("gender_age") ? `Graph API: ${demoErr("gender_age")}` : "Belum tersedia — butuh ≥ 100 follower yg engage + Business mode."}
           />
         </ChartCard>
 
@@ -745,7 +744,7 @@ function InstagramDashboard({ accountId, m, posts }: { accountId: string; m: Acc
             data={demographics.city || {}}
             top={5}
             colorOf={() => "bg-pink-400"}
-            emptyNote="Belum tersedia — butuh ≥ 100 follower & Business mode."
+            emptyNote={demoErr("city") ? `Graph API: ${demoErr("city")}` : "Belum tersedia — butuh ≥ 100 follower yg engage + Business mode."}
           />
         </ChartCard>
 
@@ -753,9 +752,8 @@ function InstagramDashboard({ accountId, m, posts }: { accountId: string; m: Acc
           <DemoBars
             data={demographics.age || {}}
             colorOf={() => "bg-indigo-500"}
-            // Pastikan urutan umur natural (13-17, 18-24, 25-34, ...).
             sortBy="key"
-            emptyNote="Belum tersedia — butuh ≥ 100 follower & Business mode."
+            emptyNote={demoErr("age") ? `Graph API: ${demoErr("age")}` : "Belum tersedia — butuh ≥ 100 follower yg engage + Business mode."}
           />
         </ChartCard>
       </div>

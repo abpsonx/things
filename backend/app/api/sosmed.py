@@ -259,32 +259,51 @@ def _account_out(a: SocialAccount) -> dict:
 
 
 async def _ig_fetch_insights(client: httpx.AsyncClient, ig_user_id: str, token: str) -> dict:
-    """Fetch profile activity + audience demographics dari Graph API.
+    """Fetch profile activity + audience demographics dari Graph API v22+.
 
-    Profile (period=day, hari kemarin): profile_views, website_clicks.
-    Demographics (period=lifetime, breakdown=gender_age/city/age): butuh
-    akun Business + ≥100 followers. Kalau gak match, IG return error/empty —
-    semua fallback ke None.
+    Pakai metric names yang masih supported pasca-v22 (April 2025): `views`,
+    `accounts_engaged`, `reach`, `website_clicks`, `total_interactions`.
+    Demographics pakai `engaged_audience_demographics` dengan breakdown
+    gender/age/city/country.
+
+    Errors yang muncul disurface ke output (key `errors`) supaya FE bisa
+    tampil keterangan persis kenapa kosong (mis. \"akun harus Business\",
+    \"follower < 100\", dst).
 
     Output:
       {
-        profile: {profile_views, website_clicks, accounts_engaged, reach},
+        profile: {views, website_clicks, accounts_engaged, reach,
+                  total_interactions},
         demographics: {gender_age, city, country, age},
+        errors: [str, ...],
         fetched_at: iso,
       }
     """
-    out: dict = {"profile": {}, "demographics": {}}
-    # 1) Profile activity (day metrics). Gunakan since/until kemarin biar IG
-    #    return data — period=day untuk "today" sering belum aggregated.
+    out: dict = {"profile": {}, "demographics": {}, "errors": []}
+
+    def _capture(label: str, data):
+        """IG error returns {error: {message, type, code}}. Collect human msg."""
+        if isinstance(data, dict) and "error" in data:
+            err = data["error"]
+            msg = err.get("message") or str(err)
+            out["errors"].append(f"{label}: {msg}")
+            return True
+        return False
+
+    # 1) Profile activity (period=day). Mulai v22, `views` jadi umbrella
+    #    metric (gabungan profile views + reach kontekstual). Gunakan
+    #    since/until kemarin karena \"today\" sering belum di-aggregate.
     yesterday = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
     try:
         r = await client.get(f"{INSTAGRAM_GRAPH}/{ig_user_id}/insights", params={
-            "metric": "profile_views,website_clicks,accounts_engaged,reach",
+            "metric": "views,accounts_engaged,reach,website_clicks,total_interactions",
             "period": "day",
             "since": yesterday, "until": yesterday,
             "access_token": token,
         })
         data = r.json()
+        if _capture("profile", data):
+            pass  # error stored
         for item in (data.get("data") or []):
             name = item.get("name")
             values = item.get("values") or []
@@ -292,17 +311,18 @@ async def _ig_fetch_insights(client: httpx.AsyncClient, ig_user_id: str, token: 
             if name and v is not None:
                 out["profile"][name] = v
     except Exception as e:
-        logger.warning("IG profile insights failed for %s: %s", ig_user_id, e)
+        logger.warning("IG profile insights HTTP failed for %s: %s", ig_user_id, e)
+        out["errors"].append(f"profile: {e}")
 
-    # 2) Audience demographics — lifetime, butuh ≥100 followers. IG sekarang
-    #    pakai `engaged_audience_demographics` / `reached_audience_demographics`
-    #    bukan legacy `audience_*`. Pakai engaged_audience (orang yg engage
-    #    bulan terakhir) — lebih kaya datanya.
+    # 2) Audience demographics — period=lifetime, butuh ≥100 follower
+    #    + Business mode. Single panggilan untuk total_value tipe `top` per
+    #    breakdown — Graph v22 mendukung 4 breakdown sekaligus dengan
+    #    parameter `breakdown=` repeat.
     for metric, breakdown, key in [
-        ("engaged_audience_demographics", "age,gender", "gender_age"),
+        ("engaged_audience_demographics", "age", "age"),
+        ("engaged_audience_demographics", "gender", "gender_age"),
         ("engaged_audience_demographics", "city", "city"),
         ("engaged_audience_demographics", "country", "country"),
-        ("engaged_audience_demographics", "age", "age"),
     ]:
         try:
             r = await client.get(f"{INSTAGRAM_GRAPH}/{ig_user_id}/insights", params={
@@ -313,6 +333,8 @@ async def _ig_fetch_insights(client: httpx.AsyncClient, ig_user_id: str, token: 
                 "access_token": token,
             })
             data = r.json()
+            if _capture(f"demographics.{key}", data):
+                continue
             results = (((data.get("data") or [{}])[0]).get("total_value") or {}).get("breakdowns") or []
             for b in results:
                 values = b.get("results") or []
@@ -323,7 +345,8 @@ async def _ig_fetch_insights(client: httpx.AsyncClient, ig_user_id: str, token: 
                     if dims and val is not None:
                         bucket[" · ".join(str(x) for x in dims)] = val
         except Exception as e:
-            logger.warning("IG demographics %s failed for %s: %s", key, ig_user_id, e)
+            logger.warning("IG demographics %s HTTP failed for %s: %s", key, ig_user_id, e)
+            out["errors"].append(f"demographics.{key}: {e}")
 
     out["fetched_at"] = datetime.now(timezone.utc).isoformat()
     return out
