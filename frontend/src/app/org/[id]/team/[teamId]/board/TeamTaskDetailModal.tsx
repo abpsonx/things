@@ -456,12 +456,19 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
               <AlignLeft className="w-4 h-4" />
               Deskripsi
             </div>
-            <RichTextEditor
-              content={description}
-              onChange={setDescription}
-              placeholder="Tambahkan deskripsi tugas... ketik @ untuk tag orang."
-              members={(members || []).filter((m: any) => m.user).map((m: any) => ({ id: m.user_id || m.user.id, name: m.user.name, avatar_url: m.user.avatar_url }))}
-            />
+            {/* Defer mount sampai task ter-load — useEditor read content
+                cuma sekali saat mount. Tanpa defer, editor bisa stuck
+                kosong. */}
+            {task ? (
+              <RichTextEditor
+                content={description}
+                onChange={setDescription}
+                placeholder="Tambahkan deskripsi tugas... ketik @ untuk tag orang."
+                members={(members || []).filter((m: any) => m.user).map((m: any) => ({ id: m.user_id || m.user.id, name: m.user.name, avatar_url: m.user.avatar_url }))}
+              />
+            ) : (
+              <div className="min-h-[300px] rounded-xl border border-border bg-secondary/20 animate-pulse" />
+            )}
             <DescriptionLinkChips text={description} />
           </div>
 

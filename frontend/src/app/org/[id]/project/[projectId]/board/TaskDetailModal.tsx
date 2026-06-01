@@ -453,12 +453,21 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
               <AlignLeft className="w-4 h-4" />
               Deskripsi
             </div>
-            <RichTextEditor
-              content={description}
-              onChange={setDescription}
-              placeholder="Tambahkan deskripsi tugas... ketik @ untuk tag orang."
-              members={(members || []).filter((m: any) => m.user).map((m: any) => ({ id: m.user_id || m.user.id, name: m.user.name, avatar_url: m.user.avatar_url }))}
-            />
+            {/* Defer mount sampai task ter-load. TipTap useEditor cuma baca
+                `content` sekali saat mount; kalau mount duluan dengan
+                description="" lalu fetch baru selesai, editor bisa stuck
+                kosong walau setContent effect mencoba sync. Mount setelah
+                task ready = useEditor langsung dapat HTML beneran. */}
+            {task ? (
+              <RichTextEditor
+                content={description}
+                onChange={setDescription}
+                placeholder="Tambahkan deskripsi tugas... ketik @ untuk tag orang."
+                members={(members || []).filter((m: any) => m.user).map((m: any) => ({ id: m.user_id || m.user.id, name: m.user.name, avatar_url: m.user.avatar_url }))}
+              />
+            ) : (
+              <div className="min-h-[300px] rounded-xl border border-border bg-secondary/20 animate-pulse" />
+            )}
             <DescriptionLinkChips text={description} />
           </div>
 
