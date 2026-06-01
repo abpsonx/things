@@ -3,21 +3,24 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { 
-  Settings, 
-  Trash2, 
-  Save, 
-  Loader2, 
+import {
+  Settings,
+  Trash2,
+  Save,
+  Loader2,
   CheckCircle2,
   AlertTriangle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/store/useAuthStore";
 
 export default function ProjectSettingsPage() {
   const { id: orgId, projectId } = useParams();
   const router = useRouter();
+  const { user } = useAuthStore();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [createdBy, setCreatedBy] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -28,6 +31,7 @@ export default function ProjectSettingsPage() {
         const res = await api.get(`/organizations/${orgId}/projects/${projectId}`);
         setName(res.data.name);
         setDescription(res.data.description || "");
+        setCreatedBy(res.data.created_by || null);
       } catch (err) {
         console.error("Failed to fetch project", err);
       } finally {
@@ -36,6 +40,12 @@ export default function ProjectSettingsPage() {
     };
     if (orgId && projectId) fetchProject();
   }, [orgId, projectId]);
+
+  // Zona Bahaya cuma muncul untuk Super User / Developer (god mode) atau
+  // user yg memang bikin proyek itu. Backend juga gate (defense-in-depth).
+  const isSuperUser = (user as any)?.role === "super_user" || (user as any)?.role === "developer";
+  const isCreator = !!(user?.id && createdBy && String(user.id) === String(createdBy));
+  const canDeleteProject = isSuperUser || isCreator;
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,23 +128,25 @@ export default function ProjectSettingsPage() {
           </form>
         </div>
 
-        {/* Danger Zone */}
-        <div className="p-6 border border-destructive/20 rounded-2xl bg-destructive/5 space-y-4">
-          <div className="flex items-center gap-2 text-destructive font-bold">
-            <AlertTriangle className="w-5 h-5" />
-            Zona Bahaya
+        {/* Danger Zone — visible to Super User / Developer atau creator only. */}
+        {canDeleteProject && (
+          <div className="p-6 border border-destructive/20 rounded-2xl bg-destructive/5 space-y-4">
+            <div className="flex items-center gap-2 text-destructive font-bold">
+              <AlertTriangle className="w-5 h-5" />
+              Zona Bahaya
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Menghapus proyek akan menghapus semua data papan kanban, diskusi, dan file yang terkait secara permanen. Tindakan ini tidak dapat dibatalkan.
+            </p>
+            <button
+              onClick={handleDelete}
+              className="flex items-center gap-2 px-4 py-2 bg-destructive text-destructive-foreground rounded-md text-sm font-bold hover:bg-destructive/90 transition-all"
+            >
+              <Trash2 className="w-4 h-4" />
+              Hapus Proyek Ini
+            </button>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Menghapus proyek akan menghapus semua data papan kanban, diskusi, dan file yang terkait secara permanen. Tindakan ini tidak dapat dibatalkan.
-          </p>
-          <button
-            onClick={handleDelete}
-            className="flex items-center gap-2 px-4 py-2 bg-destructive text-destructive-foreground rounded-md text-sm font-bold hover:bg-destructive/90 transition-all"
-          >
-            <Trash2 className="w-4 h-4" />
-            Hapus Proyek Ini
-          </button>
-      </div>
+        )}
     </div>
   );
 }

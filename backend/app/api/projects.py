@@ -156,10 +156,10 @@ async def delete_project(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Delete a project."""
-    org_member = await _check_org_membership(db, org_id, current_user.id)
-    if org_member.role not in ("owner", "manager"):
-        raise HTTPException(status_code=403, detail="Hanya owner/manager yang bisa hapus project")
+    """Hapus proyek — strict: hanya Super User / Developer atau pembuat proyek
+    itu sendiri. Manager / Admin / Member workspace TIDAK boleh."""
+    from app.core.permissions import is_superuser
+    await _check_org_membership(db, org_id, current_user.id)
 
     result = await db.execute(
         select(Project).where(Project.id == project_id, Project.org_id == org_id)
@@ -167,6 +167,13 @@ async def delete_project(
     project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project tidak ditemukan")
+
+    is_creator = str(project.created_by) == str(current_user.id)
+    if not (is_superuser(current_user) or is_creator):
+        raise HTTPException(
+            status_code=403,
+            detail="Hanya pembuat proyek atau Super User yang bisa menghapus",
+        )
 
     await log_activity(
         db, org_id=org_id, user_id=current_user.id,
