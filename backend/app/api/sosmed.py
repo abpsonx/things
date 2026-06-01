@@ -291,36 +291,52 @@ async def _ig_fetch_insights(client: httpx.AsyncClient, ig_user_id: str, token: 
         return False
 
     # 1) Profile activity (total_value mode, v22+).
-    #    profile_links_taps = link in bio clicks (multi-link era).
-    #    website_clicks = legacy single Website button — kebanyakan akun
-    #    modern return 0 di sini. Minta dua-duanya, FE prioritas pakai
-    #    profile_links_taps kalau ada angkanya.
+    #    Catatan: response IG selalu disimpan ke out["raw_profile"] supaya
+    #    user bisa cek persis metric apa yg IG kirim (mis. profile_links_taps
+    #    kadang silently di-skip kalau akun belum eligible).
     today = datetime.now(timezone.utc).date()
     since = (today - timedelta(days=7)).isoformat()
     until = today.isoformat()
     try:
         r = await client.get(f"{INSTAGRAM_GRAPH}/{ig_user_id}/insights", params={
-            "metric": "views,reach,accounts_engaged,total_interactions,profile_links_taps,website_clicks",
+            "metric": "views,reach,accounts_engaged,total_interactions,website_clicks",
             "metric_type": "total_value",
             "period": "day",
             "since": since, "until": until,
             "access_token": token,
         })
         data = r.json()
+        out["raw_profile"] = data
         if not _capture("profile", data):
             for item in (data.get("data") or []):
                 name = item.get("name")
-                # total_value metrics: {total_value: {value: N}}
                 tv = (item.get("total_value") or {}).get("value")
                 if name and tv is not None:
                     out["profile"][name] = tv
-        # Simpan raw response kalau gak ada data sama sekali — buat
-        # debugging by user (mereka bisa kirim screenshot insights.raw).
-        if not out["profile"]:
-            out["raw_profile"] = (data.get("data") if isinstance(data, dict) else None) or data
     except Exception as e:
         logger.warning("IG profile insights HTTP failed for %s: %s", ig_user_id, e)
         out["errors"].append(f"profile: {e}")
+
+    # 1b) profile_links_taps — call terpisah dengan period=days_28 yang
+    #     biasanya lebih ramah untuk metric ini. Juga simpan raw.
+    try:
+        r = await client.get(f"{INSTAGRAM_GRAPH}/{ig_user_id}/insights", params={
+            "metric": "profile_links_taps",
+            "metric_type": "total_value",
+            "period": "day",
+            "since": since, "until": until,
+            "access_token": token,
+        })
+        data = r.json()
+        out["raw_profile_links"] = data
+        if not _capture("profile.profile_links_taps", data):
+            for item in (data.get("data") or []):
+                tv = (item.get("total_value") or {}).get("value")
+                if tv is not None:
+                    out["profile"]["profile_links_taps"] = tv
+    except Exception as e:
+        logger.warning("IG profile_links_taps HTTP failed for %s: %s", ig_user_id, e)
+        out["errors"].append(f"profile_links_taps: {e}")
 
     # 2) Audience demographics — period=lifetime, butuh ≥100 follower
     #    + Business mode. Single panggilan untuk total_value tipe `top` per
