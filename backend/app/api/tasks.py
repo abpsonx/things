@@ -87,6 +87,9 @@ def _task_to_response(task):
     # return None (column nullable), kosong, atau list of UUIDs/strings.
     raw_links = getattr(task, "linked_brief_ids", None) or []
     resp.linked_brief_ids = [str(x) for x in raw_links]
+    # custom_properties: jaga selalu list (None saat row lama tanpa default).
+    if resp.custom_properties is None:
+        resp.custom_properties = []
     return resp
 
 

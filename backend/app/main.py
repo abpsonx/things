@@ -80,6 +80,12 @@ async def lifespan(app: FastAPI):
             ))
         except Exception:
             pass
+        try:
+            await conn.execute(text(
+                "UPDATE design_briefs SET custom_properties = '[]'::jsonb WHERE custom_properties IS NULL"
+            ))
+        except Exception:
+            pass
 
         # design brief multi-image (carousel).
         # 1. design_brief_images table dibuat otomatis oleh create_all di atas.
@@ -160,6 +166,14 @@ async def lifespan(app: FastAPI):
         try:
             await conn.execute(text(
                 "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS custom_properties JSONB DEFAULT '[]'::jsonb"
+            ))
+        except Exception:
+            pass
+        # Defensive: kalau column ditambah duluan tanpa DEFAULT lalu di-deploy,
+        # row lama bisa NULL → Pydantic GET task gagal validate → modal kosong.
+        try:
+            await conn.execute(text(
+                "UPDATE tasks SET custom_properties = '[]'::jsonb WHERE custom_properties IS NULL"
             ))
         except Exception:
             pass

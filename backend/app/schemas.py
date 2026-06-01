@@ -249,7 +249,10 @@ class TaskResponse(BaseModel):
     # — gak perlu round-trip ekstra.
     linked_brief_ids: List[str] = []
     result_url: Optional[str] = None
-    custom_properties: List[dict] = []
+    # Tolerant: row lama (pre-migration) bisa NULL di DB. Pydantic v2 +
+    # from_attributes tanpa Optional gagal validate None → seluruh GET task
+    # 500 → modal task tampil kosong di FE.
+    custom_properties: Optional[List[dict]] = []
 
     class Config:
         from_attributes = True
@@ -669,8 +672,9 @@ class DesignBriefBase(BaseModel):
     hashtag: Optional[str] = None
     reference_url: Optional[str] = None
     final_image_url: Optional[str] = None
-    # Notion-style: list of {name, value} ad-hoc properties.
-    custom_properties: List[dict] = []
+    # Notion-style: list of {name, value} ad-hoc properties. Tolerant ke
+    # row lama yg NULL di DB.
+    custom_properties: Optional[List[dict]] = []
     status: str = "draft"  # draft | onprogress | review | published
 
 

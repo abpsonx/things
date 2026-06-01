@@ -335,6 +335,8 @@ def _task_to_response(task):
     resp.attachments_count = len(task.attachments) if hasattr(task, 'attachments') else 0
     raw_links = getattr(task, "linked_brief_ids", None) or []
     resp.linked_brief_ids = [str(x) for x in raw_links]
+    if resp.custom_properties is None:
+        resp.custom_properties = []
     return resp
 
 
