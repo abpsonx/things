@@ -469,7 +469,7 @@ export default function TeamChatPage() {
                 </div>
 
                 {/* Message Bubble Container */}
-                <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} max-w-[75%] relative`}>
+                <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} max-w-[85%] md:max-w-[75%] relative`}>
                   {!isMe && (
                     <span className="text-[11px] font-bold text-muted-foreground mb-1 ml-1">
                       {msg.user?.name}
@@ -671,7 +671,7 @@ export default function TeamChatPage() {
               )}
             </div>
 
-            <div className="flex flex-col items-end max-w-[75%] relative">
+            <div className="flex flex-col items-end max-w-[85%] md:max-w-[75%] relative">
               <div className="flex items-center gap-2 group/bubble flex-row-reverse">
                 <div className="relative p-4 rounded-2xl shadow-sm text-[14px] leading-relaxed bg-indigo-600 text-white rounded-tr-none shadow-indigo-200/50 opacity-80">
                   <div className="flex flex-col gap-2">

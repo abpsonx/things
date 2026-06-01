@@ -187,6 +187,16 @@
   outline-offset: 2px;
 }
 
+/* iOS Safari auto-zoom guard: input/textarea/select dengan font-size < 16px
+   bikin viewport langsung zoom in saat di-focus. Force 16px minimum di
+   mobile (≤640px = sm breakpoint Tailwind). Desktop tetap bebas pakai
+   text-sm/text-xs supaya layout existing gak berubah. */
+@media (max-width: 640px) {
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+}
+
 /* Kill native HTML5 drag pada anchor / img / video di dalam draggable card.
    Browser native drag (text/uri-list, image drag) konflik dengan dnd-kit
    PointerSensor: drag dimulai sebelum activationConstraint distance terlampaui,

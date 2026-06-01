@@ -402,10 +402,15 @@ export default function DMChatPage() {
               <div key={msg.id} id={`dm-msg-${msg.id}`} className="transition-all rounded-[16px]">
                 {showDate && <div className="flex justify-center my-3"><span className="text-[10px] text-muted-foreground bg-secondary/50 px-3 py-1 rounded-full border border-border/50">{dateStr}</span></div>}
                 <div className={cn("flex group relative", me ? "justify-end" : "justify-start")}>
-                  <div className={cn("flex gap-1.5 max-w-[80%] md:max-w-[65%]", me ? "flex-row-reverse" : "flex-row")}>
-                    <div className={cn("w-8 shrink-0", !av && "invisible")}>
-                      {av && <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold">{(ou?.name || "?").charAt(0).toUpperCase()}</div>}
-                    </div>
+                  <div className={cn("flex gap-1.5 max-w-[85%] md:max-w-[65%]", me ? "flex-row-reverse" : "flex-row")}>
+                    {/* Avatar gutter — cuma render kalau perlu (not me).
+                        Sebelumnya w-8 shrink-0 invisible untuk me → 32px
+                        wasted di mobile, kelihatan bubble jadi sempit. */}
+                    {!me && (
+                      <div className={cn("w-8 shrink-0", !av && "invisible")}>
+                        {av && <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold">{(ou?.name || "?").charAt(0).toUpperCase()}</div>}
+                      </div>
+                    )}
                     <div className={cn("flex flex-col", me ? "items-end" : "items-start")}>
                       <div className={cn("relative text-sm transition-all", msg.is_sticker && msg.attachment_url ? "bg-transparent" : cn("px-3 py-1.5 shadow-sm", me ? "bg-[#3D4F6B] text-white rounded-[16px] rounded-br-[4px]" : "bg-card text-foreground border border-border rounded-[16px] rounded-bl-[4px]"), opt && "opacity-70", up2 && "min-w-[160px]")}>
                         {msg.parent && (

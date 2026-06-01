@@ -41,7 +41,10 @@ export default function TeamNav({ orgId, teamId }: TeamNavProps) {
   ];
 
   return (
-    <div className="flex items-center space-x-1 border-b border-border bg-card/50 backdrop-blur-sm px-6">
+    // overflow-x-auto + nowrap supaya di mobile (yg gak muat 11 tab) bisa
+    // swipe horizontal. Tiap link shrink-0 supaya tidak ke-compress.
+    // touch-pan-x = browser handle scroll horizontal native (gak nyangkut).
+    <div className="flex items-center space-x-1 border-b border-border bg-card/50 backdrop-blur-sm px-3 sm:px-6 overflow-x-auto whitespace-nowrap scrollbar-thin touch-pan-x">
       {navItems.map((item) => {
         const isActive = pathname === item.href;
         return (
@@ -49,9 +52,9 @@ export default function TeamNav({ orgId, teamId }: TeamNavProps) {
             key={item.name}
             href={item.href}
             className={cn(
-              "flex items-center gap-2 px-4 py-4 text-sm font-medium transition-all relative",
-              isActive 
-                ? "text-primary border-b-2 border-primary" 
+              "shrink-0 flex items-center gap-2 px-3 sm:px-4 py-4 text-sm font-medium transition-all relative",
+              isActive
+                ? "text-primary border-b-2 border-primary"
                 : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
             )}
           >

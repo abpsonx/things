@@ -151,8 +151,9 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
         </button>
       </div>
 
-      {/* Navigation Tabs */}
-      <div className="flex items-center gap-1 border-b border-border pb-px">
+      {/* Navigation Tabs — overflow-x-auto + whitespace-nowrap supaya
+          di mobile bisa swipe ke kanan untuk tab yang tidak muat layar. */}
+      <div className="flex items-center gap-1 border-b border-border pb-px overflow-x-auto whitespace-nowrap scrollbar-thin touch-pan-x">
         {tabs.map((tab) => {
           const isActive = pathname === tab.href;
           return (
@@ -160,9 +161,9 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
               key={tab.href}
               href={tab.href}
               className={cn(
-                "flex items-center gap-2 px-6 py-3 text-sm font-medium transition-all relative",
-                isActive 
-                  ? "text-primary" 
+                "shrink-0 flex items-center gap-2 px-4 sm:px-6 py-3 text-sm font-medium transition-all relative",
+                isActive
+                  ? "text-primary"
                   : "text-muted-foreground hover:text-foreground hover:bg-secondary/50 rounded-t-lg"
               )}
             >
