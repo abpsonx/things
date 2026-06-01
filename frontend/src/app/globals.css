@@ -186,3 +186,16 @@
   outline: 2px solid #2563eb;
   outline-offset: 2px;
 }
+
+/* Kill native HTML5 drag pada anchor / img / video di dalam draggable card.
+   Browser native drag (text/uri-list, image drag) konflik dengan dnd-kit
+   PointerSensor: drag dimulai sebelum activationConstraint distance terlampaui,
+   sehingga card cuma kelihatan ke-drag (DragOverlay) lalu snap-back.
+   Lebih kentara di PWA Chromium standalone (lebih strict soal pointer-events). */
+.no-native-drag a,
+.no-native-drag img,
+.no-native-drag video {
+  -webkit-user-drag: none;
+  user-drag: none;
+  -webkit-touch-callout: none;
+}
