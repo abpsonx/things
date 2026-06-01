@@ -62,26 +62,24 @@ async def get_dashboard_stats(
             elif status == "in_progress": task_stats["in_progress"] += count
             elif status == "done": task_stats["completed"] += count
 
-    # ↓ overdue_proj_q & overdue_team_q reused di endpoint /dashboard/overdue-tasks
-    # untuk daftar lengkap saat user klik pill "X tugas telat deadline".
-
-    # Overdue = punya deadline lewat & belum selesai (project + tim).
-    overdue_proj_q = (
+    # Overdue = task yang di-assign KE USER ini, sudah lewat deadline, belum
+    # selesai. Sebelumnya count pakai filter OrgMember/TeamMember sehingga
+    # task milik orang lain di project/tim yg sama ikut ke-count — user
+    # bilang "kok task orang lain kena ke saya". Sekarang strict by
+    # assignee: legacy single assignee_id ATAU multi-assignee M2M.
+    from app.models.task import TaskAssignee
+    from sqlalchemy import or_ as _or
+    multi_assigned_subq = select(TaskAssignee.task_id).where(TaskAssignee.user_id == current_user.id)
+    assigned_to_me = _or(
+        Task.assignee_id == current_user.id,
+        Task.id.in_(multi_assigned_subq),
+    )
+    overdue_q = (
         select(func.count(Task.id))
-        .join(Project, Task.project_id == Project.id)
-        .join(Organization, Project.org_id == Organization.id)
-        .join(OrgMember, OrgMember.org_id == Organization.id)
-        .where(OrgMember.user_id == current_user.id, Task.status != "done",
+        .where(assigned_to_me, Task.status != "done",
                Task.due_date.is_not(None), Task.due_date < now)
     )
-    overdue_team_q = (
-        select(func.count(Task.id))
-        .join(TeamMember, TeamMember.team_id == Task.team_id)
-        .where(TeamMember.user_id == current_user.id, Task.status != "done",
-               Task.due_date.is_not(None), Task.due_date < now)
-    )
-    task_stats["overdue"] = ((await db.execute(overdue_proj_q)).scalar() or 0) + \
-                            ((await db.execute(overdue_team_q)).scalar() or 0)
+    task_stats["overdue"] = (await db.execute(overdue_q)).scalar() or 0
     task_stats["completion_rate"] = round(task_stats["completed"] / task_stats["total"] * 100) if task_stats["total"] else 0
 
     # 2b. Priority breakdown (non-done tasks across project + team)
@@ -249,41 +247,34 @@ async def get_overdue_tasks(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Daftar lengkap task overdue (project + tim yang user ikut serta).
-    Dipakai dashboard saat user klik pill 'X tugas telat deadline'.
-    Filter sama persis dengan count di /stats/dashboard supaya total
-    di pill match dengan jumlah row yang muncul."""
-    from app.models.team import TeamMember
+    """Daftar lengkap task overdue yg di-assign KE USER ini (legacy
+    assignee_id atau multi-assignee M2M). Filter match count di
+    /stats/dashboard supaya jumlah row = angka di pill."""
+    from app.models.task import TaskAssignee
+    from sqlalchemy import or_ as _or
     now = datetime.now(timezone.utc)
 
-    # Project-side: task di project yg user adalah OrgMember.
-    proj_q = (
-        select(Task)
-        .options(selectinload(Task.project), selectinload(Task.assignee))
-        .join(Project, Task.project_id == Project.id)
-        .join(Organization, Project.org_id == Organization.id)
-        .join(OrgMember, OrgMember.org_id == Organization.id)
-        .where(OrgMember.user_id == current_user.id,
-               Task.status != "done",
-               Task.due_date.is_not(None),
-               Task.due_date < now)
-    )
-    # Team-side: task di team yg user adalah TeamMember.
-    team_q = (
-        select(Task)
-        .options(selectinload(Task.team), selectinload(Task.assignee))
-        .join(TeamMember, TeamMember.team_id == Task.team_id)
-        .where(TeamMember.user_id == current_user.id,
-               Task.status != "done",
-               Task.due_date.is_not(None),
-               Task.due_date < now)
+    multi_assigned_subq = select(TaskAssignee.task_id).where(TaskAssignee.user_id == current_user.id)
+    assigned_to_me = _or(
+        Task.assignee_id == current_user.id,
+        Task.id.in_(multi_assigned_subq),
     )
 
-    seen: set[str] = set()
+    q = (
+        select(Task)
+        .options(
+            selectinload(Task.project),
+            selectinload(Task.team),
+            selectinload(Task.assignee),
+        )
+        .where(assigned_to_me,
+               Task.status != "done",
+               Task.due_date.is_not(None),
+               Task.due_date < now)
+        .order_by(Task.due_date.asc())
+    )
     items: list[dict] = []
-    for t in (await db.execute(proj_q)).scalars().all():
-        if str(t.id) in seen: continue
-        seen.add(str(t.id))
+    for t in (await db.execute(q)).scalars().all():
         items.append({
             "id": str(t.id),
             "title": t.title,
@@ -295,23 +286,6 @@ async def get_overdue_tasks(
                 "name": t.project.name,
                 "org_id": str(t.project.org_id),
             } if t.project else None,
-            "team": None,
-            "assignee": {
-                "id": str(t.assignee.id),
-                "name": t.assignee.name,
-                "avatar_url": t.assignee.avatar_url,
-            } if t.assignee else None,
-        })
-    for t in (await db.execute(team_q)).scalars().all():
-        if str(t.id) in seen: continue
-        seen.add(str(t.id))
-        items.append({
-            "id": str(t.id),
-            "title": t.title,
-            "status": t.status,
-            "priority": t.priority,
-            "due_date": t.due_date.isoformat() if t.due_date else None,
-            "project": None,
             "team": {
                 "id": str(t.team.id),
                 "name": t.team.name,
@@ -323,8 +297,6 @@ async def get_overdue_tasks(
                 "avatar_url": t.assignee.avatar_url,
             } if t.assignee else None,
         })
-    # Urut: paling telat (due_date paling lama) di atas.
-    items.sort(key=lambda x: x.get("due_date") or "")
     return items
 
 
