@@ -290,29 +290,55 @@ async def _ig_fetch_insights(client: httpx.AsyncClient, ig_user_id: str, token: 
             return True
         return False
 
-    # 1) Profile activity (period=day). Mulai v22, `views` jadi umbrella
-    #    metric (gabungan profile views + reach kontekstual). Gunakan
-    #    since/until kemarin karena \"today\" sering belum di-aggregate.
-    yesterday = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+    # 1) Profile activity. Mulai v22, metric baru (views, accounts_engaged,
+    #    total_interactions) WAJIB pakai metric_type=total_value — kalau
+    #    gak dipass IG return empty diam-diam. website_clicks tetap pakai
+    #    time-series legacy. Range 7 hari terakhir biar pasti ada data.
+    today = datetime.now(timezone.utc).date()
+    since = (today - timedelta(days=7)).isoformat()
+    until = today.isoformat()
     try:
         r = await client.get(f"{INSTAGRAM_GRAPH}/{ig_user_id}/insights", params={
-            "metric": "views,accounts_engaged,reach,website_clicks,total_interactions",
+            "metric": "views,reach,accounts_engaged,total_interactions",
+            "metric_type": "total_value",
             "period": "day",
-            "since": yesterday, "until": yesterday,
+            "since": since, "until": until,
             "access_token": token,
         })
         data = r.json()
-        if _capture("profile", data):
-            pass  # error stored
-        for item in (data.get("data") or []):
-            name = item.get("name")
-            values = item.get("values") or []
-            v = values[-1].get("value") if values else None
-            if name and v is not None:
-                out["profile"][name] = v
+        if not _capture("profile", data):
+            for item in (data.get("data") or []):
+                name = item.get("name")
+                # total_value metrics: {total_value: {value: N}}
+                tv = (item.get("total_value") or {}).get("value")
+                if name and tv is not None:
+                    out["profile"][name] = tv
+        # Simpan raw response kalau gak ada data sama sekali — buat
+        # debugging by user (mereka bisa kirim screenshot insights.raw).
+        if not out["profile"]:
+            out["raw_profile"] = (data.get("data") if isinstance(data, dict) else None) or data
     except Exception as e:
         logger.warning("IG profile insights HTTP failed for %s: %s", ig_user_id, e)
         out["errors"].append(f"profile: {e}")
+
+    # 1b) website_clicks pakai endpoint legacy time-series — masih
+    #     supported di v22 tanpa metric_type.
+    try:
+        r = await client.get(f"{INSTAGRAM_GRAPH}/{ig_user_id}/insights", params={
+            "metric": "website_clicks",
+            "period": "day",
+            "since": since, "until": until,
+            "access_token": token,
+        })
+        data = r.json()
+        if not _capture("profile.website_clicks", data):
+            total = 0
+            for item in (data.get("data") or []):
+                for v in (item.get("values") or []):
+                    total += int(v.get("value") or 0)
+            out["profile"]["website_clicks"] = total
+    except Exception as e:
+        logger.warning("IG website_clicks HTTP failed for %s: %s", ig_user_id, e)
 
     # 2) Audience demographics — period=lifetime, butuh ≥100 follower
     #    + Business mode. Single panggilan untuk total_value tipe `top` per
