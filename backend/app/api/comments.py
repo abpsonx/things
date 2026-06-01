@@ -58,6 +58,14 @@ async def create_comment(
     from app.services.notification import notify_user
     notified: set[str] = set()
 
+    # URL deep-link ke board project/team ?task={id} — klik notif buka task modal.
+    if project_id:
+        task_url = f"/org/{org_id}/project/{project_id}/board?task={task.id}"
+    elif team_id:
+        task_url = f"/org/{org_id}/team/{team_id}/board?task={task.id}"
+    else:
+        task_url = "/dashboard"
+
     # Notify task assignee if someone else comments
     if task.assignee_id and str(task.assignee_id) != str(current_user.id):
         await notify_user(
@@ -66,7 +74,8 @@ async def create_comment(
             type="comment_added",
             content=f"{current_user.name} mengomentari tugas kamu: {task.title}",
             ref_id=str(task.id),
-            org_id=str(org_id)
+            org_id=str(org_id),
+            url=task_url,
         )
         notified.add(str(task.assignee_id))
 
@@ -82,6 +91,7 @@ async def create_comment(
             content=f"{current_user.name} menyebut kamu di komentar: {task.title}",
             ref_id=str(task.id),
             org_id=str(org_id),
+            url=task_url,
         )
         notified.add(uid_s)
 

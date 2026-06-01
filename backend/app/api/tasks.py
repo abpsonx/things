@@ -560,6 +560,10 @@ async def update_task(
             project_id=project_id, metadata={"summary": summary},
         )
 
+    # URL deep-link ke board project ?task=... — supaya klik notif buka
+    # modal task detail langsung, bukan landing /dashboard.
+    task_url = f"/org/{project.org_id}/project/{project_id}/board?task={task.id}"
+
     if "assignee_id" in update_data and update_data["assignee_id"] and str(update_data["assignee_id"]) != str(current_user.id):
         from app.services.notification import notify_user
         await notify_user(
@@ -568,7 +572,8 @@ async def update_task(
             type="task_assigned",
             content=f"{current_user.name} memberikan kamu tugas: {task.title}",
             ref_id=str(task.id),
-            org_id=str(project.org_id)
+            org_id=str(project.org_id),
+            url=task_url,
         )
 
     # Multi-assignee: ping every NEWLY-added assignee (skip self & the legacy
@@ -585,6 +590,7 @@ async def update_task(
                 db, user_id=uid, type="task_assigned",
                 content=f"{current_user.name} menambahkan kamu sebagai assignee: {task.title}",
                 ref_id=str(task.id), org_id=str(project.org_id),
+                url=task_url,
             )
 
     await db.commit()
