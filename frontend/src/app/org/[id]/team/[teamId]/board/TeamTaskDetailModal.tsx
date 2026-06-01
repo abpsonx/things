@@ -8,6 +8,7 @@ import api from "@/lib/api";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import MentionTextarea from "@/components/ui/MentionTextarea";
 import FileViewerModal from "@/components/ui/FileViewerModal";
+import { toast } from "sonner";
 import TaskLinksSection, { DescriptionLinkChips } from "@/components/board/TaskLinksSection";
 import TaskActivityLog from "@/components/board/TaskActivityLog";
 import TaskEditBanner from "@/components/board/TaskEditBanner";
@@ -131,7 +132,13 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
         setResultUrl(td.result_url || "");
         setSubtasks(td.subtasks || []);
       } else {
-        console.error("Failed to fetch task", taskR.reason);
+        const status = (taskR.reason as any)?.response?.status;
+        if (status === 404 || status === 403) {
+          toast.error("Task tidak ditemukan — mungkin sudah dihapus.");
+          onClose();
+        } else {
+          console.error("Failed to fetch task", taskR.reason);
+        }
       }
       if (commentsR.status === "fulfilled") setComments(commentsR.value.data);
       if (attachmentsR.status === "fulfilled") setAttachments(attachmentsR.value.data);

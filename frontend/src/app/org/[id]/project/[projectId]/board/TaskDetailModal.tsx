@@ -8,6 +8,7 @@ import Reactions, { ReactionBucket } from "@/components/reactions/Reactions";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import MentionTextarea from "@/components/ui/MentionTextarea";
 import FileViewerModal from "@/components/ui/FileViewerModal";
+import { toast } from "sonner";
 import TaskLinksSection, { DescriptionLinkChips } from "@/components/board/TaskLinksSection";
 import TaskActivityLog from "@/components/board/TaskActivityLog";
 import TaskEditBanner from "@/components/board/TaskEditBanner";
@@ -127,7 +128,15 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
         setResultUrl(td.result_url || "");
         setSubtasks(td.subtasks || []);
       } else {
-        console.error("Failed to fetch task", taskR.reason);
+        const status = (taskR.reason as any)?.response?.status;
+        if (status === 404 || status === 403) {
+          // Task sudah dihapus / user gak punya akses lagi. Tutup modal
+          // + kasih toast — biar gak nyangkut di modal kosong.
+          toast.error("Task tidak ditemukan — mungkin sudah dihapus.");
+          onClose();
+        } else {
+          console.error("Failed to fetch task", taskR.reason);
+        }
       }
       if (commentsR.status === "fulfilled") setComments(commentsR.value.data);
       if (attachmentsR.status === "fulfilled") setAttachments(attachmentsR.value.data);
