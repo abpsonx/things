@@ -200,12 +200,16 @@ export default function TeamTaskCard({
         );
       })()}
 
-      {/* Description (rendered markdown, truncated 2 baris) */}
+      {/* Description (rendered markdown, truncated 2 baris).
+          pointer-events-none: lihat catatan sama di project TaskCard.tsx —
+          anchor di markdown trigger native drag yang bikin dnd-kit snap back. */}
       {task.description && (
-        <MarkdownText
-          text={task.description}
-          className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2 mb-2"
-        />
+        <div className="pointer-events-none">
+          <MarkdownText
+            text={task.description}
+            className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2 mb-2"
+          />
+        </div>
       )}
 
       {/* Footer: files / comments / first label */}

@@ -299,12 +299,18 @@ export default function TaskCard({
         );
       })()}
 
-      {/* Description (rendered markdown, truncated 2 baris) */}
+      {/* Description (rendered markdown, truncated 2 baris).
+          pointer-events-none: anchor <a> di dalam markdown akan trigger
+          native HTML5 link-drag yang konflik dengan dnd-kit PointerSensor —
+          bikin task kelihatan ke-drag tapi snap back karena drag sebenarnya
+          gak ke-aktivasi. Klik card untuk buka detail sudah cukup. */}
       {task.description && (
-        <MarkdownText
-          text={task.description}
-          className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2 mb-2"
-        />
+        <div className="pointer-events-none">
+          <MarkdownText
+            text={task.description}
+            className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2 mb-2"
+          />
+        </div>
       )}
 
       {/* Footer: files / subtasks / comments / first label */}
