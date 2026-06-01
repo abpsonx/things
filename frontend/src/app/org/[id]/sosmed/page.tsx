@@ -566,10 +566,12 @@ function InstagramDashboard({ accountId, m, posts }: { accountId: string; m: Acc
   const demographics = insights.demographics || {};
   const insightsErrors = insights.errors || [];
   // Graph v22+ pakai `views` sebagai umbrella metric (gabung profile_views
-  // + impression context). Untuk external link taps, profile_links_taps
-  // (multi-link bio modern) prioritas; fallback ke website_clicks legacy.
+  // + impression context). Untuk external link taps, ambil yang TERBESAR
+  // antara website_clicks (akun bio single-website) vs profile_links_taps
+  // (akun bio multi-link). Akun bisa punya 0 di salah satu — gak boleh
+  // pakai ?? karena 0 bukan nullish jadi gak fall back.
   const profileViews = profile.views ?? profile.profile_views ?? 0;
-  const websiteClicks = profile.profile_links_taps ?? profile.website_clicks ?? 0;
+  const websiteClicks = Math.max(profile.profile_links_taps ?? 0, profile.website_clicks ?? 0);
   const accountsEngaged = profile.accounts_engaged ?? 0;
   const profileReach = profile.reach ?? 0;
   // Error spesifik per area, di-extract dari errors[] yang punya prefix.
