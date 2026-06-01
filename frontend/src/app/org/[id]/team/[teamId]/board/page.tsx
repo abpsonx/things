@@ -476,9 +476,11 @@ export default function TeamBoardPage() {
         </DragOverlay>
       </DndContext>
 
-      {/* Task Detail Modal */}
+      {/* Task Detail Modal — key={taskId} jaga supaya state (RTE editor
+          instance) reset bersih saat user buka task lain. */}
       {selectedTaskId && (
         <TeamTaskDetailModal
+          key={selectedTaskId}
           isOpen={isModalOpen}
           onClose={() => {
             setIsModalOpen(false);

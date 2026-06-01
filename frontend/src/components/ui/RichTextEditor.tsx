@@ -70,20 +70,17 @@ export function RichTextEditor({ content, onChange, placeholder = "Mulai menulis
     },
   });
 
-  // Sync `content` prop ke editor saat berubah (mis. parent baru selesai
-  // fetch task detail, kirim description). useEditor cuma baca `content`
-  // sekali saat mount, jadi tanpa effect ini editor stuck di empty string
-  // walau parent state sudah punya isi → user buka task, modal tampil
-  // kosong padahal data ada.
+  // Sync `content` prop ke editor saat berubah (parent baru selesai fetch
+  // task detail, kirim description). useEditor cuma baca `content` sekali
+  // saat mount; tanpa effect ini editor stuck di nilai mount-time walau
+  // parent state berubah.
   useEffect(() => {
     if (!editor) return;
     const current = editor.getHTML();
     // Skip kalau identical (hindari reset cursor saat onChange ↔ parent
-    // state echo balik nilai yg sama).
+    // state echo balik nilai yg sama, baik isi maupun "<p></p>" untuk empty).
     if (content === current) return;
-    // Skip juga kalau current sudah ada isi & content kosong — biasanya
-    // berarti parent belum sempat ekstrak isi (initial render sebelum fetch).
-    if (!content && current && current !== "<p></p>") return;
+    if (!content && (current === "" || current === "<p></p>")) return;
     editor.commands.setContent(content || "", { emitUpdate: false } as any);
   }, [content, editor]);
 

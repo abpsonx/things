@@ -610,13 +610,19 @@ export default function KanbanBoard() {
         </DragOverlay>
       </DndContext>
 
-      <TaskDetailModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        taskId={selectedTaskId || ""}
-        projectId={projectId as string}
-        onUpdate={fetchTasks}
-      />
+      {/* Conditional mount + key={taskId} — modal state (termasuk RTE editor
+          instance) reset bersih saat user buka task lain. Tanpa ini, state
+          modal persist & content task lama bisa nyangkut di task baru. */}
+      {selectedTaskId && (
+        <TaskDetailModal
+          key={selectedTaskId}
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          taskId={selectedTaskId}
+          projectId={projectId as string}
+          onUpdate={fetchTasks}
+        />
+      )}
 
       <BulkActionBar
         count={selectedIds.size}

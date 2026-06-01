@@ -867,6 +867,21 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
               <div className="p-2 space-y-1">
                 <div className="px-2 py-1 text-[10px] text-muted-foreground">Pilih beberapa orang — klik untuk tambah/hapus.</div>
                 <div className="max-h-48 overflow-y-auto">
+                  {(() => {
+                    const allIds = members.map((m: any) => m.user_id).filter(Boolean);
+                    const allPicked = allIds.length > 0 && allIds.every((id: string) => assigneeIds.includes(id));
+                    return (
+                      <button
+                        onClick={() => updateTask({ assignee_ids: allPicked ? [] : allIds })}
+                        className="w-full flex items-center gap-2 p-2 hover:bg-secondary rounded-md text-xs font-bold text-foreground border-b border-border/50 mb-1"
+                      >
+                        <div className="w-5 h-5 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center">
+                          {allPicked ? <Check className="w-3 h-3 text-primary" /> : <UserIcon className="w-3 h-3 text-primary" />}
+                        </div>
+                        {allPicked ? "Hapus semua" : `Pilih semua (${allIds.length})`}
+                      </button>
+                    );
+                  })()}
                   {assigneeIds.length > 0 && (
                     <button
                       onClick={() => updateTask({ assignee_ids: [] })}
