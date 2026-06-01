@@ -337,6 +337,15 @@ def _task_to_response(task):
     resp.linked_brief_ids = [str(x) for x in raw_links]
     if resp.custom_properties is None:
         resp.custom_properties = []
+    # Manually build assignees — lihat catatan di tasks._task_to_response.
+    links = task.__dict__.get("assignee_links")
+    if links:
+        from app.schemas import UserResponse
+        resp.assignees = [
+            UserResponse.model_validate(link.user)
+            for link in links
+            if getattr(link, "user", None) is not None
+        ]
     return resp
 
 

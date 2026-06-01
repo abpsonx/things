@@ -90,6 +90,17 @@ def _task_to_response(task):
     # custom_properties: jaga selalu list (None saat row lama tanpa default).
     if resp.custom_properties is None:
         resp.custom_properties = []
+    # Manually build assignees dari assignee_links — Task.assignees @property
+    # baca dari self.__dict__ yang gak selalu terpopulate setelah selectinload
+    # → resp.assignees kosong meski DB sudah simpan, UI gak refresh.
+    links = task.__dict__.get("assignee_links")
+    if links:
+        from app.schemas import UserResponse
+        resp.assignees = [
+            UserResponse.model_validate(link.user)
+            for link in links
+            if getattr(link, "user", None) is not None
+        ]
     return resp
 
 
