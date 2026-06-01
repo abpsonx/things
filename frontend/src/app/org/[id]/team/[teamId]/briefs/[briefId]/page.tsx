@@ -548,7 +548,14 @@ function SceneRow({
           kosong cuma jadi affordance kecil "+ tambah" sehingga user gak
           merasa wajib isi 3. */}
       <td className="px-3 py-3 space-y-1.5">
-        <SceneTypeInput value={local.scene_type || ""} badgeCls={badgeCls} onChange={(v) => setLocal({ ...local, scene_type: v })} onBlur={() => commit({ scene_type: local.scene_type })} />
+        <SceneTypeInput
+          value={local.scene_type || ""}
+          badgeCls={badgeCls}
+          onChange={(v) => setLocal({ ...local, scene_type: v })}
+          // Pakai nv kalau preset di-klik (nilai baru langsung dilewatkan),
+          // else fallback ke local.scene_type (buat blur input custom).
+          onBlur={(nv) => commit({ scene_type: nv !== undefined ? nv : local.scene_type })}
+        />
         <OptionalCell
           icon="⏱"
           value={local.time_range || ""}
@@ -681,7 +688,10 @@ function SceneTypeInput({
   value: string;
   badgeCls: string;
   onChange: (v: string) => void;
-  onBlur: () => void;
+  // onBlur optionally menerima nilai baru — dipakai saat user klik preset,
+  // supaya parent tidak baca stale local state (setLocal masih async sebelum
+  // onBlur dipanggil).
+  onBlur: (v?: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   useEffect(() => {
@@ -714,7 +724,11 @@ function SceneTypeInput({
                 <button
                   key={t}
                   type="button"
-                  onClick={() => { onChange(t); setOpen(false); onBlur(); }}
+                  // Pass t ke onBlur — kalau cuma onBlur() saja, parent akan
+                  // baca local.scene_type yang masih nilai LAMA (setLocal di
+                  // onChange belum di-apply React saat itu) → commit no-op,
+                  // refresh page → label hilang.
+                  onClick={() => { onChange(t); setOpen(false); onBlur(t); }}
                   className={cn("px-2 py-1 rounded text-[10px] font-extrabold uppercase tracking-widest", cls)}
                 >
                   {t}
