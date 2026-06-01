@@ -197,7 +197,9 @@ export default function KanbanBoard() {
       const [taskRes, projRes, memRes, labelRes] = await Promise.all([
         api.get(`/projects/${projectId}/tasks`),
         api.get(`/organizations/${orgId}/projects/${projectId}`),
-        api.get(`/projects/${projectId}/members`).catch(() => ({ data: [] })),
+        // Route members ada di /organizations/{org}/projects/{id}/members,
+        // bukan /projects/{id}/members — perbaiki path supaya gak 404.
+        api.get(`/organizations/${orgId}/projects/${projectId}/members`).catch(() => ({ data: [] })),
         api.get(`/projects/${projectId}/labels`).catch(() => ({ data: [] })),
       ]);
       setTasks(taskRes.data);

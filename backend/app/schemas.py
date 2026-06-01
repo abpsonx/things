@@ -312,7 +312,8 @@ class AttachmentResponse(BaseModel):
     uploaded_by: UUID
     file_name: str
     file_path: str
-    file_size: int
+    # nullable di DB — row lama bisa kosong, jangan strict int.
+    file_size: Optional[int] = None
     created_at: datetime
     uploader: Optional[UserResponse] = None
 

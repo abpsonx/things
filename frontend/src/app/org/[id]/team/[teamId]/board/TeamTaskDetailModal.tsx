@@ -117,17 +117,24 @@ export default function TeamTaskDetailModal({ isOpen, onClose, taskId, teamId, o
   const fetchTaskDetail = async () => {
     setLoading(true);
     try {
-      const [taskRes, commentsRes, attachmentsRes] = await Promise.all([
+      // allSettled — kalau 1 sub-resource error (comments/attachments),
+      // task detail-nya tetap tampil.
+      const [taskR, commentsR, attachmentsR] = await Promise.allSettled([
         api.get(`/organizations/${orgId}/teams/${teamId}/tasks/${taskId}`),
         api.get(`/tasks/${taskId}/comments`),
-        api.get(`/tasks/${taskId}/attachments`)
+        api.get(`/tasks/${taskId}/attachments`),
       ]);
-      setTask(taskRes.data);
-      setDescription(taskRes.data.description || "");
-      setResultUrl(taskRes.data.result_url || "");
-      setComments(commentsRes.data);
-      setSubtasks(taskRes.data.subtasks || []);
-      setAttachments(attachmentsRes.data);
+      if (taskR.status === "fulfilled") {
+        const td = taskR.value.data;
+        setTask(td);
+        setDescription(td.description || "");
+        setResultUrl(td.result_url || "");
+        setSubtasks(td.subtasks || []);
+      } else {
+        console.error("Failed to fetch task", taskR.reason);
+      }
+      if (commentsR.status === "fulfilled") setComments(commentsR.value.data);
+      if (attachmentsR.status === "fulfilled") setAttachments(attachmentsR.value.data);
     } catch (err) {
       console.error("Failed to fetch task detail", err);
     } finally {

@@ -91,8 +91,13 @@ async def list_attachments(
     current_user: User = Depends(get_current_user),
 ):
     """List all attachments for a task."""
+    # selectinload uploader — schema AttachmentResponse punya field uploader,
+    # tanpa ini Pydantic akses attachment.uploader → SA lazy-load di async
+    # context → MissingGreenlet → 500. Sama pola yg bikin task modal kosong.
+    from sqlalchemy.orm import selectinload
     result = await db.execute(
         select(Attachment)
+        .options(selectinload(Attachment.uploader))
         .where(Attachment.task_id == task_id)
         .order_by(Attachment.created_at.desc())
     )

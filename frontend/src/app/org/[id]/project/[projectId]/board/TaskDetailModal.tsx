@@ -112,17 +112,25 @@ export default function TaskDetailModal({ isOpen, onClose, taskId, projectId, on
   const fetchTaskDetail = async () => {
     setLoading(true);
     try {
-      const [taskRes, commentsRes, attachmentsRes] = await Promise.all([
+      // allSettled supaya kalau satu sub-resource error (mis. attachments
+      // 500), task detail-nya tetap tampil — gak gugur semua jadi modal
+      // kosong.
+      const [taskR, commentsR, attachmentsR] = await Promise.allSettled([
         api.get(`/projects/${projectId}/tasks/${taskId}`),
         api.get(`/tasks/${taskId}/comments`),
         api.get(`/tasks/${taskId}/attachments`),
       ]);
-      setTask(taskRes.data);
-      setDescription(taskRes.data.description || "");
-      setResultUrl(taskRes.data.result_url || "");
-      setComments(commentsRes.data);
-      setSubtasks(taskRes.data.subtasks || []);
-      setAttachments(attachmentsRes.data);
+      if (taskR.status === "fulfilled") {
+        const td = taskR.value.data;
+        setTask(td);
+        setDescription(td.description || "");
+        setResultUrl(td.result_url || "");
+        setSubtasks(td.subtasks || []);
+      } else {
+        console.error("Failed to fetch task", taskR.reason);
+      }
+      if (commentsR.status === "fulfilled") setComments(commentsR.value.data);
+      if (attachmentsR.status === "fulfilled") setAttachments(attachmentsR.value.data);
     } catch (err) {
       console.error("Failed to fetch task detail", err);
     } finally {
