@@ -178,6 +178,37 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
 
+        # Backfill notification.url untuk notif task-related yg sebelumnya
+        # tersimpan dengan default /dashboard (caller gak pass url eksplisit).
+        # Sekarang deep-link ke board project/team ?task={id}.
+        try:
+            await conn.execute(text("""
+                UPDATE notifications n
+                SET url = '/org/' || p.org_id::text || '/project/' || t.project_id::text
+                          || '/board?task=' || t.id::text
+                FROM tasks t
+                JOIN projects p ON t.project_id = p.id
+                WHERE n.ref_id = t.id
+                  AND n.type IN ('task_assigned','task_moved','task_updated',
+                                 'comment_added','mention')
+                  AND (n.url IS NULL OR n.url = '/dashboard' OR n.url = '')
+                  AND t.project_id IS NOT NULL
+            """))
+            await conn.execute(text("""
+                UPDATE notifications n
+                SET url = '/org/' || tm.org_id::text || '/team/' || t.team_id::text
+                          || '/board?task=' || t.id::text
+                FROM tasks t
+                JOIN teams tm ON t.team_id = tm.id
+                WHERE n.ref_id = t.id
+                  AND n.type IN ('task_assigned','task_moved','task_updated',
+                                 'comment_added','mention')
+                  AND (n.url IS NULL OR n.url = '/dashboard' OR n.url = '')
+                  AND t.team_id IS NOT NULL
+            """))
+        except Exception as e:
+            print(f"[migration] notification url backfill skipped: {e}")
+
         # brief brand / reference_url / final_url
         for col, col_type in [
             ("brand", "VARCHAR(255)"),
