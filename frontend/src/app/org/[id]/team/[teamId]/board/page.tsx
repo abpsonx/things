@@ -131,8 +131,9 @@ export default function TeamBoardPage() {
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
+      // 5px (was 8) — Chromium di macOS Tahoe claim gesture lebih cepat.
       activationConstraint: {
-        distance: 8,
+        distance: 5,
       },
     }),
     useSensor(KeyboardSensor, {

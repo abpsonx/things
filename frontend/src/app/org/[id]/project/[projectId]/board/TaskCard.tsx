@@ -70,7 +70,16 @@ export default function TaskCard({
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
 
-  const style = { transform: CSS.Translate.toString(transform), transition };
+  // touchAction: 'none' — kanonik dnd-kit; cegah browser claim gesture
+  // (esp. macOS Tahoe Chromium yg lebih agresif).
+  // userSelect: 'none' — drag mouse mulai jadi text-select kalau gak di-block.
+  const style = {
+    transform: CSS.Translate.toString(transform),
+    transition,
+    touchAction: 'none' as const,
+    userSelect: 'none' as const,
+    WebkitUserSelect: 'none' as const,
+  };
 
   // All hooks must be called unconditionally before any early return.
   const [isEditingTitle, setIsEditingTitle] = useState(false);

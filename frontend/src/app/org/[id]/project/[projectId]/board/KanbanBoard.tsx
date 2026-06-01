@@ -290,7 +290,9 @@ export default function KanbanBoard() {
   }, [fetchTasks, fetchColumns, projectId]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    // macOS Tahoe (Chromium baru) lebih agresif claim gesture sebelum 8px;
+    // turunin threshold ke 5px supaya dnd-kit aktivasi duluan.
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 

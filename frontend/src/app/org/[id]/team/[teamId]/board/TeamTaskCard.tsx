@@ -58,7 +58,15 @@ export default function TeamTaskCard({
     isDragging,
   } = useSortable({ id: task.id });
 
-  const style = { transform: CSS.Translate.toString(transform), transition };
+  // touchAction/userSelect: cegah Chromium di macOS Tahoe claim
+  // gesture sebelum dnd-kit aktivasi (lihat catatan di TaskCard.tsx).
+  const style = {
+    transform: CSS.Translate.toString(transform),
+    transition,
+    touchAction: 'none' as const,
+    userSelect: 'none' as const,
+    WebkitUserSelect: 'none' as const,
+  };
 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
