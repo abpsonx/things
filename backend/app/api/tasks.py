@@ -91,8 +91,8 @@ def _task_to_response(task):
     if resp.custom_properties is None:
         resp.custom_properties = []
     # Manually build assignees dari assignee_links — Task.assignees @property
-    # baca dari self.__dict__ yang gak selalu terpopulate setelah selectinload
-    # → resp.assignees kosong meski DB sudah simpan, UI gak refresh.
+    # kadang return [] walau selectinload sudah jalan (descriptor protocol
+    # gak menaruh value tepat di __dict__ key itu di semua versi SA).
     links = task.__dict__.get("assignee_links")
     if links:
         from app.schemas import UserResponse
@@ -480,13 +480,19 @@ async def get_task(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # selectinload(Task.assignee) + assignee_links wajib — tanpa keduanya,
+    # Pydantic validate TaskResponse → akses task.assignee → SA mencoba
+    # lazy load di async context → MissingGreenlet → 500 silent → FE
+    # modal tampil kosong total (judul/desc/status/assignee semua blank).
     result = await db.execute(
         select(Task)
         .options(
             selectinload(Task.task_labels).selectinload(TaskLabel.label),
             selectinload(Task.subtasks),
             selectinload(Task.comments),
-            selectinload(Task.attachments)
+            selectinload(Task.attachments),
+            selectinload(Task.assignee),
+            selectinload(Task.assignee_links).selectinload(TaskAssignee.user),
         )
         .where(Task.id == task_id, Task.project_id == project_id)
     )
