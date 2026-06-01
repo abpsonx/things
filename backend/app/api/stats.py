@@ -62,6 +62,9 @@ async def get_dashboard_stats(
             elif status == "in_progress": task_stats["in_progress"] += count
             elif status == "done": task_stats["completed"] += count
 
+    # ↓ overdue_proj_q & overdue_team_q reused di endpoint /dashboard/overdue-tasks
+    # untuk daftar lengkap saat user klik pill "X tugas telat deadline".
+
     # Overdue = punya deadline lewat & belum selesai (project + tim).
     overdue_proj_q = (
         select(func.count(Task.id))
@@ -239,6 +242,90 @@ async def get_dashboard_stats(
         "priority_breakdown": priority_breakdown,
         "weekly_completion": weeks,
     }
+
+
+@router.get("/dashboard/overdue-tasks")
+async def get_overdue_tasks(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Daftar lengkap task overdue (project + tim yang user ikut serta).
+    Dipakai dashboard saat user klik pill 'X tugas telat deadline'.
+    Filter sama persis dengan count di /stats/dashboard supaya total
+    di pill match dengan jumlah row yang muncul."""
+    from app.models.team import TeamMember
+    now = datetime.now(timezone.utc)
+
+    # Project-side: task di project yg user adalah OrgMember.
+    proj_q = (
+        select(Task)
+        .options(selectinload(Task.project), selectinload(Task.assignee))
+        .join(Project, Task.project_id == Project.id)
+        .join(Organization, Project.org_id == Organization.id)
+        .join(OrgMember, OrgMember.org_id == Organization.id)
+        .where(OrgMember.user_id == current_user.id,
+               Task.status != "done",
+               Task.due_date.is_not(None),
+               Task.due_date < now)
+    )
+    # Team-side: task di team yg user adalah TeamMember.
+    team_q = (
+        select(Task)
+        .options(selectinload(Task.team), selectinload(Task.assignee))
+        .join(TeamMember, TeamMember.team_id == Task.team_id)
+        .where(TeamMember.user_id == current_user.id,
+               Task.status != "done",
+               Task.due_date.is_not(None),
+               Task.due_date < now)
+    )
+
+    seen: set[str] = set()
+    items: list[dict] = []
+    for t in (await db.execute(proj_q)).scalars().all():
+        if str(t.id) in seen: continue
+        seen.add(str(t.id))
+        items.append({
+            "id": str(t.id),
+            "title": t.title,
+            "status": t.status,
+            "priority": t.priority,
+            "due_date": t.due_date.isoformat() if t.due_date else None,
+            "project": {
+                "id": str(t.project.id),
+                "name": t.project.name,
+                "org_id": str(t.project.org_id),
+            } if t.project else None,
+            "team": None,
+            "assignee": {
+                "id": str(t.assignee.id),
+                "name": t.assignee.name,
+                "avatar_url": t.assignee.avatar_url,
+            } if t.assignee else None,
+        })
+    for t in (await db.execute(team_q)).scalars().all():
+        if str(t.id) in seen: continue
+        seen.add(str(t.id))
+        items.append({
+            "id": str(t.id),
+            "title": t.title,
+            "status": t.status,
+            "priority": t.priority,
+            "due_date": t.due_date.isoformat() if t.due_date else None,
+            "project": None,
+            "team": {
+                "id": str(t.team.id),
+                "name": t.team.name,
+                "org_id": str(t.team.org_id),
+            } if t.team else None,
+            "assignee": {
+                "id": str(t.assignee.id),
+                "name": t.assignee.name,
+                "avatar_url": t.assignee.avatar_url,
+            } if t.assignee else None,
+        })
+    # Urut: paling telat (due_date paling lama) di atas.
+    items.sort(key=lambda x: x.get("due_date") or "")
+    return items
 
 
 @router.get("/project/{project_id}")

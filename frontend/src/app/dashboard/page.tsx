@@ -18,8 +18,10 @@ import {
   CheckSquare,
   AlertCircle,
   Briefcase,
+  Flag,
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip } from "recharts";
+import Modal from "@/components/ui/Modal";
 
 interface Organization {
   id: string;
@@ -43,6 +45,17 @@ interface MyTask {
   is_overdue: boolean;
   project: OrgRef | null;
   team?: OrgRef | null;
+}
+
+interface OverdueTask {
+  id: string;
+  title: string;
+  status: string;
+  priority?: string;
+  due_date: string | null;
+  project: OrgRef | null;
+  team: OrgRef | null;
+  assignee: { id: string; name: string; avatar_url?: string | null } | null;
 }
 
 interface Meeting {
@@ -83,6 +96,9 @@ export default function DashboardPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [newOrgName, setNewOrgName] = useState("");
   const [stats, setStats] = useState<any>(null);
+  const [overdueOpen, setOverdueOpen] = useState(false);
+  const [overdueTasks, setOverdueTasks] = useState<OverdueTask[] | null>(null);
+  const [overdueLoading, setOverdueLoading] = useState(false);
 
   const fetchAll = async () => {
     try {
@@ -100,6 +116,29 @@ export default function DashboardPage() {
   };
 
   useEffect(() => { fetchAll(); }, []);
+
+  const openOverdue = async () => {
+    setOverdueOpen(true);
+    if (overdueTasks === null) {
+      setOverdueLoading(true);
+      try {
+        const res = await api.get("/stats/dashboard/overdue-tasks");
+        setOverdueTasks(res.data || []);
+      } catch (err) {
+        console.error("Failed to fetch overdue tasks", err);
+        setOverdueTasks([]);
+      } finally {
+        setOverdueLoading(false);
+      }
+    }
+  };
+
+  // Build task URL — kalau task milik project → board project; team → board tim.
+  const taskUrl = (t: OverdueTask): string | null => {
+    if (t.project) return `/org/${t.project.org_id}/project/${t.project.id}/board?task=${t.id}`;
+    if (t.team) return `/org/${t.team.org_id}/team/${t.team.id}/board?task=${t.id}`;
+    return null;
+  };
 
   const handleCreateOrg = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -302,9 +341,14 @@ export default function DashboardPage() {
           </div>
           {taskStats.overdue > 0 && (
             <div className="mt-3 flex items-center justify-center">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/10 text-red-500 text-[10px] font-bold">
-                <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> {taskStats.overdue} tugas telat deadline
-              </span>
+              <button
+                type="button"
+                onClick={openOverdue}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/10 text-red-500 text-[10px] font-bold hover:bg-red-500/20 transition-colors"
+                title="Lihat daftar lengkap"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> {taskStats.overdue} tugas telat deadline →
+              </button>
             </div>
           )}
         </div>
@@ -491,6 +535,75 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Overdue tasks modal — di-trigger dari pill di Ringkasan Performa. */}
+      <Modal isOpen={overdueOpen} onClose={() => setOverdueOpen(false)} title={`Tugas telat deadline (${taskStats.overdue})`}>
+        {overdueLoading ? (
+          <div className="flex justify-center py-8">
+            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : !overdueTasks || overdueTasks.length === 0 ? (
+          <p className="text-xs italic text-muted-foreground p-6 text-center">
+            Gak ada tugas telat. Kerja bagus 👏
+          </p>
+        ) : (
+          <div className="space-y-2 max-h-[70vh] overflow-y-auto">
+            {overdueTasks.map((t) => {
+              const url = taskUrl(t);
+              const daysLate = t.due_date ? Math.max(1, Math.floor((Date.now() - new Date(t.due_date).getTime()) / (24 * 60 * 60 * 1000))) : 0;
+              const priorityColor =
+                t.priority === "high"   ? "text-red-500" :
+                t.priority === "medium" ? "text-amber-500" :
+                                          "text-muted-foreground";
+              const inner = (
+                <div className="flex items-start gap-3 p-3 rounded-xl border border-border bg-card hover:border-red-500/40 hover:bg-red-500/5 transition-all">
+                  <span className="shrink-0 w-8 h-8 rounded-lg bg-red-500/10 text-red-500 flex items-center justify-center">
+                    <AlertCircle className="w-4 h-4" />
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="font-bold text-sm leading-tight truncate flex-1 min-w-0">{t.title}</h4>
+                      {t.priority && (
+                        <span className={cn("inline-flex items-center gap-0.5 text-[9px] font-extrabold uppercase tracking-widest", priorityColor)}>
+                          <Flag className="w-2.5 h-2.5" /> {t.priority}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 mt-1 text-[10px] text-muted-foreground flex-wrap">
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-secondary border border-border">
+                        {t.project ? <Briefcase className="w-2.5 h-2.5" /> : <Users className="w-2.5 h-2.5" />}
+                        {t.project?.name || t.team?.name || "—"}
+                      </span>
+                      <span className="text-red-500 font-bold">
+                        Telat {daysLate} hari ·
+                        {t.due_date ? ` ${format(new Date(t.due_date), "d MMM yyyy", { locale: idLocale })}` : ""}
+                      </span>
+                      {t.assignee && (
+                        <span className="inline-flex items-center gap-1 ml-auto">
+                          <span className="w-4 h-4 rounded-full bg-secondary border border-border flex items-center justify-center text-[8px] font-bold overflow-hidden">
+                            {t.assignee.avatar_url
+                              ? <img src={t.assignee.avatar_url} alt="" className="w-full h-full object-cover" />
+                              : (t.assignee.name || "?").charAt(0)}
+                          </span>
+                          <span>{t.assignee.name}</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {url && <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0 mt-1" />}
+                </div>
+              );
+              return url ? (
+                <Link key={t.id} href={url} onClick={() => setOverdueOpen(false)} className="block">
+                  {inner}
+                </Link>
+              ) : (
+                <div key={t.id}>{inner}</div>
+              );
+            })}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
