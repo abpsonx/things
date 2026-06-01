@@ -333,6 +333,7 @@ export default function SosmedPage() {
   );
 }
 
+// Dispatcher — pilih dashboard layout sesuai platform.
 function GrowthTab({ accountId, m, posts, platform }: {
   accountId: string;
   m?: AccountMetrics;
@@ -340,15 +341,25 @@ function GrowthTab({ accountId, m, posts, platform }: {
   platform: "instagram" | "tiktok";
 }) {
   if (!m) return <p className="text-xs text-muted-foreground text-center py-4">Belum ada data.</p>;
+  if (platform === "instagram") {
+    return <InstagramDashboard accountId={accountId} m={m} posts={posts} />;
+  }
+  return <TiktokDashboard accountId={accountId} m={m} posts={posts} />;
+}
 
-  // ─── KPI computations ─────────────────────────────────────────────────────
+// ─── Shared computation utils ────────────────────────────────────────────────
+function deltaPct(delta: number | null, base: number) {
+  if (delta == null || base === 0) return null;
+  return (delta / Math.max(base, 1)) * 100;
+}
+
+// ─── TikTok dashboard (6 KPI horizontal) ─────────────────────────────────────
+function TiktokDashboard({ accountId, m, posts }: { accountId: string; m: AccountMetrics; posts: Post[] }) {
   const latest = m.latest;
-  // "vs first record" — pakai snapshot pertama yang ada di history sebagai baseline.
   const firstRec = m.history[0] || null;
   const postCount = posts.length;
 
   const followers = latest?.followers ?? 0;
-  // Video Views = sum dari reach semua postingan. Untuk IG: reach. TikTok: views.
   const totalViews = posts.reduce((s, p) => s + (p.reach ?? 0), 0);
   const totalLikes = latest?.likes ?? 0;
   const totalComments = latest?.comments ?? 0;
@@ -360,30 +371,15 @@ function GrowthTab({ accountId, m, posts, platform }: {
   const dLikes = firstRec ? totalLikes - (firstRec.likes ?? 0) : null;
   const dComments = firstRec ? totalComments - (firstRec.comments ?? 0) : null;
   const dShares = firstRec ? totalShares - (firstRec.shares ?? 0) : null;
-  // First-record engagement rate dihitung dari snapshot pertama
-  // (kalau ada views/reach historis — yang kita gak punya per snapshot, fallback 0).
   const firstEng = (firstRec ? (firstRec.likes ?? 0) + (firstRec.comments ?? 0) + (firstRec.shares ?? 0) : 0);
 
-  const pct = (delta: number | null, base: number) => {
-    if (delta == null || base === 0) return null;
-    return (delta / Math.max(base, 1)) * 100;
-  };
-
-  // ─── Chart data ──────────────────────────────────────────────────────────
-  // Audience Growth: pure follower history.
   const audienceData = m.history.map((h) => ({ date: h.date, followers: h.followers ?? 0 }));
-  // Engagement Over Time: derived "views" pakai followers sbg proxy bila reach
-  // tidak tersedia per snapshot. Kalau pengen real views per hari, butuh
-  // backend untuk snapshot reach harian — sementara pakai likes+comments
-  // sebagai engagement signal.
   const engagementData = m.history.map((h) => ({
     date: h.date,
     likes: h.likes ?? 0,
     engagement: ((h.likes ?? 0) + (h.comments ?? 0) + (h.shares ?? 0)),
-    // views proxy: scale linearly dari interpolasi, atau pakai totalViews terakhir
     views: 0,
   }));
-  // Spread totalViews di hari terakhir saja kalau view per hari tidak tersedia.
   if (engagementData.length > 0) engagementData[engagementData.length - 1].views = totalViews;
 
   const hasHistory = m.history.length >= 2;
@@ -396,7 +392,7 @@ function GrowthTab({ accountId, m, posts, platform }: {
           label="Followers"
           value={followers}
           delta={dFollowers}
-          deltaPct={pct(dFollowers, firstRec?.followers ?? 0)}
+          deltaPct={deltaPct(dFollowers, firstRec?.followers ?? 0)}
           subtitle="Total followers"
           icon={<Users className="w-3.5 h-3.5" />}
           color="bg-slate-100 text-slate-700 dark:bg-slate-900/40 dark:text-slate-300"
@@ -415,7 +411,7 @@ function GrowthTab({ accountId, m, posts, platform }: {
           label="Total Likes"
           value={totalLikes}
           delta={dLikes}
-          deltaPct={pct(dLikes, firstRec?.likes ?? 0)}
+          deltaPct={deltaPct(dLikes, firstRec?.likes ?? 0)}
           subtitle={postCount > 0 ? `Avg ${Math.round(totalLikes / postCount).toLocaleString("id-ID")} per video` : "Profile + video likes"}
           subtitle2="Profile + video likes"
           icon={<Heart className="w-3.5 h-3.5" />}
@@ -425,7 +421,7 @@ function GrowthTab({ accountId, m, posts, platform }: {
           label="Comments"
           value={totalComments}
           delta={dComments}
-          deltaPct={pct(dComments, firstRec?.comments ?? 0)}
+          deltaPct={deltaPct(dComments, firstRec?.comments ?? 0)}
           subtitle={postCount > 0 ? `Avg ${Math.round(totalComments / postCount).toLocaleString("id-ID")} per video` : "Total comments"}
           subtitle2="Total comments received"
           icon={<MessageCircle className="w-3.5 h-3.5" />}
@@ -435,7 +431,7 @@ function GrowthTab({ accountId, m, posts, platform }: {
           label="Shares"
           value={totalShares}
           delta={dShares}
-          deltaPct={pct(dShares, firstRec?.shares ?? 0)}
+          deltaPct={deltaPct(dShares, firstRec?.shares ?? 0)}
           subtitle={postCount > 0 ? `Avg ${Math.round(totalShares / postCount).toLocaleString("id-ID")} per video` : "Total shares"}
           subtitle2="Total video shares"
           icon={<Share2 className="w-3.5 h-3.5" />}
@@ -500,13 +496,308 @@ function GrowthTab({ accountId, m, posts, platform }: {
       </div>
 
       {/* ─── Top Performing Content table ────────────────────────────────── */}
-      <TopPerformingTable posts={posts} followers={followers} platform={platform} />
+      <TopPerformingTable posts={posts} followers={followers} platform="tiktok" />
 
       {(m.latest?.shares == null && m.latest?.saves == null) && (
         <p className="text-[11px] text-muted-foreground italic">
           Share &amp; Save kosong? Hubungkan ulang akun untuk memberi izin insights, lalu Refresh.
         </p>
       )}
+    </div>
+  );
+}
+
+// ─── Instagram dashboard (4 KPI grouped + content format + demographics) ────
+function InstagramDashboard({ accountId, m, posts }: { accountId: string; m: AccountMetrics; posts: Post[] }) {
+  const latest = m.latest;
+  const firstRec = m.history[0] || null;
+  const postCount = posts.length;
+
+  // Profile header data (dari account info — sosmed page punya akses
+  // tapi GrowthTab tidak. Display "bio" akan kosong sampai backend ekspos
+  // bio field — sementara pakai display_name + handle saja).
+  const followers = latest?.followers ?? 0;
+  const following = latest?.following ?? 0;
+  const posts_count = latest?.posts_count ?? postCount;
+
+  // KPI grouping (sesuai screenshot IG):
+  // VIEWS: total reach (content plays & displays) + sub "Accounts reached"
+  // INTERACTIONS: likes+comments+shares+saves
+  // PROFILE: profile_visits + external_link_taps (belum ada di MetricPoint)
+  // ENGAGEMENT: saves (utama) + breakdown likes/comments/shares/saves
+  const totalReach = posts.reduce((s, p) => s + (p.reach ?? 0), 0);
+  const totalLikes = posts.reduce((s, p) => s + (p.like_count ?? 0), 0);
+  const totalComments = posts.reduce((s, p) => s + (p.comments_count ?? 0), 0);
+  const totalShares = posts.reduce((s, p) => s + (p.shares ?? 0), 0);
+  const totalSaves = posts.reduce((s, p) => s + (p.saved ?? 0), 0);
+  const totalInteractions = totalLikes + totalComments + totalShares + totalSaves;
+
+  // Content format split — Reels vs Carousels vs Image dari media_type.
+  // IG media_type: IMAGE, VIDEO, CAROUSEL_ALBUM, REELS (atau VIDEO untuk reels).
+  const formatCount = posts.reduce(
+    (acc, p) => {
+      const t = (p.media_type || "").toUpperCase();
+      if (t.includes("CAROUSEL")) acc.carousel++;
+      else if (t.includes("VIDEO") || t.includes("REELS") || t.includes("REEL")) acc.reels++;
+      else acc.image++;
+      return acc;
+    },
+    { reels: 0, carousel: 0, image: 0 },
+  );
+  const totalFormatPosts = formatCount.reels + formatCount.carousel + formatCount.image;
+
+  // Audience growth chart (followers only — kalau backend nantinya simpan
+  // reach harian, tinggal tambah dataKey "reach").
+  const audienceData = m.history.map((h) => ({ date: h.date, followers: h.followers ?? 0 }));
+  const engagementData = m.history.map((h) => ({
+    date: h.date,
+    likes: h.likes ?? 0,
+    comments: h.comments ?? 0,
+    engagement: ((h.likes ?? 0) + (h.comments ?? 0) + (h.shares ?? 0)),
+  }));
+  const hasHistory = m.history.length >= 2;
+
+  const dFollowers = firstRec ? followers - (firstRec.followers ?? 0) : null;
+
+  return (
+    <div className="space-y-6">
+      {/* ─── Profile header bar ─────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-border bg-card p-4 shadow-[2px_2px_0_#0f172a] dark:shadow-[2px_2px_0_#334155]">
+        <div className="flex items-start gap-4 flex-wrap">
+          <div className="w-14 h-14 rounded-full bg-secondary border border-border overflow-hidden shrink-0 flex items-center justify-center text-base font-bold">
+            {m.account.avatar_url
+              ? <img src={m.account.avatar_url} alt="" className="w-full h-full object-cover" />
+              : (m.account.display_name || m.account.username || "?").charAt(0).toUpperCase()}
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-extrabold text-lg leading-tight">{m.account.display_name || m.account.username}</h3>
+            <p className="text-xs text-muted-foreground">@{m.account.username}</p>
+            <div className="flex items-center gap-4 mt-2 text-[11px] font-bold uppercase tracking-widest">
+              <span><span className="text-muted-foreground">Followers</span> <span className="tabular-nums">{followers.toLocaleString("id-ID")}</span></span>
+              <span><span className="text-muted-foreground">Following</span> <span className="tabular-nums">{following.toLocaleString("id-ID")}</span></span>
+              <span><span className="text-muted-foreground">Posts</span> <span className="tabular-nums">{posts_count.toLocaleString("id-ID")}</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ─── 4 KPI grouped cards row (IG layout) ───────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <IgKpiCard
+          label="Views"
+          icon={<Eye className="w-3.5 h-3.5" />}
+          color="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+          main={{ value: totalReach, sub: "Content plays & displays" }}
+          breakdown={[{ label: "Accounts reached", value: totalReach }]}
+        />
+        <IgKpiCard
+          label="Interactions"
+          icon={<Heart className="w-3.5 h-3.5" />}
+          color="bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300"
+          main={{ value: totalInteractions, sub: "Likes, comments, shares & saves" }}
+          breakdown={[{ label: "Accounts engaged", value: totalInteractions }]}
+        />
+        <IgKpiCard
+          label="Profile"
+          icon={<Users className="w-3.5 h-3.5" />}
+          color="bg-slate-100 text-slate-700 dark:bg-slate-900/40 dark:text-slate-300"
+          main={{ value: 0, sub: "Profile activity" }}
+          breakdown={[
+            { label: "Profile visits", value: 0 },
+            { label: "External link taps", value: 0 },
+          ]}
+          note="Belum dipantau — butuh izin profile_insights."
+        />
+        <IgKpiCard
+          label="Engagement"
+          icon={<Bookmark className="w-3.5 h-3.5" />}
+          color="bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300"
+          main={{ value: totalSaves, sub: "Content saves" }}
+          breakdown={[
+            { label: "Likes", value: totalLikes },
+            { label: "Comments", value: totalComments },
+            { label: "Shares", value: totalShares },
+            { label: "Saves", value: totalSaves },
+          ]}
+        />
+      </div>
+
+      {/* ─── Charts row ──────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <ChartCard title="Follower Net Growth" subtitle="Instagram specific growth metrics">
+          {hasHistory ? (
+            <div className="h-56 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={audienceData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id={`audience-ig-${accountId}`} x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.35} />
+                      <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                  <XAxis dataKey="date" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v) => v.slice(5)} />
+                  <YAxis fontSize={10} tickLine={false} axisLine={false} width={40} allowDecimals={false} />
+                  <RechartsTooltip />
+                  <Area type="monotone" dataKey="followers" name="Followers" stroke="#8b5cf6" strokeWidth={2} fill={`url(#audience-ig-${accountId})`} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <EmptyChart />
+          )}
+          {dFollowers != null && (
+            <p className="text-[10px] text-muted-foreground mt-2">
+              {dFollowers > 0 ? "+" : ""}{dFollowers.toLocaleString("id-ID")} followers sejak data pertama
+            </p>
+          )}
+        </ChartCard>
+
+        <ChartCard title="Engagement Over Time" subtitle="Likes vs comments">
+          {hasHistory ? (
+            <div className="h-56 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={engagementData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                  <XAxis dataKey="date" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v) => v.slice(5)} />
+                  <YAxis fontSize={10} tickLine={false} axisLine={false} width={40} allowDecimals={false} />
+                  <RechartsTooltip />
+                  <Area type="monotone" dataKey="likes" name="Likes" stroke="#facc15" strokeWidth={2} fillOpacity={0.25} fill="#facc15" />
+                  <Area type="monotone" dataKey="comments" name="Comments" stroke="#0ea5e9" strokeWidth={2} fillOpacity={0.2} fill="#0ea5e9" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <EmptyChart />
+          )}
+        </ChartCard>
+      </div>
+
+      {/* ─── Content Format + Demographics row ──────────────────────────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+        <ChartCard title="Content Format" subtitle="Performance by type">
+          {totalFormatPosts > 0 ? (
+            <div className="flex items-center gap-4">
+              <ContentFormatDonut counts={formatCount} total={totalFormatPosts} />
+              <ul className="space-y-1 text-xs flex-1">
+                <li className="flex items-center justify-between"><span className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-sm bg-sky-400" /> Reels</span> <strong className="tabular-nums">{formatCount.reels}</strong></li>
+                <li className="flex items-center justify-between"><span className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-sm bg-rose-400" /> Carousels</span> <strong className="tabular-nums">{formatCount.carousel}</strong></li>
+                <li className="flex items-center justify-between"><span className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-sm bg-slate-400" /> Image</span> <strong className="tabular-nums">{formatCount.image}</strong></li>
+              </ul>
+            </div>
+          ) : (
+            <p className="text-xs italic text-muted-foreground text-center py-6">Belum ada postingan.</p>
+          )}
+        </ChartCard>
+
+        <ChartCard title="Gender Split" subtitle="Audience demographics">
+          <DemoPlaceholder text="Data demografi gender butuh izin lifecycle audience_insights dari Instagram Graph API." />
+        </ChartCard>
+
+        <ChartCard title="Top Cities" subtitle="Audience location">
+          <DemoPlaceholder text="Top cities butuh izin audience_insights dari Instagram Graph API." />
+        </ChartCard>
+
+        <ChartCard title="Age Range" subtitle="Audience age distribution">
+          <DemoPlaceholder text="Age range butuh izin audience_insights dari Instagram Graph API." />
+        </ChartCard>
+      </div>
+
+      {/* ─── Top Performing Content table ──────────────────────────────────── */}
+      <TopPerformingTable posts={posts} followers={followers} platform="instagram" />
+
+      {(m.latest?.shares == null && m.latest?.saves == null) && (
+        <p className="text-[11px] text-muted-foreground italic">
+          Share &amp; Save kosong? Hubungkan ulang akun untuk memberi izin insights, lalu Refresh.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// IG KPI card — main number + sub-list breakdown.
+function IgKpiCard({
+  label, icon, color, main, breakdown, note,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  color: string;
+  main: { value: number; sub: string };
+  breakdown?: { label: string; value: number }[];
+  note?: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4 shadow-[2px_2px_0_#0f172a] dark:shadow-[2px_2px_0_#334155] flex flex-col gap-2">
+      <div className="flex items-start justify-between">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{label}</p>
+        <span className={cn("w-6 h-6 rounded-full flex items-center justify-center", color)}>{icon}</span>
+      </div>
+      <p className="text-2xl font-extrabold tabular-nums leading-tight">
+        {main.value >= 1000 ? `${(main.value / 1000).toFixed(main.value >= 10000 ? 0 : 1)}K`.replace(".0K", "K") : main.value.toLocaleString("id-ID")}
+      </p>
+      <p className="text-[10px] text-muted-foreground">{main.sub}</p>
+      {breakdown && breakdown.length > 0 && (
+        <ul className="space-y-0.5 mt-1 pt-2 border-t border-border/60">
+          {breakdown.map((b) => (
+            <li key={b.label} className="flex items-center justify-between text-[11px]">
+              <span className="text-muted-foreground">{b.label}</span>
+              <strong className="tabular-nums">{b.value.toLocaleString("id-ID")}</strong>
+            </li>
+          ))}
+        </ul>
+      )}
+      {note && <p className="text-[9px] italic text-muted-foreground mt-1">{note}</p>}
+    </div>
+  );
+}
+
+// Simple SVG donut chart for IG content format.
+function ContentFormatDonut({ counts, total }: { counts: { reels: number; carousel: number; image: number }; total: number }) {
+  const r = 36;
+  const c = 2 * Math.PI * r;
+  const reelsLen = (counts.reels / total) * c;
+  const carouselLen = (counts.carousel / total) * c;
+  const imageLen = (counts.image / total) * c;
+  return (
+    <svg width="96" height="96" viewBox="0 0 96 96" className="shrink-0">
+      <circle cx="48" cy="48" r={r} fill="none" stroke="hsl(var(--secondary))" strokeWidth="14" />
+      {/* Reels segment */}
+      {counts.reels > 0 && (
+        <circle cx="48" cy="48" r={r} fill="none" stroke="#38bdf8" strokeWidth="14"
+          strokeDasharray={`${reelsLen} ${c}`}
+          transform="rotate(-90 48 48)"
+        />
+      )}
+      {/* Carousel segment */}
+      {counts.carousel > 0 && (
+        <circle cx="48" cy="48" r={r} fill="none" stroke="#fb7185" strokeWidth="14"
+          strokeDasharray={`${carouselLen} ${c}`}
+          strokeDashoffset={-reelsLen}
+          transform="rotate(-90 48 48)"
+        />
+      )}
+      {/* Image segment */}
+      {counts.image > 0 && (
+        <circle cx="48" cy="48" r={r} fill="none" stroke="#94a3b8" strokeWidth="14"
+          strokeDasharray={`${imageLen} ${c}`}
+          strokeDashoffset={-(reelsLen + carouselLen)}
+          transform="rotate(-90 48 48)"
+        />
+      )}
+      <text x="48" y="50" textAnchor="middle" dominantBaseline="middle" className="text-xs font-extrabold fill-foreground">
+        {total}
+      </text>
+      <text x="48" y="62" textAnchor="middle" dominantBaseline="middle" className="text-[8px] font-bold uppercase tracking-widest fill-muted-foreground">
+        Posts
+      </text>
+    </svg>
+  );
+}
+
+function DemoPlaceholder({ text }: { text: string }) {
+  return (
+    <div className="h-32 flex items-center justify-center text-center text-[10px] italic text-muted-foreground px-3">
+      {text}
     </div>
   );
 }
