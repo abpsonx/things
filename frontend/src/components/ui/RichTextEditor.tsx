@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -69,6 +69,23 @@ export function RichTextEditor({ content, onChange, placeholder = "Mulai menulis
       onChange(editor.getHTML());
     },
   });
+
+  // Sync `content` prop ke editor saat berubah (mis. parent baru selesai
+  // fetch task detail, kirim description). useEditor cuma baca `content`
+  // sekali saat mount, jadi tanpa effect ini editor stuck di empty string
+  // walau parent state sudah punya isi → user buka task, modal tampil
+  // kosong padahal data ada.
+  useEffect(() => {
+    if (!editor) return;
+    const current = editor.getHTML();
+    // Skip kalau identical (hindari reset cursor saat onChange ↔ parent
+    // state echo balik nilai yg sama).
+    if (content === current) return;
+    // Skip juga kalau current sudah ada isi & content kosong — biasanya
+    // berarti parent belum sempat ekstrak isi (initial render sebelum fetch).
+    if (!content && current && current !== "<p></p>") return;
+    editor.commands.setContent(content || "", { emitUpdate: false } as any);
+  }, [content, editor]);
 
   if (!editor) {
     return null;
