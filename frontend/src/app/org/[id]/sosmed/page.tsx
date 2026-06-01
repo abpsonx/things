@@ -34,11 +34,23 @@ interface Delta {
 
 type GrowthMetric = "followers" | "likes" | "comments" | "shares" | "saves";
 
+interface InsightsBlob {
+  profile?: Record<string, number>;
+  demographics?: {
+    gender_age?: Record<string, number>;
+    city?: Record<string, number>;
+    country?: Record<string, number>;
+    age?: Record<string, number>;
+  };
+  fetched_at?: string;
+}
+
 interface AccountMetrics {
   account: SocialAccount;
   latest: MetricPoint | null;
   history: MetricPoint[];
   deltas: Record<GrowthMetric, Delta>;
+  insights?: InsightsBlob | null;
 }
 
 interface Post {
@@ -546,6 +558,16 @@ function InstagramDashboard({ accountId, m, posts }: { accountId: string; m: Acc
   );
   const totalFormatPosts = formatCount.reels + formatCount.carousel + formatCount.image;
 
+  // Profile insights (dari Graph API /me/insights — kosong kalau akun gak
+  // qualified untuk audience demographics, atau scope belum granted).
+  const insights = m.insights || {};
+  const profile = insights.profile || {};
+  const demographics = insights.demographics || {};
+  const profileViews = profile.profile_views ?? 0;
+  const websiteClicks = profile.website_clicks ?? 0;
+  const accountsEngaged = profile.accounts_engaged ?? 0;
+  const profileReach = profile.reach ?? 0;
+
   // Audience growth chart (followers only — kalau backend nantinya simpan
   // reach harian, tinggal tambah dataKey "reach").
   const audienceData = m.history.map((h) => ({ date: h.date, followers: h.followers ?? 0 }));
@@ -588,25 +610,31 @@ function InstagramDashboard({ accountId, m, posts }: { accountId: string; m: Acc
           icon={<Eye className="w-3.5 h-3.5" />}
           color="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
           main={{ value: totalReach, sub: "Content plays & displays" }}
-          breakdown={[{ label: "Accounts reached", value: totalReach }]}
+          breakdown={[
+            { label: "Accounts reached", value: profileReach > 0 ? profileReach : totalReach },
+          ]}
         />
         <IgKpiCard
           label="Interactions"
           icon={<Heart className="w-3.5 h-3.5" />}
           color="bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300"
           main={{ value: totalInteractions, sub: "Likes, comments, shares & saves" }}
-          breakdown={[{ label: "Accounts engaged", value: totalInteractions }]}
+          breakdown={[
+            { label: "Accounts engaged", value: accountsEngaged > 0 ? accountsEngaged : totalInteractions },
+          ]}
         />
         <IgKpiCard
           label="Profile"
           icon={<Users className="w-3.5 h-3.5" />}
           color="bg-slate-100 text-slate-700 dark:bg-slate-900/40 dark:text-slate-300"
-          main={{ value: 0, sub: "Profile activity" }}
+          main={{ value: profileViews + websiteClicks, sub: "Profile activity" }}
           breakdown={[
-            { label: "Profile visits", value: 0 },
-            { label: "External link taps", value: 0 },
+            { label: "Profile visits", value: profileViews },
+            { label: "External link taps", value: websiteClicks },
           ]}
-          note="Belum dipantau — butuh izin profile_insights."
+          note={profileViews === 0 && websiteClicks === 0
+            ? "Belum ada data. Akun butuh ≥ 100 follower + Business mode untuk insights."
+            : undefined}
         />
         <IgKpiCard
           label="Engagement"
@@ -691,15 +719,44 @@ function InstagramDashboard({ accountId, m, posts }: { accountId: string; m: Acc
         </ChartCard>
 
         <ChartCard title="Gender Split" subtitle="Audience demographics">
-          <DemoPlaceholder text="Data demografi gender butuh izin lifecycle audience_insights dari Instagram Graph API." />
+          {/* gender_age key di-format \"AGE · GENDER\" — agregasi by gender saja. */}
+          <DemoBars
+            data={(() => {
+              const ga = demographics.gender_age || {};
+              const agg: Record<string, number> = {};
+              for (const [k, v] of Object.entries(ga)) {
+                // ambil bagian gender (terakhir setelah " · ")
+                const parts = k.split(" · ");
+                const gender = parts[parts.length - 1] || "?";
+                agg[gender] = (agg[gender] || 0) + Number(v || 0);
+              }
+              return agg;
+            })()}
+            colorOf={(label: string) => label.toLowerCase() === "f" || label.toLowerCase().startsWith("female") ? "bg-rose-500"
+              : label.toLowerCase() === "m" || label.toLowerCase().startsWith("male") ? "bg-slate-700 dark:bg-slate-300"
+              : "bg-amber-500"}
+            labelOf={(label: string) => label === "F" ? "Female" : label === "M" ? "Male" : label === "U" ? "Other" : label}
+            emptyNote="Belum tersedia — butuh ≥ 100 follower & Business mode."
+          />
         </ChartCard>
 
         <ChartCard title="Top Cities" subtitle="Audience location">
-          <DemoPlaceholder text="Top cities butuh izin audience_insights dari Instagram Graph API." />
+          <DemoBars
+            data={demographics.city || {}}
+            top={5}
+            colorOf={() => "bg-pink-400"}
+            emptyNote="Belum tersedia — butuh ≥ 100 follower & Business mode."
+          />
         </ChartCard>
 
         <ChartCard title="Age Range" subtitle="Audience age distribution">
-          <DemoPlaceholder text="Age range butuh izin audience_insights dari Instagram Graph API." />
+          <DemoBars
+            data={demographics.age || {}}
+            colorOf={() => "bg-indigo-500"}
+            // Pastikan urutan umur natural (13-17, 18-24, 25-34, ...).
+            sortBy="key"
+            emptyNote="Belum tersedia — butuh ≥ 100 follower & Business mode."
+          />
         </ChartCard>
       </div>
 
@@ -794,11 +851,51 @@ function ContentFormatDonut({ counts, total }: { counts: { reels: number; carous
   );
 }
 
-function DemoPlaceholder({ text }: { text: string }) {
+/** Horizontal bar chart untuk demographics row (gender/cities/age).
+ *  Sort default by value desc. `top` opsional — batasin jumlah baris (city
+ *  biasanya banyak, ambil top 5). `colorOf` & `labelOf` callback opsional
+ *  buat customisation per-baris. */
+function DemoBars({
+  data, top, colorOf, labelOf, sortBy = "value", emptyNote,
+}: {
+  data: Record<string, number>;
+  top?: number;
+  colorOf?: (label: string) => string;
+  labelOf?: (label: string) => string;
+  sortBy?: "value" | "key";
+  emptyNote?: string;
+}) {
+  const entries = Object.entries(data).filter(([, v]) => Number(v) > 0);
+  if (entries.length === 0) {
+    return (
+      <div className="h-28 flex items-center justify-center text-center text-[10px] italic text-muted-foreground px-3">
+        {emptyNote || "Belum ada data."}
+      </div>
+    );
+  }
+  const sorted = entries.sort((a, b) => sortBy === "value" ? Number(b[1]) - Number(a[1]) : a[0].localeCompare(b[0]));
+  const sliced = top ? sorted.slice(0, top) : sorted;
+  const total = sliced.reduce((s, [, v]) => s + Number(v), 0);
   return (
-    <div className="h-32 flex items-center justify-center text-center text-[10px] italic text-muted-foreground px-3">
-      {text}
-    </div>
+    <ul className="space-y-1.5">
+      {sliced.map(([label, value]) => {
+        const v = Number(value);
+        const pct = total > 0 ? (v / total) * 100 : 0;
+        const color = colorOf ? colorOf(label) : "bg-primary";
+        const display = labelOf ? labelOf(label) : label;
+        return (
+          <li key={label}>
+            <div className="flex items-center justify-between text-[10px] font-medium">
+              <span className="truncate">{display}</span>
+              <span className="tabular-nums text-muted-foreground">{pct.toFixed(0)}%</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+              <div className={cn("h-full rounded-full transition-all", color)} style={{ width: `${pct}%` }} />
+            </div>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

@@ -258,6 +258,77 @@ def _account_out(a: SocialAccount) -> dict:
     }
 
 
+async def _ig_fetch_insights(client: httpx.AsyncClient, ig_user_id: str, token: str) -> dict:
+    """Fetch profile activity + audience demographics dari Graph API.
+
+    Profile (period=day, hari kemarin): profile_views, website_clicks.
+    Demographics (period=lifetime, breakdown=gender_age/city/age): butuh
+    akun Business + ≥100 followers. Kalau gak match, IG return error/empty —
+    semua fallback ke None.
+
+    Output:
+      {
+        profile: {profile_views, website_clicks, accounts_engaged, reach},
+        demographics: {gender_age, city, country, age},
+        fetched_at: iso,
+      }
+    """
+    out: dict = {"profile": {}, "demographics": {}}
+    # 1) Profile activity (day metrics). Gunakan since/until kemarin biar IG
+    #    return data — period=day untuk "today" sering belum aggregated.
+    yesterday = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+    try:
+        r = await client.get(f"{INSTAGRAM_GRAPH}/{ig_user_id}/insights", params={
+            "metric": "profile_views,website_clicks,accounts_engaged,reach",
+            "period": "day",
+            "since": yesterday, "until": yesterday,
+            "access_token": token,
+        })
+        data = r.json()
+        for item in (data.get("data") or []):
+            name = item.get("name")
+            values = item.get("values") or []
+            v = values[-1].get("value") if values else None
+            if name and v is not None:
+                out["profile"][name] = v
+    except Exception as e:
+        logger.warning("IG profile insights failed for %s: %s", ig_user_id, e)
+
+    # 2) Audience demographics — lifetime, butuh ≥100 followers. IG sekarang
+    #    pakai `engaged_audience_demographics` / `reached_audience_demographics`
+    #    bukan legacy `audience_*`. Pakai engaged_audience (orang yg engage
+    #    bulan terakhir) — lebih kaya datanya.
+    for metric, breakdown, key in [
+        ("engaged_audience_demographics", "age,gender", "gender_age"),
+        ("engaged_audience_demographics", "city", "city"),
+        ("engaged_audience_demographics", "country", "country"),
+        ("engaged_audience_demographics", "age", "age"),
+    ]:
+        try:
+            r = await client.get(f"{INSTAGRAM_GRAPH}/{ig_user_id}/insights", params={
+                "metric": metric,
+                "period": "lifetime",
+                "breakdown": breakdown,
+                "metric_type": "total_value",
+                "access_token": token,
+            })
+            data = r.json()
+            results = (((data.get("data") or [{}])[0]).get("total_value") or {}).get("breakdowns") or []
+            for b in results:
+                values = b.get("results") or []
+                bucket: dict = out["demographics"].setdefault(key, {})
+                for v in values:
+                    dims = v.get("dimension_values") or []
+                    val = v.get("value")
+                    if dims and val is not None:
+                        bucket[" · ".join(str(x) for x in dims)] = val
+        except Exception as e:
+            logger.warning("IG demographics %s failed for %s: %s", key, ig_user_id, e)
+
+    out["fetched_at"] = datetime.now(timezone.utc).isoformat()
+    return out
+
+
 async def _ig_snapshot(db: AsyncSession, acc: SocialAccount) -> bool:
     """Pull live IG numbers for `acc`, refresh its profile, upsert today's metric.
 
@@ -316,6 +387,15 @@ async def _ig_snapshot(db: AsyncSession, acc: SocialAccount) -> bool:
     m.comments = int(total_comments) if total_comments is not None else None
     m.shares = int(total_shares) if total_shares is not None else None
     m.saves = int(total_saves) if total_saves is not None else None
+
+    # Audience demographics + profile activity (best-effort).
+    ig_user_id = data.get("user_id") or data.get("id") or acc.external_id
+    if ig_user_id and acc.access_token:
+        try:
+            async with httpx.AsyncClient(timeout=20) as client:
+                acc.insights = await _ig_fetch_insights(client, str(ig_user_id), acc.access_token)
+        except Exception as e:
+            logger.warning("IG insights fetch outer failure for %s: %s", acc.id, e)
     return True
 
 
@@ -551,6 +631,8 @@ async def account_metrics(
             key: _series_deltas(history, key)
             for key in ("followers", "likes", "comments", "shares", "saves")
         },
+        # Audience demographics + profile activity (IG only — TikTok null).
+        "insights": acc.insights,
     }
 
 

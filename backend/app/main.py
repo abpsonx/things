@@ -296,6 +296,11 @@ async def lifespan(app: FastAPI):
             await conn.execute(text("ALTER TABLE social_accounts ADD COLUMN IF NOT EXISTS scopes TEXT"))
         except Exception:
             pass
+        # IG audience demographics + profile insights snapshot (JSONB)
+        try:
+            await conn.execute(text("ALTER TABLE social_accounts ADD COLUMN IF NOT EXISTS insights JSONB"))
+        except Exception:
+            pass
 
         # per-user team bullet colors + pinned teams/DMs
         try:

@@ -2,7 +2,7 @@
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import Column, String, Text, DateTime, Date, Integer, ForeignKey, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 
@@ -24,6 +24,11 @@ class SocialAccount(Base):
     token_expires_at = Column(DateTime(timezone=True), nullable=True)
     scopes = Column(Text, nullable=True)  # permissions granted at connect time
     connected_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    # Insights snapshot — Graph API audience demographics + profile activity.
+    # Shape: {profile: {profile_views, website_clicks, ...}, demographics:
+    # {gender_age: {...}, city: {...}, country: {...}, age: {...}},
+    # fetched_at: iso}. Update tiap kali _ig_snapshot jalan.
+    insights = Column(JSONB, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     metrics = relationship("SocialMetric", back_populates="account", cascade="all, delete-orphan")
