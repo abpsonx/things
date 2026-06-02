@@ -3,8 +3,9 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { useParams } from "next/navigation";
 import api from "@/lib/api";
-import { Share2, Camera, Loader2, CalendarClock, Plus, Trash2, RefreshCw, Users, Image as ImageIcon, ChevronDown, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Heart, MessageCircle, ExternalLink, Bookmark, Send, Eye, EyeOff, Reply } from "lucide-react";
+import { Share2, Camera, Loader2, CalendarClock, Plus, Trash2, RefreshCw, Users, Image as ImageIcon, ChevronDown, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Heart, MessageCircle, ExternalLink, Bookmark, Send, Eye, EyeOff, Reply, Upload, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import Modal from "@/components/ui/Modal";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip } from "recharts";
 
 interface SocialAccount {
@@ -147,6 +148,76 @@ export default function SosmedPage() {
   const [schedulesLoading, setSchedulesLoading] = useState<string | null>(null);
   const [stories, setStories] = useState<Record<string, StoriesPayload>>({});
   const [storiesLoading, setStoriesLoading] = useState<string | null>(null);
+
+  // Modal "Buat Jadwal Baru" — dipakai dari tab Jadwal.
+  const [newOpen, setNewOpen] = useState(false);
+  const [newAccountId, setNewAccountId] = useState<string>("");
+  const [newCaption, setNewCaption] = useState("");
+  const [newAt, setNewAt] = useState("");  // datetime-local string
+  const [newFile, setNewFile] = useState<File | null>(null);
+  const [newPreview, setNewPreview] = useState<string>("");
+  const [newSubmitting, setNewSubmitting] = useState(false);
+
+  const openNewSchedule = (accountId: string) => {
+    setNewAccountId(accountId);
+    setNewCaption("");
+    setNewFile(null);
+    setNewPreview("");
+    // Default jadwal: +1 jam dari sekarang, dibulatkan ke 5 menit terdekat.
+    const d = new Date(Date.now() + 60 * 60 * 1000);
+    d.setSeconds(0, 0);
+    d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    setNewAt(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`);
+    setNewOpen(true);
+  };
+
+  const pickNewFile = (f: File | null) => {
+    setNewFile(f);
+    if (newPreview) URL.revokeObjectURL(newPreview);
+    setNewPreview(f ? URL.createObjectURL(f) : "");
+  };
+
+  const submitNewSchedule = async () => {
+    if (!newFile) { alert("Pilih dulu gambar/video-nya."); return; }
+    if (!newAt) { alert("Pilih waktu jadwal."); return; }
+    if (new Date(newAt).getTime() < Date.now() + 60_000) {
+      alert("Jadwal harus minimal 1 menit ke depan."); return;
+    }
+    setNewSubmitting(true);
+    try {
+      // Step 1: upload file → dapat URL.
+      const form = new FormData();
+      form.append("file", newFile);
+      const up = await api.post(`/media/upload`, form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      const mediaUrl = up.data?.url;
+      if (!mediaUrl) throw new Error("Upload gagal");
+      // Step 2: deteksi media_type dari mime.
+      const mime = newFile.type || "";
+      const mediaType = mime.startsWith("video/") ? "REELS" : "IMAGE";
+      // Step 3: bikin scheduled post.
+      await api.post(
+        `/organizations/${orgId}/sosmed/accounts/${newAccountId}/scheduled-posts`,
+        {
+          media_url: mediaUrl,
+          media_type: mediaType,
+          caption: newCaption,
+          scheduled_at: new Date(newAt).toISOString(),
+        }
+      );
+      setNewOpen(false);
+      if (newPreview) URL.revokeObjectURL(newPreview);
+      setNewPreview("");
+      setNewFile(null);
+      loadSchedules(newAccountId);
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || err?.message || "Gagal menjadwalkan");
+    } finally {
+      setNewSubmitting(false);
+    }
+  };
 
   const loadStories = async (accountId: string, refresh = false) => {
     setStoriesLoading(accountId);
@@ -451,7 +522,11 @@ export default function SosmedPage() {
                           schedulesLoading === a.id && !schedules[a.id] ? (
                             <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
                           ) : (
-                            <ScheduleTab items={schedules[a.id] || []} onCancel={(id) => cancelSchedule(id, a.id)} />
+                            <ScheduleTab
+                              items={schedules[a.id] || []}
+                              onCancel={(id) => cancelSchedule(id, a.id)}
+                              onCreate={() => openNewSchedule(a.id)}
+                            />
                           )
                         )}
                       </div>
@@ -464,13 +539,130 @@ export default function SosmedPage() {
         )}
       </div>
 
-      {/* Coming soon */}
-      <div className="grid grid-cols-1 gap-4">
-        <div className="rounded-2xl border border-border bg-card p-5 opacity-70">
-          <div className="flex items-center gap-2 font-bold mb-1"><CalendarClock className="w-4 h-4 text-primary" /> Jadwal Post</div>
-          <p className="text-xs text-muted-foreground">Bikin &amp; jadwalkan postingan ke IG/TikTok. Segera.</p>
+      {/* Quick launcher buat Jadwal Post */}
+      {accounts.filter((a) => a.platform === "instagram").length > 0 && (
+        <div className="grid grid-cols-1 gap-4">
+          <button
+            onClick={() => {
+              const ig = accounts.find((a) => a.platform === "instagram");
+              if (ig) {
+                setExpandedId(ig.id);
+                setSubTab("schedule");
+                if (!schedules[ig.id]) loadSchedules(ig.id);
+                openNewSchedule(ig.id);
+              }
+            }}
+            className="rounded-2xl border border-border bg-card p-5 text-left hover:border-primary hover:shadow-[2px_2px_0_#0f172a] dark:hover:shadow-[2px_2px_0_#334155] transition-all"
+          >
+            <div className="flex items-center gap-2 font-bold mb-1"><CalendarClock className="w-4 h-4 text-primary" /> Jadwal Post Baru</div>
+            <p className="text-xs text-muted-foreground">
+              Upload gambar/video → atur waktu → auto-publish ke IG. Worker cek tiap 5 menit.
+            </p>
+          </button>
         </div>
-      </div>
+      )}
+
+      {/* Modal: Buat Jadwal Baru */}
+      <Modal isOpen={newOpen} onClose={() => setNewOpen(false)} title="Buat Jadwal Posting Baru" className="max-w-lg">
+        <div className="space-y-4">
+          {/* Account picker (kalau IG account >1) */}
+          {accounts.filter((a) => a.platform === "instagram").length > 1 && (
+            <div>
+              <label className="text-[10px] uppercase tracking-widest font-extrabold text-muted-foreground">Akun</label>
+              <select
+                value={newAccountId}
+                onChange={(e) => setNewAccountId(e.target.value)}
+                className="w-full mt-1 px-3 py-2 rounded-lg border border-border bg-background text-sm"
+              >
+                {accounts.filter((a) => a.platform === "instagram").map((a) => (
+                  <option key={a.id} value={a.id}>@{a.username}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* File picker / preview */}
+          <div>
+            <label className="text-[10px] uppercase tracking-widest font-extrabold text-muted-foreground">Media</label>
+            {newPreview ? (
+              <div className="mt-1 relative rounded-xl border border-border overflow-hidden bg-secondary">
+                {newFile?.type.startsWith("video/") ? (
+                  <video src={newPreview} controls className="w-full max-h-64 object-contain bg-black" />
+                ) : (
+                  <img src={newPreview} alt="" className="w-full max-h-64 object-contain" />
+                )}
+                <button
+                  onClick={() => pickNewFile(null)}
+                  className="absolute top-2 right-2 p-1 rounded-full bg-black/60 text-white hover:bg-black/80"
+                  title="Hapus"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <label className="mt-1 flex flex-col items-center justify-center gap-2 p-6 rounded-xl border-2 border-dashed border-border bg-secondary/30 hover:bg-secondary/60 cursor-pointer transition-all">
+                <Upload className="w-6 h-6 text-muted-foreground" />
+                <p className="text-xs text-muted-foreground text-center">
+                  Klik untuk pilih gambar / video<br />
+                  <span className="text-[10px] italic">JPG/PNG → IMAGE · MP4/MOV → REELS · max 50MB</span>
+                </p>
+                <input
+                  type="file"
+                  accept="image/*,video/*"
+                  className="hidden"
+                  onChange={(e) => pickNewFile(e.target.files?.[0] || null)}
+                />
+              </label>
+            )}
+          </div>
+
+          {/* Caption */}
+          <div>
+            <label className="text-[10px] uppercase tracking-widest font-extrabold text-muted-foreground">Caption</label>
+            <textarea
+              value={newCaption}
+              onChange={(e) => setNewCaption(e.target.value)}
+              rows={4}
+              placeholder="Caption posting + hashtag..."
+              className="w-full mt-1 px-3 py-2 rounded-lg border border-border bg-background text-sm resize-none"
+            />
+            <p className="text-[10px] text-muted-foreground mt-1 tabular-nums">{newCaption.length} karakter</p>
+          </div>
+
+          {/* Schedule datetime */}
+          <div>
+            <label className="text-[10px] uppercase tracking-widest font-extrabold text-muted-foreground">Waktu Tayang</label>
+            <input
+              type="datetime-local"
+              value={newAt}
+              onChange={(e) => setNewAt(e.target.value)}
+              className="w-full mt-1 px-3 py-2 rounded-lg border border-border bg-background text-sm"
+            />
+            <p className="text-[10px] text-muted-foreground italic mt-1">
+              Worker cek tiap 5 menit. Toleransi ±5 menit dari waktu yang dipilih.
+            </p>
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button
+              onClick={() => setNewOpen(false)}
+              disabled={newSubmitting}
+              className="px-4 py-2 rounded-lg text-xs font-bold text-muted-foreground hover:bg-secondary transition-all"
+            >
+              Batal
+            </button>
+            <button
+              onClick={submitNewSchedule}
+              disabled={newSubmitting || !newFile || !newAt}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold disabled:opacity-40 hover:opacity-90 transition-all"
+            >
+              {newSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CalendarClock className="w-3.5 h-3.5" />}
+              {newSubmitting ? "Menjadwalkan..." : "Jadwalkan"}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -1490,12 +1682,23 @@ function Stat({ label, val }: { label: string; val: number | null | undefined })
 }
 
 
-// ─── Schedule tab (list scheduled posts + cancel) ────────────────────────────
-function ScheduleTab({ items, onCancel }: { items: ScheduledPost[]; onCancel: (id: string) => void }) {
+// ─── Schedule tab (list scheduled posts + cancel + create) ───────────────────
+function ScheduleTab({ items, onCancel, onCreate }: { items: ScheduledPost[]; onCancel: (id: string) => void; onCreate: () => void }) {
   if (items.length === 0) {
     return (
-      <div className="text-center py-8 text-xs text-muted-foreground italic">
-        Belum ada posting terjadwal. Pakai tombol &quot;Jadwalkan ke IG&quot; di halaman Brief Design.
+      <div className="text-center py-10 space-y-3">
+        <p className="text-xs text-muted-foreground italic">
+          Belum ada posting terjadwal.
+        </p>
+        <button
+          onClick={onCreate}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:opacity-90 transition-all shadow-[2px_2px_0_#0f172a] dark:shadow-[2px_2px_0_#334155]"
+        >
+          <Plus className="w-4 h-4" /> Buat Jadwal Baru
+        </button>
+        <p className="text-[10px] text-muted-foreground italic">
+          Atau lewat tombol &quot;Jadwalkan ke IG&quot; di brief design.
+        </p>
       </div>
     );
   }
@@ -1508,6 +1711,17 @@ function ScheduleTab({ items, onCancel }: { items: ScheduledPost[]; onCancel: (i
   };
   return (
     <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] uppercase tracking-widest font-extrabold text-muted-foreground">
+          {items.length} jadwal
+        </p>
+        <button
+          onClick={onCreate}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:opacity-90 transition-all"
+        >
+          <Plus className="w-3.5 h-3.5" /> Buat Jadwal Baru
+        </button>
+      </div>
       {items.map((p) => {
         const meta = statusMeta[p.status] || statusMeta.pending;
         const scheduledD = new Date(p.scheduled_at);
