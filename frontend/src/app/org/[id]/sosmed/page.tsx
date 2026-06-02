@@ -156,6 +156,7 @@ export default function SosmedPage() {
   const [newAt, setNewAt] = useState("");  // datetime-local string
   const [newFile, setNewFile] = useState<File | null>(null);
   const [newPreview, setNewPreview] = useState<string>("");
+  const [newPostType, setNewPostType] = useState<"FEED" | "REELS" | "STORY">("FEED");
   const [newSubmitting, setNewSubmitting] = useState(false);
 
   const openNewSchedule = (accountId: string) => {
@@ -163,6 +164,7 @@ export default function SosmedPage() {
     setNewCaption("");
     setNewFile(null);
     setNewPreview("");
+    setNewPostType("FEED");
     // Default jadwal: +1 jam dari sekarang, dibulatkan ke 5 menit terdekat.
     const d = new Date(Date.now() + 60 * 60 * 1000);
     d.setSeconds(0, 0);
@@ -176,6 +178,11 @@ export default function SosmedPage() {
     setNewFile(f);
     if (newPreview) URL.revokeObjectURL(newPreview);
     setNewPreview(f ? URL.createObjectURL(f) : "");
+    // Auto-suggest tipe post berdasarkan jenis file.
+    if (f) {
+      const isVideo = (f.type || "").startsWith("video/");
+      setNewPostType(isVideo ? "REELS" : "FEED");
+    }
   };
 
   const submitNewSchedule = async () => {
@@ -183,6 +190,16 @@ export default function SosmedPage() {
     if (!newAt) { alert("Pilih waktu jadwal."); return; }
     if (new Date(newAt).getTime() < Date.now() + 60_000) {
       alert("Jadwal harus minimal 1 menit ke depan."); return;
+    }
+    const isVideo = (newFile.type || "").startsWith("video/");
+    // Validasi kombinasi tipe post + file.
+    if (newPostType === "FEED" && isVideo) {
+      alert("Feed image cuma terima gambar. Pilih Reels untuk video, atau Story.");
+      return;
+    }
+    if (newPostType === "REELS" && !isVideo) {
+      alert("Reels butuh video. Pilih Feed untuk gambar, atau Story.");
+      return;
     }
     setNewSubmitting(true);
     try {
@@ -194,9 +211,11 @@ export default function SosmedPage() {
       });
       const mediaUrl = up.data?.url;
       if (!mediaUrl) throw new Error("Upload gagal");
-      // Step 2: deteksi media_type dari mime.
-      const mime = newFile.type || "";
-      const mediaType = mime.startsWith("video/") ? "REELS" : "IMAGE";
+      // Step 2: map tipe post UI → IG Container media_type.
+      const mediaType =
+        newPostType === "REELS" ? "REELS" :
+        newPostType === "STORY" ? "STORIES" :
+        "IMAGE";
       // Step 3: bikin scheduled post.
       await api.post(
         `/organizations/${orgId}/sosmed/accounts/${newAccountId}/scheduled-posts`,
@@ -565,21 +584,65 @@ export default function SosmedPage() {
       {/* Modal: Buat Jadwal Baru */}
       <Modal isOpen={newOpen} onClose={() => setNewOpen(false)} title="Buat Jadwal Posting Baru" className="max-w-lg">
         <div className="space-y-4">
-          {/* Account picker (kalau IG account >1) */}
-          {accounts.filter((a) => a.platform === "instagram").length > 1 && (
-            <div>
-              <label className="text-[10px] uppercase tracking-widest font-extrabold text-muted-foreground">Akun</label>
-              <select
-                value={newAccountId}
-                onChange={(e) => setNewAccountId(e.target.value)}
-                className="w-full mt-1 px-3 py-2 rounded-lg border border-border bg-background text-sm"
-              >
-                {accounts.filter((a) => a.platform === "instagram").map((a) => (
-                  <option key={a.id} value={a.id}>@{a.username}</option>
-                ))}
-              </select>
+          {/* Brand / akun picker — selalu tampil biar jelas posting ke akun mana */}
+          <div>
+            <label className="text-[10px] uppercase tracking-widest font-extrabold text-muted-foreground">Brand / Akun</label>
+            <select
+              value={newAccountId}
+              onChange={(e) => setNewAccountId(e.target.value)}
+              className="w-full mt-1 px-3 py-2 rounded-lg border border-border bg-background text-sm font-semibold"
+            >
+              {accounts.filter((a) => a.platform === "instagram").map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.display_name ? `${a.display_name} (@${a.username})` : `@${a.username}`}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Tipe Post: Feed / Reels / Story */}
+          <div>
+            <label className="text-[10px] uppercase tracking-widest font-extrabold text-muted-foreground">Tipe Post</label>
+            <div className="mt-1 grid grid-cols-3 gap-2">
+              {([
+                { key: "FEED" as const, label: "Feed", hint: "Gambar", icon: ImageIcon, requiresVideo: false },
+                { key: "REELS" as const, label: "Reels", hint: "Video", icon: Camera, requiresVideo: true },
+                { key: "STORY" as const, label: "Story", hint: "24 jam", icon: CalendarClock, requiresVideo: null },
+              ]).map((t) => {
+                const isVideo = newFile ? (newFile.type || "").startsWith("video/") : false;
+                const disabled = newFile != null && (
+                  (t.requiresVideo === true && !isVideo) ||
+                  (t.requiresVideo === false && isVideo)
+                );
+                const Icon = t.icon;
+                const active = newPostType === t.key;
+                return (
+                  <button
+                    key={t.key}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => setNewPostType(t.key)}
+                    className={cn(
+                      "flex flex-col items-center gap-1 px-3 py-2.5 rounded-lg border-2 text-xs font-bold transition-all",
+                      active
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-card text-foreground hover:border-primary/50",
+                      disabled && "opacity-40 cursor-not-allowed hover:border-border"
+                    )}
+                  >
+                    <Icon className="w-4 h-4" />
+                    <span>{t.label}</span>
+                    <span className="text-[9px] font-normal text-muted-foreground">{t.hint}</span>
+                  </button>
+                );
+              })}
             </div>
-          )}
+            {newPostType === "STORY" && (
+              <p className="text-[10px] text-muted-foreground italic mt-1.5">
+                ⓘ Story gak terima caption — caption diabaikan saat publish.
+              </p>
+            )}
+          </div>
 
           {/* File picker / preview */}
           <div>

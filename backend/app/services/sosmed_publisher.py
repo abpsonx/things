@@ -32,16 +32,38 @@ def _backoff_minutes(attempt: int) -> int:
 
 
 async def _publish_one_ig(client: httpx.AsyncClient, acc: SocialAccount, p: SocialScheduledPost) -> None:
-    """Publish satu post ke Instagram via Container API."""
+    """Publish satu post ke Instagram via Container API.
+
+    media_type encode tujuan post:
+      IMAGE   → feed image (default)
+      REELS   → reels video (feed)
+      STORIES → story (image atau video, ditentukan dari ekstensi media_url)
+    Story caption diabaikan oleh IG — story gak punya caption permanen.
+    """
     token = acc.access_token
     media_type = (p.media_type or "IMAGE").upper()
+    url_lower = (p.media_url or "").lower().split("?", 1)[0]
+    is_video = any(url_lower.endswith(ext) for ext in (".mp4", ".mov", ".webm", ".m4v"))
 
     # Step 1: create media container
-    params = {"access_token": token, "caption": p.caption or ""}
-    if media_type in ("VIDEO", "REELS"):
-        params["media_type"] = "REELS" if media_type == "REELS" else "VIDEO"
+    params = {"access_token": token}
+    # Caption hanya relevan untuk FEED/REELS, story dilewat.
+    if media_type != "STORIES":
+        params["caption"] = p.caption or ""
+
+    if media_type == "REELS":
+        params["media_type"] = "REELS"
         params["video_url"] = p.media_url
-    else:
+    elif media_type == "VIDEO":  # legacy, treat as REELS
+        params["media_type"] = "REELS"
+        params["video_url"] = p.media_url
+    elif media_type == "STORIES":
+        params["media_type"] = "STORIES"
+        if is_video:
+            params["video_url"] = p.media_url
+        else:
+            params["image_url"] = p.media_url
+    else:  # IMAGE feed
         params["image_url"] = p.media_url
 
     r = await client.post(f"{INSTAGRAM_GRAPH}/me/media", params=params)
@@ -51,8 +73,9 @@ async def _publish_one_ig(client: httpx.AsyncClient, acc: SocialAccount, p: Soci
     creation_id = str(data["id"])
     p.ig_creation_id = creation_id
 
-    # Step 2: untuk video, polling status sampai FINISHED.
-    if media_type in ("VIDEO", "REELS"):
+    # Step 2: untuk video (Reels atau Story video), polling status sampai FINISHED.
+    needs_polling = media_type in ("VIDEO", "REELS") or (media_type == "STORIES" and is_video)
+    if needs_polling:
         for _ in range(20):  # ~60s timeout (3s * 20)
             await asyncio.sleep(3)
             sr = await client.get(f"{INSTAGRAM_GRAPH}/{creation_id}", params={
