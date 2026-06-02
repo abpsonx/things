@@ -995,6 +995,75 @@ async def account_stories(
     return {"stories": items, "summary": summary}
 
 
+@router.get("/accounts/{account_id}/ig-lookup", response_model=Any)
+async def ig_username_lookup(
+    org_id: str, account_id: str,
+    username: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Validate IG username + return public profile preview.
+
+    Pakai Business Discovery API — query lewat token akun kita ke username
+    target. Hanya jalan kalau target adalah akun Business/Creator (yang
+    memang requirement buat collab post). Pas buat validate sebelum
+    invite collaborator.
+    """
+    await _require_member(db, org_id, current_user.id)
+    acc = await _account_or_404(db, org_id, account_id)
+    if acc.platform != "instagram":
+        raise HTTPException(status_code=400, detail="Lookup hanya untuk IG")
+
+    uname = username.strip().lstrip("@")
+    if not uname:
+        raise HTTPException(status_code=400, detail="username kosong")
+    # IG username constraint: alphanumeric, period, underscore — basic sanity.
+    if not all(c.isalnum() or c in "._" for c in uname) or len(uname) > 30:
+        raise HTTPException(status_code=400, detail="format username tidak valid")
+
+    ig_user_id = acc.external_id
+    if not ig_user_id:
+        raise HTTPException(status_code=400, detail="akun belum punya external_id")
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(f"{INSTAGRAM_GRAPH}/{ig_user_id}", params={
+                "fields": f"business_discovery.username({uname}){{username,name,profile_picture_url,followers_count,media_count}}",
+                "access_token": acc.access_token,
+            })
+            data = r.json()
+    except httpx.HTTPError as exc:
+        logger.warning("IG lookup HTTP error: %s", exc)
+        raise HTTPException(status_code=502, detail="Gagal hubungi Instagram")
+
+    # Error response dari Graph API → username gak ketemu atau bukan Business.
+    if isinstance(data, dict) and "error" in data:
+        err = data["error"]
+        msg = err.get("message", "tidak ditemukan")
+        # Code 24: business_discovery target tidak Business account.
+        # Code 110: tidak ditemukan.
+        if err.get("code") in (24, 110) or "business" in msg.lower():
+            return {
+                "found": False,
+                "username": uname,
+                "reason": "Akun tidak ditemukan, atau bukan akun Business/Creator (syarat collab IG).",
+            }
+        return {"found": False, "username": uname, "reason": msg}
+
+    bd = (data or {}).get("business_discovery")
+    if not bd:
+        return {"found": False, "username": uname, "reason": "Tidak ditemukan"}
+
+    return {
+        "found": True,
+        "username": bd.get("username") or uname,
+        "name": bd.get("name"),
+        "profile_picture_url": bd.get("profile_picture_url"),
+        "followers_count": bd.get("followers_count"),
+        "media_count": bd.get("media_count"),
+    }
+
+
 async def _account_or_404(db: AsyncSession, org_id: str, account_id: str) -> SocialAccount:
     res = await db.execute(
         select(SocialAccount).where(SocialAccount.id == account_id, SocialAccount.org_id == org_id)

@@ -164,6 +164,15 @@ export default function SosmedPage() {
   const [newCarouselPreviews, setNewCarouselPreviews] = useState<string[]>([]);
   const [newCollaborators, setNewCollaborators] = useState<string[]>([]);
   const [newCollabInput, setNewCollabInput] = useState("");
+  const [newCollabLookup, setNewCollabLookup] = useState<{
+    loading: boolean;
+    found?: boolean;
+    username?: string;
+    name?: string | null;
+    profile_picture_url?: string | null;
+    followers_count?: number | null;
+    reason?: string;
+  } | null>(null);
   const [newShareToFeed, setNewShareToFeed] = useState(true);
   const [newSubmitting, setNewSubmitting] = useState(false);
 
@@ -220,12 +229,23 @@ export default function SosmedPage() {
   };
 
   const addCollab = () => {
-    const u = newCollabInput.trim().replace(/^@/, "");
-    if (!u) return;
-    if (newCollaborators.includes(u)) { setNewCollabInput(""); return; }
+    const raw = newCollabInput.trim().replace(/^@/, "");
+    if (!raw) return;
     if (newCollaborators.length >= 3) { alert("Maksimal 3 collaborator."); return; }
+    // Wajib validated dulu — gak boleh add username yang gak terbukti ada.
+    if (!newCollabLookup || newCollabLookup.loading || newCollabLookup.found !== true) {
+      alert("Username belum tervalidasi. Tunggu lookup atau ganti username.");
+      return;
+    }
+    const u = newCollabLookup.username || raw;
+    if (newCollaborators.includes(u)) {
+      setNewCollabInput("");
+      setNewCollabLookup(null);
+      return;
+    }
     setNewCollaborators([...newCollaborators, u]);
     setNewCollabInput("");
+    setNewCollabLookup(null);
   };
 
   const submitNewSchedule = async () => {
@@ -420,6 +440,39 @@ export default function SosmedPage() {
   useEffect(() => {
     if (orgId) refresh();
   }, [orgId]);
+
+  // Debounce IG username lookup buat collab input. Validasi via Business
+  // Discovery API — tampilkan preview profil supaya jelas siapa yang ke-tag.
+  useEffect(() => {
+    const raw = newCollabInput.trim().replace(/^@/, "");
+    if (!raw || !newAccountId || raw.length < 2) {
+      setNewCollabLookup(null);
+      return;
+    }
+    // Basic sanity sebelum hit API.
+    if (!/^[A-Za-z0-9._]{2,30}$/.test(raw)) {
+      setNewCollabLookup({ loading: false, found: false, username: raw, reason: "Format username tidak valid" });
+      return;
+    }
+    setNewCollabLookup({ loading: true });
+    const t = setTimeout(async () => {
+      try {
+        const res = await api.get(
+          `/organizations/${orgId}/sosmed/accounts/${newAccountId}/ig-lookup`,
+          { params: { username: raw } }
+        );
+        setNewCollabLookup({ loading: false, ...res.data });
+      } catch (err: any) {
+        setNewCollabLookup({
+          loading: false,
+          found: false,
+          username: raw,
+          reason: err?.response?.data?.detail || "Gagal lookup",
+        });
+      }
+    }, 500);
+    return () => clearTimeout(t);
+  }, [newCollabInput, newAccountId, orgId]);
 
   // Surface the Instagram OAuth callback result, then strip the query params.
   useEffect(() => {
@@ -827,12 +880,65 @@ export default function SosmedPage() {
                   <button
                     type="button"
                     onClick={addCollab}
-                    disabled={!newCollabInput.trim() || newCollaborators.length >= 3}
+                    disabled={
+                      !newCollabInput.trim() ||
+                      newCollaborators.length >= 3 ||
+                      !newCollabLookup ||
+                      newCollabLookup.loading ||
+                      newCollabLookup.found !== true
+                    }
                     className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold disabled:opacity-40"
                   >
                     Tambah
                   </button>
                 </div>
+
+                {/* Preview lookup result — validation feedback */}
+                {newCollabInput.trim() && newCollabLookup && (
+                  <div className="mt-2">
+                    {newCollabLookup.loading ? (
+                      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary/40 text-xs text-muted-foreground">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        <span>Cek username...</span>
+                      </div>
+                    ) : newCollabLookup.found ? (
+                      <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300/50">
+                        {newCollabLookup.profile_picture_url ? (
+                          <img
+                            src={newCollabLookup.profile_picture_url}
+                            alt=""
+                            className="w-8 h-8 rounded-full object-cover border border-border bg-secondary"
+                          />
+                        ) : (
+                          <div className="w-8 h-8 rounded-full bg-secondary border border-border flex items-center justify-center text-xs font-bold">
+                            {(newCollabLookup.username || "?").charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold truncate">
+                            {newCollabLookup.name || `@${newCollabLookup.username}`}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground truncate">
+                            @{newCollabLookup.username}
+                            {newCollabLookup.followers_count != null && (
+                              <> · {newCollabLookup.followers_count.toLocaleString("id-ID")} followers</>
+                            )}
+                          </p>
+                        </div>
+                        <span className="text-[10px] font-extrabold text-emerald-700 dark:text-emerald-400">
+                          ✓ VALID
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-rose-50 dark:bg-rose-950/30 border border-rose-300/50">
+                        <X className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400 mt-0.5 shrink-0" />
+                        <p className="text-[11px] text-rose-700 dark:text-rose-300 leading-snug">
+                          {newCollabLookup.reason || "Username tidak ditemukan."}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {newCollaborators.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     {newCollaborators.map((u) => (
