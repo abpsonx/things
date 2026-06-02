@@ -299,6 +299,19 @@ async def lifespan(app: FastAPI):
                 await conn.execute(text(f"ALTER TABLE social_posts ADD COLUMN IF NOT EXISTS {col} INTEGER"))
             except Exception:
                 pass
+        # Scheduled post extras: collab, carousel, share-to-feed
+        try:
+            await conn.execute(text("ALTER TABLE social_scheduled_posts ADD COLUMN IF NOT EXISTS carousel_urls JSONB"))
+        except Exception:
+            pass
+        try:
+            await conn.execute(text("ALTER TABLE social_scheduled_posts ADD COLUMN IF NOT EXISTS collaborators JSONB"))
+        except Exception:
+            pass
+        try:
+            await conn.execute(text("ALTER TABLE social_scheduled_posts ADD COLUMN IF NOT EXISTS share_to_feed BOOLEAN DEFAULT TRUE NOT NULL"))
+        except Exception:
+            pass
 
         # granted permissions captured at connect time
         try:

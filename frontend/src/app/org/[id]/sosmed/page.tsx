@@ -123,6 +123,9 @@ interface ScheduledPost {
   caption: string | null;
   media_url: string;
   media_type: string | null;
+  carousel_urls: Array<{ url: string; is_video: boolean }> | null;
+  collaborators: string[] | null;
+  share_to_feed: boolean;
   scheduled_at: string;
   status: string; // pending | publishing | posted | failed | cancelled
   ig_media_id: string | null;
@@ -156,8 +159,19 @@ export default function SosmedPage() {
   const [newAt, setNewAt] = useState("");  // datetime-local string
   const [newFile, setNewFile] = useState<File | null>(null);
   const [newPreview, setNewPreview] = useState<string>("");
-  const [newPostType, setNewPostType] = useState<"FEED" | "REELS" | "STORY">("FEED");
+  const [newPostType, setNewPostType] = useState<"FEED" | "CAROUSEL" | "REELS" | "STORY">("FEED");
+  const [newCarouselFiles, setNewCarouselFiles] = useState<File[]>([]);
+  const [newCarouselPreviews, setNewCarouselPreviews] = useState<string[]>([]);
+  const [newCollaborators, setNewCollaborators] = useState<string[]>([]);
+  const [newCollabInput, setNewCollabInput] = useState("");
+  const [newShareToFeed, setNewShareToFeed] = useState(true);
   const [newSubmitting, setNewSubmitting] = useState(false);
+
+  const resetCarousel = () => {
+    newCarouselPreviews.forEach((u) => URL.revokeObjectURL(u));
+    setNewCarouselFiles([]);
+    setNewCarouselPreviews([]);
+  };
 
   const openNewSchedule = (accountId: string) => {
     setNewAccountId(accountId);
@@ -165,6 +179,10 @@ export default function SosmedPage() {
     setNewFile(null);
     setNewPreview("");
     setNewPostType("FEED");
+    resetCarousel();
+    setNewCollaborators([]);
+    setNewCollabInput("");
+    setNewShareToFeed(true);
     // Default jadwal: +1 jam dari sekarang, dibulatkan ke 5 menit terdekat.
     const d = new Date(Date.now() + 60 * 60 * 1000);
     d.setSeconds(0, 0);
@@ -178,58 +196,113 @@ export default function SosmedPage() {
     setNewFile(f);
     if (newPreview) URL.revokeObjectURL(newPreview);
     setNewPreview(f ? URL.createObjectURL(f) : "");
-    // Auto-suggest tipe post berdasarkan jenis file.
-    if (f) {
+    // Auto-suggest tipe post berdasarkan jenis file (skip kalau lagi CAROUSEL).
+    if (f && newPostType !== "CAROUSEL") {
       const isVideo = (f.type || "").startsWith("video/");
       setNewPostType(isVideo ? "REELS" : "FEED");
     }
   };
 
+  const pickCarouselFiles = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const arr = Array.from(files);
+    const merged = [...newCarouselFiles, ...arr].slice(0, 10);
+    newCarouselPreviews.forEach((u) => URL.revokeObjectURL(u));
+    setNewCarouselFiles(merged);
+    setNewCarouselPreviews(merged.map((f) => URL.createObjectURL(f)));
+  };
+
+  const removeCarouselAt = (idx: number) => {
+    const next = newCarouselFiles.filter((_, i) => i !== idx);
+    URL.revokeObjectURL(newCarouselPreviews[idx]);
+    setNewCarouselFiles(next);
+    setNewCarouselPreviews(next.map((f) => URL.createObjectURL(f)));
+  };
+
+  const addCollab = () => {
+    const u = newCollabInput.trim().replace(/^@/, "");
+    if (!u) return;
+    if (newCollaborators.includes(u)) { setNewCollabInput(""); return; }
+    if (newCollaborators.length >= 3) { alert("Maksimal 3 collaborator."); return; }
+    setNewCollaborators([...newCollaborators, u]);
+    setNewCollabInput("");
+  };
+
   const submitNewSchedule = async () => {
-    if (!newFile) { alert("Pilih dulu gambar/video-nya."); return; }
     if (!newAt) { alert("Pilih waktu jadwal."); return; }
     if (new Date(newAt).getTime() < Date.now() + 60_000) {
       alert("Jadwal harus minimal 1 menit ke depan."); return;
     }
-    const isVideo = (newFile.type || "").startsWith("video/");
-    // Validasi kombinasi tipe post + file.
-    if (newPostType === "FEED" && isVideo) {
-      alert("Feed image cuma terima gambar. Pilih Reels untuk video, atau Story.");
-      return;
+
+    // Validasi per-tipe.
+    if (newPostType === "CAROUSEL") {
+      if (newCarouselFiles.length < 2) { alert("Carousel butuh minimal 2 media."); return; }
+    } else {
+      if (!newFile) { alert("Pilih dulu gambar/video-nya."); return; }
+      const isVideo = (newFile.type || "").startsWith("video/");
+      if (newPostType === "FEED" && isVideo) {
+        alert("Feed image cuma terima gambar. Pilih Reels untuk video, Carousel, atau Story.");
+        return;
+      }
+      if (newPostType === "REELS" && !isVideo) {
+        alert("Reels butuh video. Pilih Feed, Carousel, atau Story.");
+        return;
+      }
     }
-    if (newPostType === "REELS" && !isVideo) {
-      alert("Reels butuh video. Pilih Feed untuk gambar, atau Story.");
-      return;
-    }
+
     setNewSubmitting(true);
     try {
-      // Step 1: upload file → dapat URL.
-      const form = new FormData();
-      form.append("file", newFile);
-      const up = await api.post(`/media/upload`, form, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      const mediaUrl = up.data?.url;
-      if (!mediaUrl) throw new Error("Upload gagal");
-      // Step 2: map tipe post UI → IG Container media_type.
-      const mediaType =
-        newPostType === "REELS" ? "REELS" :
-        newPostType === "STORY" ? "STORIES" :
-        "IMAGE";
-      // Step 3: bikin scheduled post.
+      // Helper: upload satu file → dapat URL public.
+      const uploadOne = async (f: File): Promise<string> => {
+        const form = new FormData();
+        form.append("file", f);
+        const r = await api.post(`/media/upload`, form, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+        const u = r.data?.url;
+        if (!u) throw new Error("Upload gagal");
+        return u;
+      };
+
+      const payload: Record<string, any> = {
+        caption: newCaption,
+        scheduled_at: new Date(newAt).toISOString(),
+      };
+
+      if (newPostType === "CAROUSEL") {
+        // Upload semua file paralel — batas 10.
+        const urls = await Promise.all(newCarouselFiles.map(uploadOne));
+        payload.media_type = "CAROUSEL";
+        // media_url butuh nilai (kolom NOT NULL) — pakai item pertama sebagai cover.
+        payload.media_url = urls[0];
+        payload.carousel_urls = urls.map((u, i) => ({
+          url: u,
+          is_video: (newCarouselFiles[i].type || "").startsWith("video/"),
+        }));
+      } else {
+        const mediaUrl = await uploadOne(newFile!);
+        payload.media_url = mediaUrl;
+        payload.media_type =
+          newPostType === "REELS" ? "REELS" :
+          newPostType === "STORY" ? "STORIES" :
+          "IMAGE";
+      }
+
+      // Reels-only extras.
+      if (newPostType === "REELS") {
+        if (newCollaborators.length > 0) payload.collaborators = newCollaborators;
+        payload.share_to_feed = newShareToFeed;
+      }
+
       await api.post(
         `/organizations/${orgId}/sosmed/accounts/${newAccountId}/scheduled-posts`,
-        {
-          media_url: mediaUrl,
-          media_type: mediaType,
-          caption: newCaption,
-          scheduled_at: new Date(newAt).toISOString(),
-        }
+        payload
       );
       setNewOpen(false);
       if (newPreview) URL.revokeObjectURL(newPreview);
       setNewPreview("");
       setNewFile(null);
+      resetCarousel();
       loadSchedules(newAccountId);
     } catch (err: any) {
       alert(err?.response?.data?.detail || err?.message || "Gagal menjadwalkan");
@@ -600,17 +673,19 @@ export default function SosmedPage() {
             </select>
           </div>
 
-          {/* Tipe Post: Feed / Reels / Story */}
+          {/* Tipe Post: Feed / Carousel / Reels / Story */}
           <div>
             <label className="text-[10px] uppercase tracking-widest font-extrabold text-muted-foreground">Tipe Post</label>
-            <div className="mt-1 grid grid-cols-3 gap-2">
+            <div className="mt-1 grid grid-cols-4 gap-2">
               {([
                 { key: "FEED" as const, label: "Feed", hint: "Gambar", icon: ImageIcon, requiresVideo: false },
+                { key: "CAROUSEL" as const, label: "Carousel", hint: "2-10 media", icon: ImageIcon, requiresVideo: null },
                 { key: "REELS" as const, label: "Reels", hint: "Video", icon: Camera, requiresVideo: true },
                 { key: "STORY" as const, label: "Story", hint: "24 jam", icon: CalendarClock, requiresVideo: null },
               ]).map((t) => {
+                // Single-file mode → cek match dgn requiresVideo.
                 const isVideo = newFile ? (newFile.type || "").startsWith("video/") : false;
-                const disabled = newFile != null && (
+                const disabled = t.key !== "CAROUSEL" && newFile != null && (
                   (t.requiresVideo === true && !isVideo) ||
                   (t.requiresVideo === false && isVideo)
                 );
@@ -623,7 +698,7 @@ export default function SosmedPage() {
                     disabled={disabled}
                     onClick={() => setNewPostType(t.key)}
                     className={cn(
-                      "flex flex-col items-center gap-1 px-3 py-2.5 rounded-lg border-2 text-xs font-bold transition-all",
+                      "flex flex-col items-center gap-1 px-2 py-2.5 rounded-lg border-2 text-xs font-bold transition-all",
                       active
                         ? "border-primary bg-primary/10 text-primary"
                         : "border-border bg-card text-foreground hover:border-primary/50",
@@ -642,42 +717,152 @@ export default function SosmedPage() {
                 ⓘ Story gak terima caption — caption diabaikan saat publish.
               </p>
             )}
-          </div>
-
-          {/* File picker / preview */}
-          <div>
-            <label className="text-[10px] uppercase tracking-widest font-extrabold text-muted-foreground">Media</label>
-            {newPreview ? (
-              <div className="mt-1 relative rounded-xl border border-border overflow-hidden bg-secondary">
-                {newFile?.type.startsWith("video/") ? (
-                  <video src={newPreview} controls className="w-full max-h-64 object-contain bg-black" />
-                ) : (
-                  <img src={newPreview} alt="" className="w-full max-h-64 object-contain" />
-                )}
-                <button
-                  onClick={() => pickNewFile(null)}
-                  className="absolute top-2 right-2 p-1 rounded-full bg-black/60 text-white hover:bg-black/80"
-                  title="Hapus"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ) : (
-              <label className="mt-1 flex flex-col items-center justify-center gap-2 p-6 rounded-xl border-2 border-dashed border-border bg-secondary/30 hover:bg-secondary/60 cursor-pointer transition-all">
-                <Upload className="w-6 h-6 text-muted-foreground" />
-                <p className="text-xs text-muted-foreground text-center">
-                  Klik untuk pilih gambar / video<br />
-                  <span className="text-[10px] italic">JPG/PNG → IMAGE · MP4/MOV → REELS · max 50MB</span>
-                </p>
-                <input
-                  type="file"
-                  accept="image/*,video/*"
-                  className="hidden"
-                  onChange={(e) => pickNewFile(e.target.files?.[0] || null)}
-                />
-              </label>
+            {newPostType === "CAROUSEL" && (
+              <p className="text-[10px] text-muted-foreground italic mt-1.5">
+                ⓘ Carousel: 2-10 media (gambar/video boleh campur). Urutan ikut order upload.
+              </p>
             )}
           </div>
+
+          {/* Media picker — beda UI utk CAROUSEL vs single */}
+          {newPostType === "CAROUSEL" ? (
+            <div>
+              <label className="text-[10px] uppercase tracking-widest font-extrabold text-muted-foreground">
+                Media Carousel ({newCarouselFiles.length}/10)
+              </label>
+              {newCarouselFiles.length > 0 && (
+                <div className="mt-1 grid grid-cols-5 gap-2">
+                  {newCarouselPreviews.map((src, i) => {
+                    const isVid = (newCarouselFiles[i].type || "").startsWith("video/");
+                    return (
+                      <div key={i} className="relative aspect-square rounded-lg overflow-hidden border border-border bg-secondary group">
+                        {isVid ? (
+                          <video src={src} className="w-full h-full object-cover" />
+                        ) : (
+                          <img src={src} alt="" className="w-full h-full object-cover" />
+                        )}
+                        <span className="absolute top-1 left-1 text-[9px] font-bold bg-black/60 text-white px-1.5 py-0.5 rounded">{i + 1}</span>
+                        <button
+                          onClick={() => removeCarouselAt(i)}
+                          className="absolute top-1 right-1 p-0.5 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Hapus"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {newCarouselFiles.length < 10 && (
+                <label className="mt-2 flex flex-col items-center justify-center gap-1.5 p-4 rounded-xl border-2 border-dashed border-border bg-secondary/30 hover:bg-secondary/60 cursor-pointer transition-all">
+                  <Upload className="w-5 h-5 text-muted-foreground" />
+                  <p className="text-[11px] text-muted-foreground text-center">
+                    Klik untuk tambah media (bisa pilih banyak)<br />
+                    <span className="text-[9px] italic">Max 10 · campur gambar + video boleh</span>
+                  </p>
+                  <input
+                    type="file"
+                    accept="image/*,video/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => { pickCarouselFiles(e.target.files); e.currentTarget.value = ""; }}
+                  />
+                </label>
+              )}
+            </div>
+          ) : (
+            <div>
+              <label className="text-[10px] uppercase tracking-widest font-extrabold text-muted-foreground">Media</label>
+              {newPreview ? (
+                <div className="mt-1 relative rounded-xl border border-border overflow-hidden bg-secondary">
+                  {newFile?.type.startsWith("video/") ? (
+                    <video src={newPreview} controls className="w-full max-h-64 object-contain bg-black" />
+                  ) : (
+                    <img src={newPreview} alt="" className="w-full max-h-64 object-contain" />
+                  )}
+                  <button
+                    onClick={() => pickNewFile(null)}
+                    className="absolute top-2 right-2 p-1 rounded-full bg-black/60 text-white hover:bg-black/80"
+                    title="Hapus"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <label className="mt-1 flex flex-col items-center justify-center gap-2 p-6 rounded-xl border-2 border-dashed border-border bg-secondary/30 hover:bg-secondary/60 cursor-pointer transition-all">
+                  <Upload className="w-6 h-6 text-muted-foreground" />
+                  <p className="text-xs text-muted-foreground text-center">
+                    Klik untuk pilih gambar / video<br />
+                    <span className="text-[10px] italic">JPG/PNG → IMAGE · MP4/MOV → REELS · max 50MB</span>
+                  </p>
+                  <input
+                    type="file"
+                    accept="image/*,video/*"
+                    className="hidden"
+                    onChange={(e) => pickNewFile(e.target.files?.[0] || null)}
+                  />
+                </label>
+              )}
+            </div>
+          )}
+
+          {/* Reels-only extras: Collaborators + Share to Feed */}
+          {newPostType === "REELS" && (
+            <div className="space-y-3 p-3 rounded-xl border border-border bg-secondary/20">
+              <p className="text-[10px] uppercase tracking-widest font-extrabold text-primary">Opsi Reels</p>
+
+              {/* Collaborators */}
+              <div>
+                <label className="text-[10px] font-bold text-muted-foreground">Collaborators (opsional, max 3)</label>
+                <div className="flex items-center gap-2 mt-1">
+                  <input
+                    type="text"
+                    value={newCollabInput}
+                    onChange={(e) => setNewCollabInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCollab(); } }}
+                    placeholder="@username"
+                    className="flex-1 px-3 py-1.5 rounded-lg border border-border bg-background text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={addCollab}
+                    disabled={!newCollabInput.trim() || newCollaborators.length >= 3}
+                    className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold disabled:opacity-40"
+                  >
+                    Tambah
+                  </button>
+                </div>
+                {newCollaborators.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {newCollaborators.map((u) => (
+                      <span key={u} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-bold">
+                        @{u}
+                        <button onClick={() => setNewCollaborators(newCollaborators.filter((x) => x !== u))}>
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <p className="text-[9px] text-muted-foreground italic mt-1">
+                  Collaborator harus accept invite di IG mereka — post tampil di kedua akun.
+                </p>
+              </div>
+
+              {/* Share to Feed */}
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={newShareToFeed}
+                  onChange={(e) => setNewShareToFeed(e.target.checked)}
+                  className="w-4 h-4 accent-primary"
+                />
+                <span className="text-xs font-bold">Share ke Feed juga</span>
+                <span className="text-[10px] text-muted-foreground italic">(default ON)</span>
+              </label>
+            </div>
+          )}
 
           {/* Caption */}
           <div>
@@ -717,7 +902,7 @@ export default function SosmedPage() {
             </button>
             <button
               onClick={submitNewSchedule}
-              disabled={newSubmitting || !newFile || !newAt}
+              disabled={newSubmitting || !newAt || (newPostType === "CAROUSEL" ? newCarouselFiles.length < 2 : !newFile)}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold disabled:opacity-40 hover:opacity-90 transition-all"
             >
               {newSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CalendarClock className="w-3.5 h-3.5" />}

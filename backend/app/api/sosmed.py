@@ -1174,6 +1174,9 @@ def _scheduled_post_out(p: SocialScheduledPost) -> dict:
         "caption": p.caption,
         "media_url": p.media_url,
         "media_type": p.media_type,
+        "carousel_urls": p.carousel_urls,
+        "collaborators": p.collaborators,
+        "share_to_feed": p.share_to_feed,
         "scheduled_at": p.scheduled_at.isoformat() if p.scheduled_at else None,
         "status": p.status,
         "ig_media_id": p.ig_media_id,
@@ -1183,6 +1186,14 @@ def _scheduled_post_out(p: SocialScheduledPost) -> dict:
         "attempts": p.attempts,
         "created_at": p.created_at.isoformat() if p.created_at else None,
     }
+
+
+def _normalize_public_url(url: str) -> str:
+    """Buat URL relatif (/api/uploads/...) jadi absolut pakai FRONTEND_URL."""
+    if url.startswith("/"):
+        base = (get_settings().FRONTEND_URL or "").rstrip("/")
+        return f"{base}{url}"
+    return url
 
 
 @router.post("/accounts/{account_id}/scheduled-posts", response_model=Any)
@@ -1203,6 +1214,7 @@ async def create_scheduled_post(
         raise HTTPException(status_code=404, detail="Akun tidak ditemukan")
 
     media_url = (data.get("media_url") or "").strip()
+    media_type = (data.get("media_type") or "IMAGE").upper()
     scheduled_at_raw = data.get("scheduled_at")
     if not media_url or not scheduled_at_raw:
         raise HTTPException(status_code=400, detail="media_url & scheduled_at wajib")
@@ -1218,9 +1230,39 @@ async def create_scheduled_post(
         raise HTTPException(status_code=400, detail="scheduled_at sudah lewat")
 
     # Normalize media_url ke full URL — IG butuh public absolute URL.
-    if media_url.startswith("/"):
-        base = (get_settings().FRONTEND_URL or "").rstrip("/")
-        media_url = f"{base}{media_url}"
+    media_url = _normalize_public_url(media_url)
+
+    # CAROUSEL: validate + normalize urls list.
+    carousel_urls_in = data.get("carousel_urls") or None
+    carousel_urls_out = None
+    if media_type == "CAROUSEL":
+        if not isinstance(carousel_urls_in, list) or len(carousel_urls_in) < 2:
+            raise HTTPException(status_code=400, detail="Carousel butuh minimal 2 media")
+        if len(carousel_urls_in) > 10:
+            raise HTTPException(status_code=400, detail="Carousel maksimal 10 media")
+        carousel_urls_out = []
+        for it in carousel_urls_in:
+            if isinstance(it, str):
+                url = _normalize_public_url(it.strip())
+                ext = url.lower().split("?", 1)[0]
+                is_vid = any(ext.endswith(e) for e in (".mp4", ".mov", ".webm", ".m4v"))
+                carousel_urls_out.append({"url": url, "is_video": is_vid})
+            elif isinstance(it, dict) and it.get("url"):
+                carousel_urls_out.append({
+                    "url": _normalize_public_url(it["url"].strip()),
+                    "is_video": bool(it.get("is_video")),
+                })
+
+    # Collaborators: only meaningful untuk REELS (atau CAROUSEL-with-video).
+    collaborators_in = data.get("collaborators") or None
+    collaborators_out = None
+    if isinstance(collaborators_in, list):
+        cleaned = [str(c).strip().lstrip("@") for c in collaborators_in if str(c).strip()]
+        if len(cleaned) > 3:
+            raise HTTPException(status_code=400, detail="Maksimal 3 collaborator")
+        collaborators_out = cleaned or None
+
+    share_to_feed = bool(data.get("share_to_feed", True))
 
     p = SocialScheduledPost(
         account_id=acc.id,
@@ -1229,7 +1271,10 @@ async def create_scheduled_post(
         design_brief_id=data.get("design_brief_id"),
         caption=data.get("caption") or None,
         media_url=media_url,
-        media_type=(data.get("media_type") or "IMAGE").upper(),
+        media_type=media_type,
+        carousel_urls=carousel_urls_out,
+        collaborators=collaborators_out,
+        share_to_feed=share_to_feed,
         scheduled_at=scheduled_at,
         status="pending",
     )

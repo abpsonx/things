@@ -1,7 +1,7 @@
 """Connected social media accounts (brand accounts) and their metric snapshots."""
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Text, DateTime, Date, Integer, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, String, Text, DateTime, Date, Integer, Boolean, ForeignKey, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -114,8 +114,16 @@ class SocialScheduledPost(Base):
     caption = Column(Text, nullable=True)
     # URL gambar yang publik-accessible — IG akan fetch dari sini.
     # Untuk Things: pakai /api/uploads/... dari upload existing.
+    # Untuk CAROUSEL ini cuma cover/preview pertama, full list di carousel_urls.
     media_url = Column(Text, nullable=False)
-    media_type = Column(String(20), nullable=True, default="IMAGE")  # IMAGE | VIDEO | REELS | CAROUSEL
+    media_type = Column(String(20), nullable=True, default="IMAGE")  # IMAGE | VIDEO | REELS | STORIES | CAROUSEL
+    # CAROUSEL: list URL (image atau video) — sampai 10 item.
+    # Format: [{"url": "...", "is_video": false}, ...]
+    carousel_urls = Column(JSONB, nullable=True)
+    # REELS only: list IG username (max 3) yang diundang sebagai collaborator.
+    collaborators = Column(JSONB, nullable=True)
+    # REELS only: kalau True (default) Reels akan crosspost ke Feed juga.
+    share_to_feed = Column(Boolean, nullable=False, default=True)
     scheduled_at = Column(DateTime(timezone=True), nullable=False)
 
     status = Column(String(20), nullable=False, default="pending")  # pending|publishing|posted|failed|cancelled
