@@ -5,8 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   Image as ImageIcon, ChevronLeft, Loader2, Trash2, Upload, MapPin,
-  Check, X, MessageCircle, Plus, Square as SquareIcon,
+  Check, X, MessageCircle, Plus, Square as SquareIcon, CalendarClock, Send,
 } from "lucide-react";
+import Modal from "@/components/ui/Modal";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import api from "@/lib/api";
@@ -110,6 +111,13 @@ export default function DesignBriefDetailPage() {
   const [pendingNote, setPendingNote] = useState("");
   const [activeAnnotation, setActiveAnnotation] = useState<string | null>(null);
   const [activeImageId, setActiveImageId] = useState<string | null>(null);
+  // Schedule-to-IG modal state
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [igAccounts, setIgAccounts] = useState<{ id: string; username: string; display_name?: string; avatar_url?: string }[]>([]);
+  const [scheduleAccountId, setScheduleAccountId] = useState<string>("");
+  const [scheduleCaption, setScheduleCaption] = useState("");
+  const [scheduleAt, setScheduleAt] = useState<string>("");
+  const [scheduleSubmitting, setScheduleSubmitting] = useState(false);
   const [brands, setBrands] = useState<BrandLabel[]>([]);
   const [newBrandName, setNewBrandName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -285,6 +293,57 @@ export default function DesignBriefDetailPage() {
       });
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || "Gagal menghapus gambar");
+    }
+  };
+
+  // ─── Schedule to IG ──────────────────────────────────────────────────────
+  const openScheduleModal = async () => {
+    if (!brief) return;
+    // Hashtag dari brief di-append ke caption (kalau ada).
+    const captionBase = brief.caption ? brief.caption.replace(/<[^>]+>/g, "").trim() : "";
+    const hashtagLine = brief.hashtag ? `\n\n${brief.hashtag}` : "";
+    setScheduleCaption(captionBase + hashtagLine);
+    // Default: 1 jam ke depan, dibulatkan ke 5 menit terdekat.
+    const d = new Date(Date.now() + 60 * 60 * 1000);
+    d.setSeconds(0, 0);
+    d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5);
+    // datetime-local butuh format YYYY-MM-DDTHH:mm (tanpa Z, asumsi local time).
+    const pad = (n: number) => String(n).padStart(2, "0");
+    setScheduleAt(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`);
+    setScheduleOpen(true);
+    // Fetch IG accounts dari workspace.
+    try {
+      const res = await api.get(`/organizations/${orgId}/sosmed/accounts`);
+      const igOnly = (res.data || []).filter((a: any) => a.platform === "instagram");
+      setIgAccounts(igOnly);
+      if (igOnly[0] && !scheduleAccountId) setScheduleAccountId(igOnly[0].id);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || "Gagal memuat akun IG");
+    }
+  };
+
+  const submitSchedule = async () => {
+    if (!brief || !activeImage || !scheduleAccountId || !scheduleAt) return;
+    setScheduleSubmitting(true);
+    try {
+      // datetime-local → ISO. Anggap local (browser tz), convert ke UTC.
+      const localDate = new Date(scheduleAt);
+      await api.post(
+        `/organizations/${orgId}/sosmed/accounts/${scheduleAccountId}/scheduled-posts`,
+        {
+          caption: scheduleCaption,
+          media_url: activeImage.image_url,
+          media_type: "IMAGE",
+          scheduled_at: localDate.toISOString(),
+          design_brief_id: brief.id,
+        },
+      );
+      toast.success("Posting terjadwal!");
+      setScheduleOpen(false);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || "Gagal menjadwalkan posting");
+    } finally {
+      setScheduleSubmitting(false);
     }
   };
 
@@ -832,6 +891,14 @@ export default function DesignBriefDetailPage() {
                       <span className="mx-2 opacity-50">·</span>
                       <strong>Klik</strong> = pin titik · <strong>Drag</strong> = kotak revisi area.
                     </span>
+                    {/* Schedule-to-IG: pakai gambar yg lagi aktif. */}
+                    <button
+                      type="button"
+                      onClick={openScheduleModal}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-foreground text-background text-[10px] font-bold hover:opacity-90 transition-opacity"
+                    >
+                      <CalendarClock className="w-3 h-3" /> Jadwalkan ke IG
+                    </button>
                   </div>
                 </div>
 
@@ -1004,6 +1071,87 @@ export default function DesignBriefDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Schedule to Instagram modal */}
+      <Modal isOpen={scheduleOpen} onClose={() => setScheduleOpen(false)} title="Jadwalkan ke Instagram">
+        {igAccounts.length === 0 ? (
+          <div className="space-y-3 py-4">
+            <p className="text-sm text-muted-foreground italic">
+              Belum ada akun Instagram terhubung. Hubungkan dulu di <Link href={`/org/${orgId}/sosmed`} className="text-primary underline">Sosmed</Link>.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Image preview */}
+            {activeImage && (
+              <div className="flex items-start gap-3 p-3 rounded-xl border border-border bg-secondary/20">
+                <img src={activeImage.image_url} alt="" className="w-20 h-20 rounded-lg object-cover shrink-0 border border-border" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold">Gambar #{brief.images.findIndex((i) => i.id === activeImage.id) + 1}</p>
+                  <p className="text-[10px] text-muted-foreground">{brief.title}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Account picker */}
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Akun IG</label>
+              <select
+                value={scheduleAccountId}
+                onChange={(e) => setScheduleAccountId(e.target.value)}
+                className="w-full px-3 py-2 bg-card border border-border rounded-xl text-sm outline-none focus:border-primary"
+              >
+                {igAccounts.map((a) => (
+                  <option key={a.id} value={a.id}>{a.display_name || a.username} (@{a.username})</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Schedule datetime */}
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Tanggal & Jam Publish</label>
+              <input
+                type="datetime-local"
+                value={scheduleAt}
+                onChange={(e) => setScheduleAt(e.target.value)}
+                className="w-full px-3 py-2 bg-card border border-border rounded-xl text-sm outline-none focus:border-primary"
+              />
+              <p className="text-[10px] text-muted-foreground italic">Worker cek tiap 5 menit — boleh telat hingga 5 menit dari waktu jadwal.</p>
+            </div>
+
+            {/* Caption */}
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Caption</label>
+              <textarea
+                value={scheduleCaption}
+                onChange={(e) => setScheduleCaption(e.target.value)}
+                rows={6}
+                className="w-full px-3 py-2 bg-card border border-border rounded-xl text-sm outline-none focus:border-primary resize-y"
+              />
+              <p className="text-[10px] text-muted-foreground">Caption + hashtag dari brief sudah di-prefill, edit sesuai kebutuhan.</p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+              <button
+                type="button"
+                onClick={() => setScheduleOpen(false)}
+                className="px-3 py-1.5 text-xs font-bold text-muted-foreground hover:text-foreground"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={submitSchedule}
+                disabled={scheduleSubmitting || !scheduleAccountId || !scheduleAt}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold disabled:opacity-50 hover:shadow-md transition-all"
+              >
+                {scheduleSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                Jadwalkan
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

@@ -173,5 +173,12 @@ async def check_reminders():
         except Exception as e:
             print(f"[SCHEDULER] cleanup error: {e}")
 
+        # Sosmed: publish scheduled posts whose scheduled_at sudah lewat.
+        try:
+            from app.services.sosmed_publisher import publish_due_posts
+            await publish_due_posts()
+        except Exception as e:
+            print(f"[SCHEDULER] sosmed publish error: {e}")
+
         # Run every 5 minutes
         await asyncio.sleep(300)

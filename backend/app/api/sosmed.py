@@ -23,7 +23,7 @@ from app.core.config import get_settings
 from app.core.security import create_access_token, decode_token
 from app.models.user import User
 from app.models.organization import OrgMember
-from app.models.social_account import SocialAccount, SocialMetric, SocialPost
+from app.models.social_account import SocialAccount, SocialMetric, SocialPost, SocialScheduledPost, SocialStory
 from app.dependencies import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -443,6 +443,13 @@ async def _ig_snapshot(db: AsyncSession, acc: SocialAccount) -> bool:
                 acc.insights = await _ig_fetch_insights(client, str(ig_user_id), acc.access_token)
         except Exception as e:
             logger.warning("IG insights fetch outer failure for %s: %s", acc.id, e)
+
+    # Sync stories (snapshot biar stories yang tinggal beberapa jam survive
+    # even after expire). Best-effort; gak boleh fail seluruh snapshot.
+    try:
+        await _ig_sync_stories(db, acc)
+    except Exception as e:
+        logger.warning("IG stories sync outer failure for %s: %s", acc.id, e)
     return True
 
 
@@ -459,25 +466,63 @@ def _parse_ig_time(value: str | None):
             return None
 
 
-async def _ig_media_insights(client: httpx.AsyncClient, media_id: str, token: str) -> dict:
-    """Fetch reach/saved/shares for one media. Returns {} if unavailable.
+async def _ig_media_insights(client: httpx.AsyncClient, media_id: str, token: str, media_type: str | None = None) -> dict:
+    """Fetch insights (incl. deep metrics) untuk satu media.
 
-    Metric availability varies by media type, so we degrade the requested set
-    on error rather than failing the whole sync.
+    Set metric tergantung media_type. Reels punya watch-time + navigation
+    yang gak ada di IMAGE; IMAGE/CAROUSEL punya profile_visits/follows.
+    Degrade ke set lebih kecil kalau API tolak (token scope kurang, dll).
     """
-    for metrics in ("reach,saved,shares", "reach,saved", "reach"):
+    mt = (media_type or "").upper()
+    if mt in ("VIDEO", "REELS"):
+        # Reels metrics — watch_time keys: ig_reels_avg_watch_time, ig_reels_video_view_total_time
+        chain = (
+            "reach,saved,shares,total_interactions,comments,likes,views,ig_reels_avg_watch_time,ig_reels_video_view_total_time",
+            "reach,saved,shares,total_interactions,views",
+            "reach,saved,shares",
+            "reach,saved",
+            "reach",
+        )
+    elif mt == "CAROUSEL_ALBUM":
+        chain = (
+            "reach,saved,shares,total_interactions,profile_visits,profile_activity,follows",
+            "reach,saved,shares,total_interactions",
+            "reach,saved,shares",
+            "reach,saved",
+            "reach",
+        )
+    else:  # IMAGE atau fallback default
+        chain = (
+            "reach,saved,shares,total_interactions,profile_visits,profile_activity,follows",
+            "reach,saved,shares,total_interactions",
+            "reach,saved,shares",
+            "reach,saved",
+            "reach",
+        )
+
+    for metrics in chain:
         try:
-            r = await client.get(f"{INSTAGRAM_GRAPH}/{media_id}/insights", params={
-                "metric": metrics, "access_token": token,
-            })
+            params = {"metric": metrics, "access_token": token}
+            # total_value REQUIRED untuk metric baru di v22+ (profile_visits dll).
+            # Aman juga buat metric lama.
+            if any(k in metrics for k in ("total_interactions", "profile_visits", "profile_activity", "follows", "ig_reels_")):
+                params["metric_type"] = "total_value"
+            r = await client.get(f"{INSTAGRAM_GRAPH}/{media_id}/insights", params=params)
             data = r.json()
         except httpx.HTTPError:
             return {}
         if isinstance(data, dict) and "data" in data:
             out = {}
             for row in data["data"]:
-                vals = row.get("values") or [{}]
-                out[row.get("name")] = vals[0].get("value")
+                name = row.get("name")
+                # Format response berbeda untuk metric_type=total_value:
+                # `total_value: {value: N}` di level row, bukan dalam values[].
+                tv = row.get("total_value")
+                if isinstance(tv, dict) and "value" in tv:
+                    out[name] = tv["value"]
+                else:
+                    vals = row.get("values") or [{}]
+                    out[name] = vals[0].get("value")
             return out
     return {}
 
@@ -506,11 +551,11 @@ async def _ig_sync_posts(db: AsyncSession, acc: SocialAccount, limit: int = 50) 
             # granted), skip the rest instead of firing N failing requests.
             insights = [{} for _ in items]
             if items:
-                probe = await _ig_media_insights(client, str(items[0].get("id")), acc.access_token)
+                probe = await _ig_media_insights(client, str(items[0].get("id")), acc.access_token, items[0].get("media_type"))
                 if probe:
                     insights[0] = probe
                     rest = await asyncio.gather(
-                        *[_ig_media_insights(client, str(it.get("id")), acc.access_token) for it in items[1:]]
+                        *[_ig_media_insights(client, str(it.get("id")), acc.access_token, it.get("media_type")) for it in items[1:]]
                     )
                     for i, ins in enumerate(rest, start=1):
                         insights[i] = ins
@@ -541,7 +586,104 @@ async def _ig_sync_posts(db: AsyncSession, acc: SocialAccount, limit: int = 50) 
         p.reach = ins.get("reach")
         p.saved = ins.get("saved")
         p.shares = ins.get("shares")
+        p.views = ins.get("views")
+        p.total_interactions = ins.get("total_interactions")
+        p.profile_visits = ins.get("profile_visits")
+        p.profile_activity = ins.get("profile_activity")
+        p.follows = ins.get("follows")
+        p.navigation = ins.get("navigation")
+        p.avg_watch_time_ms = ins.get("ig_reels_avg_watch_time")
+        p.total_watch_time_ms = ins.get("ig_reels_video_view_total_time")
         p.fetched_at = now
+        count += 1
+    return count
+
+
+async def _ig_story_insights(client: httpx.AsyncClient, story_id: str, token: str) -> dict:
+    """Fetch insights untuk satu story. Returns {} kalau gak available.
+
+    Story metrics: impressions, reach, exits, taps_forward, taps_back,
+    replies, profile_visits, follows. Note: untuk story lama (sudah lewat
+    24 jam) insights kadang sudah expired juga — degrade ke set lebih
+    kecil daripada gagal total.
+    """
+    full = "impressions,reach,exits,taps_forward,taps_back,replies,profile_visits,follows"
+    for metrics in (full, "impressions,reach,exits,replies", "impressions,reach"):
+        try:
+            r = await client.get(f"{INSTAGRAM_GRAPH}/{story_id}/insights", params={
+                "metric": metrics, "access_token": token,
+            })
+            data = r.json()
+        except httpx.HTTPError:
+            return {}
+        if isinstance(data, dict) and "data" in data:
+            out = {}
+            for row in data["data"]:
+                vals = row.get("values") or [{}]
+                out[row.get("name")] = vals[0].get("value")
+            return out
+    return {}
+
+
+async def _ig_sync_stories(db: AsyncSession, acc: SocialAccount) -> int:
+    """Pull active stories + insights ke social_stories.
+
+    Stories expire 24 jam; kita simpan permanen di sini supaya analitiknya
+    survive walau story aslinya udah hilang dari IG. Kalau story sudah ada
+    di DB (matched by external_id), insights di-refresh aja.
+    """
+    if acc.platform != "instagram" or not acc.access_token:
+        return 0
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.get(f"{INSTAGRAM_GRAPH}/me/stories", params={
+                "fields": "id,media_type,media_url,thumbnail_url,permalink,timestamp",
+                "access_token": acc.access_token,
+            })
+            data = r.json()
+            if not isinstance(data, dict) or "data" not in data:
+                logger.warning("IG stories sync API error for %s: %s", acc.id, data)
+                return 0
+            items = data["data"]
+            insights = [{} for _ in items]
+            if items:
+                results = await asyncio.gather(
+                    *[_ig_story_insights(client, str(it.get("id")), acc.access_token) for it in items]
+                )
+                for i, ins in enumerate(results):
+                    insights[i] = ins
+    except httpx.HTTPError as exc:
+        logger.warning("IG stories sync HTTP error for %s: %s", acc.id, exc)
+        return 0
+
+    existing = await db.execute(select(SocialStory).where(SocialStory.account_id == acc.id))
+    by_external = {s.external_id: s for s in existing.scalars().all()}
+    now = datetime.now(timezone.utc)
+    count = 0
+    for item, ins in zip(items, insights):
+        ext = str(item.get("id"))
+        if not ext:
+            continue
+        s = by_external.get(ext)
+        if not s:
+            s = SocialStory(account_id=acc.id, external_id=ext)
+            db.add(s)
+        s.media_type = item.get("media_type")
+        s.media_url = item.get("media_url")
+        s.thumbnail_url = item.get("thumbnail_url")
+        s.permalink = item.get("permalink")
+        posted = _parse_ig_time(item.get("timestamp"))
+        s.posted_at = posted
+        s.expires_at = (posted + timedelta(hours=24)) if posted else None
+        s.impressions = ins.get("impressions")
+        s.reach = ins.get("reach")
+        s.exits = ins.get("exits")
+        s.taps_forward = ins.get("taps_forward")
+        s.taps_back = ins.get("taps_back")
+        s.replies = ins.get("replies")
+        s.profile_visits = ins.get("profile_visits")
+        s.follows = ins.get("follows")
+        s.fetched_at = now
         count += 1
     return count
 
@@ -753,11 +895,104 @@ async def account_posts(
             "reach": p.reach,
             "saved": p.saved,
             "shares": p.shares,
+            "views": p.views,
+            "total_interactions": p.total_interactions,
+            "profile_visits": p.profile_visits,
+            "profile_activity": p.profile_activity,
+            "follows": p.follows,
+            "navigation": p.navigation,
+            "avg_watch_time_ms": p.avg_watch_time_ms,
+            "total_watch_time_ms": p.total_watch_time_ms,
             "engagement": (p.like_count or 0) + (p.comments_count or 0) + (p.shares or 0) + (p.saved or 0),
         }
         for p in rows.scalars().all()
     ]
     return {"posts": posts}
+
+
+@router.get("/accounts/{account_id}/stories", response_model=Any)
+async def account_stories(
+    org_id: str, account_id: str,
+    refresh: bool = False,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List semua stories (active + archived snapshot) untuk satu akun.
+
+    Stories yg masih live di IG akan auto re-sync; yg sudah expired
+    (>24 jam) tetap muncul dari cache DB. Refresh paksa re-fetch via
+    `refresh=true`.
+    """
+    await _require_member(db, org_id, current_user.id)
+    res = await db.execute(
+        select(SocialAccount).where(SocialAccount.id == account_id, SocialAccount.org_id == org_id)
+    )
+    acc = res.scalar_one_or_none()
+    if not acc:
+        raise HTTPException(status_code=404, detail="Akun tidak ditemukan")
+
+    newest = await db.execute(
+        select(SocialStory.fetched_at).where(SocialStory.account_id == acc.id)
+        .order_by(SocialStory.fetched_at.desc()).limit(1)
+    )
+    last_fetch = newest.scalar_one_or_none()
+    stale = last_fetch is None or (datetime.now(timezone.utc) - last_fetch) > timedelta(hours=1)
+    if refresh or stale:
+        await _ig_sync_stories(db, acc)
+        await db.commit()
+
+    rows = await db.execute(
+        select(SocialStory).where(SocialStory.account_id == acc.id)
+        .order_by(SocialStory.posted_at.desc().nullslast())
+        .limit(200)
+    )
+    now = datetime.now(timezone.utc)
+    items = []
+    for s in rows.scalars().all():
+        taps = (s.taps_forward or 0) + (s.taps_back or 0)
+        completion = None
+        if s.impressions and s.exits is not None:
+            completion = max(0.0, round((1 - (s.exits / s.impressions)) * 100, 1))
+        items.append({
+            "id": str(s.id),
+            "external_id": s.external_id,
+            "media_type": s.media_type,
+            "media_url": s.media_url,
+            "thumbnail_url": s.thumbnail_url or s.media_url,
+            "permalink": s.permalink,
+            "posted_at": s.posted_at.isoformat() if s.posted_at else None,
+            "expires_at": s.expires_at.isoformat() if s.expires_at else None,
+            "is_live": bool(s.expires_at and s.expires_at > now),
+            "impressions": s.impressions,
+            "reach": s.reach,
+            "exits": s.exits,
+            "taps_forward": s.taps_forward,
+            "taps_back": s.taps_back,
+            "taps_total": taps if (s.taps_forward is not None or s.taps_back is not None) else None,
+            "replies": s.replies,
+            "profile_visits": s.profile_visits,
+            "follows": s.follows,
+            "completion_rate": completion,
+        })
+    # Summary agregat (untuk header card di UI).
+    if items:
+        def _sum(k):
+            vals = [i[k] for i in items if i.get(k) is not None]
+            return sum(vals) if vals else None
+        n_live = sum(1 for i in items if i["is_live"])
+        summary = {
+            "count": len(items),
+            "live_count": n_live,
+            "total_impressions": _sum("impressions"),
+            "total_reach": _sum("reach"),
+            "total_replies": _sum("replies"),
+            "total_exits": _sum("exits"),
+            "total_profile_visits": _sum("profile_visits"),
+            "total_follows": _sum("follows"),
+        }
+    else:
+        summary = {"count": 0, "live_count": 0}
+    return {"stories": items, "summary": summary}
 
 
 async def _account_or_404(db: AsyncSession, org_id: str, account_id: str) -> SocialAccount:
@@ -926,4 +1161,122 @@ async def delete_comment(
             )
     except httpx.HTTPError:
         raise HTTPException(status_code=502, detail="Gagal menghapus komentar")
+    return None
+
+
+# ─── Auto Posting / Scheduler ────────────────────────────────────────────────
+
+def _scheduled_post_out(p: SocialScheduledPost) -> dict:
+    return {
+        "id": str(p.id),
+        "account_id": str(p.account_id),
+        "design_brief_id": str(p.design_brief_id) if p.design_brief_id else None,
+        "caption": p.caption,
+        "media_url": p.media_url,
+        "media_type": p.media_type,
+        "scheduled_at": p.scheduled_at.isoformat() if p.scheduled_at else None,
+        "status": p.status,
+        "ig_media_id": p.ig_media_id,
+        "ig_permalink": p.ig_permalink,
+        "posted_at": p.posted_at.isoformat() if p.posted_at else None,
+        "error": p.error,
+        "attempts": p.attempts,
+        "created_at": p.created_at.isoformat() if p.created_at else None,
+    }
+
+
+@router.post("/accounts/{account_id}/scheduled-posts", response_model=Any)
+async def create_scheduled_post(
+    org_id: str, account_id: str,
+    data: dict,  # {caption, media_url, media_type, scheduled_at, design_brief_id?}
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Jadwalkan posting ke IG/TikTok. media_url harus URL publik
+    (IG fetch dari sini saat publish)."""
+    await _require_member(db, org_id, current_user.id)
+    res = await db.execute(
+        select(SocialAccount).where(SocialAccount.id == account_id, SocialAccount.org_id == org_id)
+    )
+    acc = res.scalar_one_or_none()
+    if not acc:
+        raise HTTPException(status_code=404, detail="Akun tidak ditemukan")
+
+    media_url = (data.get("media_url") or "").strip()
+    scheduled_at_raw = data.get("scheduled_at")
+    if not media_url or not scheduled_at_raw:
+        raise HTTPException(status_code=400, detail="media_url & scheduled_at wajib")
+    try:
+        scheduled_at = datetime.fromisoformat(scheduled_at_raw.replace("Z", "+00:00"))
+        if scheduled_at.tzinfo is None:
+            scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="scheduled_at harus ISO 8601")
+
+    # Boleh schedule masa sekarang (publish-now); reject jika terlalu lampau.
+    if scheduled_at < datetime.now(timezone.utc) - timedelta(minutes=5):
+        raise HTTPException(status_code=400, detail="scheduled_at sudah lewat")
+
+    # Normalize media_url ke full URL — IG butuh public absolute URL.
+    if media_url.startswith("/"):
+        base = (get_settings().FRONTEND_URL or "").rstrip("/")
+        media_url = f"{base}{media_url}"
+
+    p = SocialScheduledPost(
+        account_id=acc.id,
+        org_id=acc.org_id,
+        created_by=current_user.id,
+        design_brief_id=data.get("design_brief_id"),
+        caption=data.get("caption") or None,
+        media_url=media_url,
+        media_type=(data.get("media_type") or "IMAGE").upper(),
+        scheduled_at=scheduled_at,
+        status="pending",
+    )
+    db.add(p)
+    await db.commit()
+    await db.refresh(p)
+    return _scheduled_post_out(p)
+
+
+@router.get("/accounts/{account_id}/scheduled-posts", response_model=Any)
+async def list_scheduled_posts(
+    org_id: str, account_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List semua scheduled post utk akun ini (pending + posted/failed
+    100 terakhir untuk audit)."""
+    await _require_member(db, org_id, current_user.id)
+    res = await db.execute(
+        select(SocialScheduledPost)
+        .where(SocialScheduledPost.account_id == account_id)
+        .order_by(SocialScheduledPost.scheduled_at.desc())
+        .limit(100)
+    )
+    rows = res.scalars().all()
+    return {"items": [_scheduled_post_out(p) for p in rows]}
+
+
+@router.delete("/scheduled-posts/{post_id}", status_code=204)
+async def cancel_scheduled_post(
+    org_id: str, post_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Batalkan scheduled post — hanya jika status masih pending."""
+    await _require_member(db, org_id, current_user.id)
+    res = await db.execute(
+        select(SocialScheduledPost).where(
+            SocialScheduledPost.id == post_id,
+            SocialScheduledPost.org_id == org_id,
+        )
+    )
+    p = res.scalar_one_or_none()
+    if not p:
+        raise HTTPException(status_code=404, detail="Scheduled post tidak ditemukan")
+    if p.status not in ("pending", "failed"):
+        raise HTTPException(status_code=400, detail="Hanya status pending/failed yang bisa dibatalkan")
+    p.status = "cancelled"
+    await db.commit()
     return None

@@ -290,6 +290,15 @@ async def lifespan(app: FastAPI):
                 await conn.execute(text(f"ALTER TABLE social_posts ADD COLUMN IF NOT EXISTS {col} INTEGER"))
             except Exception:
                 pass
+        # per-post deep insights (Tier 1 #3 — extend metric fetch)
+        for col in (
+            "total_interactions", "profile_visits", "profile_activity",
+            "follows", "navigation", "avg_watch_time_ms", "total_watch_time_ms",
+        ):
+            try:
+                await conn.execute(text(f"ALTER TABLE social_posts ADD COLUMN IF NOT EXISTS {col} INTEGER"))
+            except Exception:
+                pass
 
         # granted permissions captured at connect time
         try:

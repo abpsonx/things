@@ -66,10 +66,71 @@ interface Post {
   reach?: number | null;
   saved?: number | null;
   shares?: number | null;
+  views?: number | null;
+  total_interactions?: number | null;
+  profile_visits?: number | null;
+  profile_activity?: number | null;
+  follows?: number | null;
+  navigation?: number | null;
+  avg_watch_time_ms?: number | null;
+  total_watch_time_ms?: number | null;
   engagement: number;
 }
 
-type SubTab = "growth" | "calendar" | "posts";
+type SubTab = "growth" | "calendar" | "posts" | "stories" | "schedule";
+
+interface Story {
+  id: string;
+  external_id: string;
+  media_type: string | null;
+  media_url: string | null;
+  thumbnail_url: string | null;
+  permalink: string | null;
+  posted_at: string | null;
+  expires_at: string | null;
+  is_live: boolean;
+  impressions: number | null;
+  reach: number | null;
+  exits: number | null;
+  taps_forward: number | null;
+  taps_back: number | null;
+  taps_total: number | null;
+  replies: number | null;
+  profile_visits: number | null;
+  follows: number | null;
+  completion_rate: number | null;
+}
+
+interface StoriesPayload {
+  stories: Story[];
+  summary: {
+    count: number;
+    live_count: number;
+    total_impressions?: number | null;
+    total_reach?: number | null;
+    total_replies?: number | null;
+    total_exits?: number | null;
+    total_profile_visits?: number | null;
+    total_follows?: number | null;
+  };
+}
+
+interface ScheduledPost {
+  id: string;
+  account_id: string;
+  design_brief_id: string | null;
+  caption: string | null;
+  media_url: string;
+  media_type: string | null;
+  scheduled_at: string;
+  status: string; // pending | publishing | posted | failed | cancelled
+  ig_media_id: string | null;
+  ig_permalink: string | null;
+  posted_at: string | null;
+  error: string | null;
+  attempts: number;
+  created_at: string;
+}
 
 export default function SosmedPage() {
   const { id: orgId } = useParams();
@@ -82,6 +143,47 @@ export default function SosmedPage() {
   const [metricsLoading, setMetricsLoading] = useState<string | null>(null);
   const [posts, setPosts] = useState<Record<string, Post[]>>({});
   const [postsLoading, setPostsLoading] = useState<string | null>(null);
+  const [schedules, setSchedules] = useState<Record<string, ScheduledPost[]>>({});
+  const [schedulesLoading, setSchedulesLoading] = useState<string | null>(null);
+  const [stories, setStories] = useState<Record<string, StoriesPayload>>({});
+  const [storiesLoading, setStoriesLoading] = useState<string | null>(null);
+
+  const loadStories = async (accountId: string, refresh = false) => {
+    setStoriesLoading(accountId);
+    try {
+      const res = await api.get(
+        `/organizations/${orgId}/sosmed/accounts/${accountId}/stories`,
+        { params: refresh ? { refresh: true } : {} }
+      );
+      setStories((prev) => ({ ...prev, [accountId]: res.data }));
+    } catch (err) {
+      console.error("Failed to load stories", err);
+    } finally {
+      setStoriesLoading(null);
+    }
+  };
+
+  const loadSchedules = async (accountId: string) => {
+    setSchedulesLoading(accountId);
+    try {
+      const res = await api.get(`/organizations/${orgId}/sosmed/accounts/${accountId}/scheduled-posts`);
+      setSchedules((prev) => ({ ...prev, [accountId]: res.data?.items || [] }));
+    } catch (err) {
+      console.error("Failed to load scheduled posts", err);
+    } finally {
+      setSchedulesLoading(null);
+    }
+  };
+
+  const cancelSchedule = async (id: string, accountId: string) => {
+    if (!confirm("Batalkan posting terjadwal ini?")) return;
+    try {
+      await api.delete(`/organizations/${orgId}/sosmed/scheduled-posts/${id}`);
+      loadSchedules(accountId);
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || "Gagal membatalkan");
+    }
+  };
 
   const loadMetrics = async (accountId: string, refresh = false) => {
     setMetricsLoading(accountId);
@@ -128,7 +230,13 @@ export default function SosmedPage() {
 
   const selectSubTab = (accountId: string, tab: SubTab) => {
     setSubTab(tab);
-    if (!posts[accountId]) loadPosts(accountId);
+    if (tab === "schedule") {
+      if (!schedules[accountId]) loadSchedules(accountId);
+    } else if (tab === "stories") {
+      if (!stories[accountId]) loadStories(accountId);
+    } else {
+      if (!posts[accountId]) loadPosts(accountId);
+    }
   };
 
   const refresh = async () => {
@@ -277,17 +385,19 @@ export default function SosmedPage() {
                   {expanded && (
                     <div className="border-t border-border bg-secondary/10">
                       {/* Sub-tabs */}
-                      <div className="flex items-center gap-1 px-3 pt-3">
+                      <div className="flex items-center gap-1 px-3 pt-3 overflow-x-auto whitespace-nowrap scrollbar-thin">
                         {([
                           { key: "growth", label: "Pertumbuhan" },
                           { key: "calendar", label: "Kalender" },
                           { key: "posts", label: "Postingan" },
+                          { key: "stories", label: "Stories" },
+                          { key: "schedule", label: "Jadwal" },
                         ] as { key: SubTab; label: string }[]).map((t) => (
                           <button
                             key={t.key}
                             onClick={() => selectSubTab(a.id, t.key)}
                             className={cn(
-                              "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all",
+                              "shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all",
                               subTab === t.key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary"
                             )}
                           >
@@ -295,11 +405,16 @@ export default function SosmedPage() {
                           </button>
                         ))}
                         <button
-                          onClick={() => (subTab === "growth" ? loadMetrics(a.id, true) : loadPosts(a.id, true))}
-                          disabled={metricsLoading === a.id || postsLoading === a.id}
-                          className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border text-xs font-semibold hover:bg-secondary transition-all disabled:opacity-50"
+                          onClick={() => {
+                            if (subTab === "growth") loadMetrics(a.id, true);
+                            else if (subTab === "schedule") loadSchedules(a.id);
+                            else if (subTab === "stories") loadStories(a.id, true);
+                            else loadPosts(a.id, true);
+                          }}
+                          disabled={metricsLoading === a.id || postsLoading === a.id || schedulesLoading === a.id || storiesLoading === a.id}
+                          className="ml-auto shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border text-xs font-semibold hover:bg-secondary transition-all disabled:opacity-50"
                         >
-                          <RefreshCw className={cn("w-3.5 h-3.5", (metricsLoading === a.id || postsLoading === a.id) && "animate-spin")} /> Refresh
+                          <RefreshCw className={cn("w-3.5 h-3.5", (metricsLoading === a.id || postsLoading === a.id || schedulesLoading === a.id) && "animate-spin")} /> Refresh
                         </button>
                       </div>
 
@@ -323,6 +438,20 @@ export default function SosmedPage() {
                             <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
                           ) : (
                             <PostsTab posts={posts[a.id] || []} followers={m?.latest?.followers ?? null} orgId={String(orgId)} accountId={a.id} />
+                          )
+                        )}
+                        {subTab === "stories" && (
+                          storiesLoading === a.id && !stories[a.id] ? (
+                            <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+                          ) : (
+                            <StoriesTab payload={stories[a.id]} />
+                          )
+                        )}
+                        {subTab === "schedule" && (
+                          schedulesLoading === a.id && !schedules[a.id] ? (
+                            <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+                          ) : (
+                            <ScheduleTab items={schedules[a.id] || []} onCancel={(id) => cancelSchedule(id, a.id)} />
                           )
                         )}
                       </div>
@@ -983,6 +1112,7 @@ type SortKey = "posted_at" | "reach" | "like_count" | "shares" | "saved" | "comm
 function TopPerformingTable({ posts, followers, platform }: { posts: Post[]; followers: number; platform: "instagram" | "tiktok" }) {
   const [sortKey, setSortKey] = useState<SortKey>("engagement");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const sorted = useMemo(() => {
     const arr = [...posts];
@@ -1038,33 +1168,79 @@ function TopPerformingTable({ posts, followers, platform }: { posts: Post[]; fol
             <tbody className="divide-y divide-border">
               {sorted.slice(0, 20).map((p) => {
                 const rate = followers > 0 ? (p.engagement / followers) * 100 : (p.reach && p.reach > 0 ? (p.engagement / p.reach) * 100 : null);
+                const isOpen = expandedId === p.id;
+                const isReel = (p.media_type || "").toUpperCase() === "VIDEO" || (p.media_type || "").toUpperCase() === "REELS";
+                const hasDeep = p.total_interactions != null || p.profile_visits != null || p.follows != null || p.profile_activity != null || p.navigation != null || p.avg_watch_time_ms != null;
                 return (
-                  <tr key={p.id} className="hover:bg-secondary/30 transition-colors">
-                    <td className="px-3 py-2 max-w-[240px]">
-                      <a href={p.permalink || "#"} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 group">
-                        <span className="w-9 h-9 rounded bg-secondary overflow-hidden shrink-0 flex items-center justify-center border border-border">
-                          {p.thumbnail_url ? <img src={p.thumbnail_url} alt="" className="w-full h-full object-cover" /> : <ImageIcon className="w-4 h-4 text-muted-foreground" />}
+                  <React.Fragment key={p.id}>
+                    <tr
+                      onClick={() => setExpandedId(isOpen ? null : p.id)}
+                      className={cn("transition-colors cursor-pointer", isOpen ? "bg-amber-50/60 dark:bg-amber-950/20" : "hover:bg-secondary/30")}
+                    >
+                      <td className="px-3 py-2 max-w-[240px]">
+                        <div className="flex items-center gap-2 group">
+                          <ChevronDown className={cn("w-3.5 h-3.5 text-muted-foreground transition-transform shrink-0", isOpen && "rotate-180")} />
+                          <span className="w-9 h-9 rounded bg-secondary overflow-hidden shrink-0 flex items-center justify-center border border-border">
+                            {p.thumbnail_url ? <img src={p.thumbnail_url} alt="" className="w-full h-full object-cover" /> : <ImageIcon className="w-4 h-4 text-muted-foreground" />}
+                          </span>
+                          <span className="truncate text-xs font-medium">
+                            {p.caption || "(tanpa caption)"}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className={cn("inline-flex items-center px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest border", platformBadge)}>
+                          {platform}
                         </span>
-                        <span className="truncate text-xs font-medium group-hover:text-primary">
-                          {p.caption || "(tanpa caption)"}
-                        </span>
-                      </a>
-                    </td>
-                    <td className="px-3 py-2">
-                      <span className={cn("inline-flex items-center px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest border", platformBadge)}>
-                        {platform}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-muted-foreground tabular-nums">
-                      {p.posted_at ? new Date(p.posted_at).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : "—"}
-                    </td>
-                    <td className="px-3 py-2 tabular-nums">{(p.reach ?? 0).toLocaleString("id-ID")}</td>
-                    <td className="px-3 py-2 tabular-nums">{(p.like_count ?? 0).toLocaleString("id-ID")}</td>
-                    <td className="px-3 py-2 tabular-nums">{(p.shares ?? 0).toLocaleString("id-ID")}</td>
-                    <td className="px-3 py-2 tabular-nums">{(p.saved ?? 0).toLocaleString("id-ID")}</td>
-                    <td className="px-3 py-2 tabular-nums">{(p.comments_count ?? 0).toLocaleString("id-ID")}</td>
-                    <td className="px-3 py-2 tabular-nums font-bold">{rate != null ? `${rate.toFixed(1)}%` : "—"}</td>
-                  </tr>
+                      </td>
+                      <td className="px-3 py-2 text-muted-foreground tabular-nums">
+                        {p.posted_at ? new Date(p.posted_at).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : "—"}
+                      </td>
+                      <td className="px-3 py-2 tabular-nums">{(p.reach ?? 0).toLocaleString("id-ID")}</td>
+                      <td className="px-3 py-2 tabular-nums">{(p.like_count ?? 0).toLocaleString("id-ID")}</td>
+                      <td className="px-3 py-2 tabular-nums">{(p.shares ?? 0).toLocaleString("id-ID")}</td>
+                      <td className="px-3 py-2 tabular-nums">{(p.saved ?? 0).toLocaleString("id-ID")}</td>
+                      <td className="px-3 py-2 tabular-nums">{(p.comments_count ?? 0).toLocaleString("id-ID")}</td>
+                      <td className="px-3 py-2 tabular-nums font-bold">{rate != null ? `${rate.toFixed(1)}%` : "—"}</td>
+                    </tr>
+                    {isOpen && (
+                      <tr className="bg-amber-50/30 dark:bg-amber-950/10">
+                        <td colSpan={9} className="px-4 py-3">
+                          {!hasDeep ? (
+                            <p className="text-[11px] text-muted-foreground italic">
+                              Insights detail belum tersedia. Klik Refresh di tab Postingan untuk fetch ulang
+                              (atau scope insights token belum lengkap).
+                            </p>
+                          ) : (
+                            <div className="space-y-2.5">
+                              <p className="text-[10px] uppercase tracking-widest font-extrabold text-amber-900 dark:text-amber-300">Insights Detail</p>
+                              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
+                                <DeepStat label="Interaksi Total" val={p.total_interactions} />
+                                <DeepStat label="Profil Dilihat" val={p.profile_visits} />
+                                <DeepStat label="Aktivitas Profil" val={p.profile_activity} hint="Tap link/email/CTA" />
+                                <DeepStat label="Follow Baru" val={p.follows} />
+                                {p.views != null && <DeepStat label="Views" val={p.views} />}
+                                {isReel && p.navigation != null && (
+                                  <DeepStat label="Navigation" val={p.navigation} hint="Swipe / dismiss" />
+                                )}
+                                {isReel && p.avg_watch_time_ms != null && (
+                                  <DeepStat label="Avg Watch" val={null} display={`${(p.avg_watch_time_ms / 1000).toFixed(1)}s`} />
+                                )}
+                                {isReel && p.total_watch_time_ms != null && (
+                                  <DeepStat label="Total Watch" val={null} display={formatDuration(p.total_watch_time_ms)} />
+                                )}
+                              </div>
+                              {p.permalink && (
+                                <a href={p.permalink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] font-bold text-primary hover:underline">
+                                  <ExternalLink className="w-2.5 h-2.5" /> Buka post di IG
+                                </a>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 );
               })}
             </tbody>
@@ -1078,6 +1254,29 @@ function TopPerformingTable({ posts, followers, platform }: { posts: Post[]; fol
       )}
     </div>
   );
+}
+
+function DeepStat({ label, val, hint, display }: { label: string; val: number | null | undefined; hint?: string; display?: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-card p-2">
+      <p className="text-[9px] uppercase tracking-widest text-muted-foreground font-bold leading-tight">{label}</p>
+      <p className="text-sm font-extrabold tabular-nums mt-0.5">
+        {display ?? (val != null ? val.toLocaleString("id-ID") : "—")}
+      </p>
+      {hint && <p className="text-[9px] text-muted-foreground italic mt-0.5">{hint}</p>}
+    </div>
+  );
+}
+
+function formatDuration(ms: number): string {
+  const secs = Math.round(ms / 1000);
+  if (secs < 60) return `${secs}s`;
+  const mins = Math.floor(secs / 60);
+  const rem = secs % 60;
+  if (mins < 60) return rem ? `${mins}m ${rem}s` : `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  const rmin = mins % 60;
+  return rmin ? `${hrs}h ${rmin}m` : `${hrs}h`;
 }
 
 function SortableTh({ label, k, sortKey, sortDir, onClick }: {
@@ -1172,6 +1371,191 @@ interface Comment {
   hidden?: boolean | null;
   replies: Reply[];
 }
+
+// ─── Stories tab (live + archived snapshot + per-story insights) ─────────────
+function StoriesTab({ payload }: { payload?: StoriesPayload }) {
+  if (!payload || payload.stories.length === 0) {
+    return (
+      <div className="text-center py-8 text-xs text-muted-foreground italic">
+        Belum ada stories ter-sync. Posting story dari aplikasi Instagram, lalu refresh.
+      </div>
+    );
+  }
+  const s = payload.summary;
+  const stat = (label: string, val: number | null | undefined) => (
+    <div className="rounded-lg border border-border bg-card p-2.5">
+      <p className="text-[9px] uppercase tracking-widest text-muted-foreground font-bold">{label}</p>
+      <p className="text-base font-extrabold tabular-nums mt-0.5">{val?.toLocaleString("id-ID") ?? "—"}</p>
+    </div>
+  );
+  return (
+    <div className="space-y-3">
+      {/* Summary cards */}
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+        <div className="rounded-lg border border-border bg-card p-2.5">
+          <p className="text-[9px] uppercase tracking-widest text-muted-foreground font-bold">Total</p>
+          <p className="text-base font-extrabold tabular-nums mt-0.5">
+            {s.count}
+            {s.live_count > 0 && <span className="ml-1 text-[10px] text-emerald-600">· {s.live_count} live</span>}
+          </p>
+        </div>
+        {stat("Impressions", s.total_impressions)}
+        {stat("Reach", s.total_reach)}
+        {stat("Replies", s.total_replies)}
+        {stat("Profile Visit", s.total_profile_visits)}
+        {stat("Follows", s.total_follows)}
+      </div>
+
+      {/* Story rows */}
+      <div className="space-y-2">
+        {payload.stories.map((st) => {
+          const posted = st.posted_at ? new Date(st.posted_at) : null;
+          return (
+            <div key={st.id} className="rounded-xl border border-border bg-card p-3">
+              <div className="flex items-start gap-3">
+                {st.thumbnail_url ? (
+                  <img src={st.thumbnail_url} alt="" className="w-14 h-24 rounded-lg object-cover shrink-0 border border-border bg-secondary" />
+                ) : (
+                  <div className="w-14 h-24 rounded-lg bg-secondary border border-border flex items-center justify-center text-muted-foreground">
+                    <ImageIcon className="w-5 h-5" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0 space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[9px] font-extrabold uppercase tracking-widest text-muted-foreground">
+                        {st.media_type || "STORY"}
+                      </span>
+                      {st.is_live && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-widest bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border border-emerald-300/50">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Live
+                        </span>
+                      )}
+                    </div>
+                    {posted && (
+                      <span className="text-[10px] text-muted-foreground tabular-nums">
+                        {posted.toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-1.5">
+                    <Stat label="Reach" val={st.reach} />
+                    <Stat label="Impr." val={st.impressions} />
+                    <Stat label="Exits" val={st.exits} />
+                    <Stat label="Reply" val={st.replies} />
+                  </div>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    <Stat label="Tap →" val={st.taps_forward} />
+                    <Stat label="Tap ←" val={st.taps_back} />
+                    <Stat label="Visit" val={st.profile_visits} />
+                    <Stat label="Follow" val={st.follows} />
+                  </div>
+
+                  {st.completion_rate !== null && (
+                    <div className="flex items-center gap-2 pt-0.5">
+                      <span className="text-[10px] text-muted-foreground">Completion</span>
+                      <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-emerald-500"
+                          style={{ width: `${Math.min(100, Math.max(0, st.completion_rate))}%` }}
+                        />
+                      </div>
+                      <span className="text-[10px] font-bold tabular-nums">{st.completion_rate}%</span>
+                    </div>
+                  )}
+
+                  {st.permalink && (
+                    <a href={st.permalink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] font-bold text-primary hover:underline">
+                      <ExternalLink className="w-2.5 h-2.5" /> Buka di IG
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, val }: { label: string; val: number | null | undefined }) {
+  return (
+    <div className="rounded border border-border/60 bg-secondary/40 p-1.5 text-center">
+      <p className="text-[8px] uppercase tracking-wider text-muted-foreground font-bold leading-tight">{label}</p>
+      <p className="text-xs font-extrabold tabular-nums leading-tight mt-0.5">{val?.toLocaleString("id-ID") ?? "—"}</p>
+    </div>
+  );
+}
+
+
+// ─── Schedule tab (list scheduled posts + cancel) ────────────────────────────
+function ScheduleTab({ items, onCancel }: { items: ScheduledPost[]; onCancel: (id: string) => void }) {
+  if (items.length === 0) {
+    return (
+      <div className="text-center py-8 text-xs text-muted-foreground italic">
+        Belum ada posting terjadwal. Pakai tombol &quot;Jadwalkan ke IG&quot; di halaman Brief Design.
+      </div>
+    );
+  }
+  const statusMeta: Record<string, { label: string; cls: string }> = {
+    pending: { label: "Menunggu", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 border-amber-300/50" },
+    publishing: { label: "Mempublish", cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border-blue-300/50" },
+    posted: { label: "Sudah Tayang", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border-emerald-300/50" },
+    failed: { label: "Gagal", cls: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300 border-rose-300/50" },
+    cancelled: { label: "Dibatalkan", cls: "bg-secondary text-muted-foreground border-border" },
+  };
+  return (
+    <div className="space-y-2">
+      {items.map((p) => {
+        const meta = statusMeta[p.status] || statusMeta.pending;
+        const scheduledD = new Date(p.scheduled_at);
+        const cancellable = p.status === "pending" || p.status === "failed";
+        return (
+          <div key={p.id} className="rounded-xl border border-border bg-card p-3 flex items-start gap-3">
+            <img src={p.media_url} alt="" className="w-14 h-14 rounded-lg object-cover shrink-0 border border-border" />
+            <div className="flex-1 min-w-0 space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className={cn("inline-flex items-center px-2 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-widest border", meta.cls)}>
+                  {meta.label}
+                </span>
+                <span className="text-[10px] text-muted-foreground tabular-nums">
+                  {scheduledD.toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                </span>
+              </div>
+              {p.caption && (
+                <p className="text-xs text-foreground/80 line-clamp-2 leading-relaxed whitespace-pre-wrap">{p.caption}</p>
+              )}
+              {p.error && p.status === "failed" && (
+                <p className="text-[10px] text-rose-600 italic">⚠ {p.error}</p>
+              )}
+              <div className="flex items-center gap-2 pt-1">
+                {p.ig_permalink && (
+                  <a href={p.ig_permalink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] font-bold text-primary hover:underline">
+                    <ExternalLink className="w-2.5 h-2.5" /> Lihat di IG
+                  </a>
+                )}
+                {cancellable && (
+                  <button
+                    onClick={() => onCancel(p.id)}
+                    className="ml-auto inline-flex items-center gap-1 text-[10px] font-bold text-muted-foreground hover:text-destructive transition-colors"
+                  >
+                    <Trash2 className="w-3 h-3" /> Batalkan
+                  </button>
+                )}
+                {p.attempts > 0 && (
+                  <span className="text-[9px] text-muted-foreground italic">attempt {p.attempts}</span>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 
 function PostsTab({ posts, followers, orgId, accountId }: { posts: Post[]; followers: number | null; orgId: string; accountId: string }) {
   if (posts.length === 0) return <p className="text-xs text-muted-foreground text-center py-6">Belum ada postingan terambil. Klik Refresh.</p>;
