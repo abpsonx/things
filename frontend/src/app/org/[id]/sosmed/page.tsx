@@ -902,7 +902,7 @@ export default function SosmedPage() {
                         <span>Cek username...</span>
                       </div>
                     ) : newCollabLookup.found ? (
-                      <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 border border-emerald-400 dark:border-emerald-700">
+                      <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-card border-2 border-emerald-500">
                         {newCollabLookup.profile_picture_url ? (
                           <img
                             src={newCollabLookup.profile_picture_url}
@@ -915,26 +915,28 @@ export default function SosmedPage() {
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-bold truncate text-emerald-900 dark:text-emerald-100">
+                          <p className="text-xs font-bold truncate text-foreground">
                             {newCollabLookup.name || `@${newCollabLookup.username}`}
                           </p>
-                          <p className="text-[10px] text-emerald-800/80 dark:text-emerald-200/80 truncate">
+                          <p className="text-[10px] text-muted-foreground truncate">
                             @{newCollabLookup.username}
                             {newCollabLookup.followers_count != null && (
                               <> · {newCollabLookup.followers_count.toLocaleString("id-ID")} followers</>
                             )}
                           </p>
                         </div>
-                        <span className="text-[10px] font-extrabold text-emerald-900 dark:text-emerald-100 bg-emerald-200 dark:bg-emerald-800 px-1.5 py-0.5 rounded">
+                        <span className="text-[10px] font-extrabold text-white bg-emerald-600 px-1.5 py-0.5 rounded">
                           ✓ VALID
                         </span>
                       </div>
                     ) : (
-                      <div className="px-3 py-2.5 rounded-lg bg-rose-100 dark:bg-rose-900/40 border border-rose-400 dark:border-rose-700 space-y-2">
+                      <div className="px-3 py-2.5 rounded-lg bg-card border-2 border-destructive space-y-2">
                         <div className="flex items-start gap-2">
-                          <X className="w-3.5 h-3.5 text-rose-700 dark:text-rose-200 mt-0.5 shrink-0" />
-                          <p className="text-xs text-rose-900 dark:text-rose-100 leading-snug font-medium">
-                            <span className="font-bold">@{newCollabLookup.username}</span> — {newCollabLookup.reason || "Tidak ditemukan."}
+                          <div className="w-5 h-5 rounded-full bg-destructive flex items-center justify-center shrink-0 mt-0.5">
+                            <X className="w-3 h-3 text-white" strokeWidth={3} />
+                          </div>
+                          <p className="text-xs text-foreground leading-snug font-semibold">
+                            <span className="font-extrabold">@{newCollabLookup.username}</span> — {newCollabLookup.reason || "Tidak ditemukan."}
                           </p>
                         </div>
                         <button
@@ -948,11 +950,11 @@ export default function SosmedPage() {
                             setNewCollabInput("");
                             setNewCollabLookup(null);
                           }}
-                          className="text-[10px] font-bold underline text-rose-900 dark:text-rose-100 hover:text-rose-700 dark:hover:text-rose-300 pl-5"
+                          className="text-xs font-extrabold underline text-foreground hover:text-primary pl-7"
                         >
                           Tambahkan tanpa validasi →
                         </button>
-                        <p className="text-[9px] text-rose-800/70 dark:text-rose-200/70 italic pl-5 leading-tight">
+                        <p className="text-[10px] text-muted-foreground pl-7 leading-snug">
                           Pakai ini kalau yakin username benar (mis. akun Personal — IG cuma show Business via API).
                           Kalau salah, invite collab akan gagal saat publish.
                         </p>
