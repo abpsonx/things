@@ -93,6 +93,7 @@ class MessageCreate(BaseModel):
     parent_id: Optional[str] = None
     attachment_url: Optional[str] = None
     attachment_name: Optional[str] = None
+    is_sticker: Optional[bool] = False
 
 
 @router.post("/{channel_id}/messages", response_model=MessageResponse, status_code=status.HTTP_201_CREATED)
