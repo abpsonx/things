@@ -69,7 +69,7 @@ class DesignBrief(Base):
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     team = relationship("Team")
-    creator = relationship("User")
+    creator = relationship("User", foreign_keys=[creator_id])
     brand_label = relationship("DesignBrand")
     approved_by = relationship("User", foreign_keys=[approved_by_id])
     rejected_by = relationship("User", foreign_keys=[rejected_by_id])
