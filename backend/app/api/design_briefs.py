@@ -29,12 +29,15 @@ from app.schemas import (
     DesignBrandCreate,
     DesignBrandUpdate,
     DesignBrandResponse,
+    BriefApprovalIn,
+    BriefRejectIn,
 )
 from app.services import log_activity
+from datetime import datetime, timezone
 
 router = APIRouter(prefix="/organizations/{org_id}/teams/{team_id}/design-briefs", tags=["Design Briefs"])
 
-VALID_STATUSES = {"draft", "onprogress", "review", "published"}
+VALID_STATUSES = {"draft", "onprogress", "review", "approved", "published"}
 
 
 async def _require_team_access(db: AsyncSession, org_id: str, team_id: str, user: User) -> Team:
@@ -66,6 +69,8 @@ async def _get_brief(db: AsyncSession, team_id: str, brief_id: str) -> DesignBri
         .options(
             selectinload(DesignBrief.creator),
             selectinload(DesignBrief.brand_label),
+            selectinload(DesignBrief.approved_by),
+            selectinload(DesignBrief.rejected_by),
             selectinload(DesignBrief.annotations).selectinload(DesignBriefAnnotation.creator),
             selectinload(DesignBrief.images)
             .selectinload(DesignBriefImage.annotations)
@@ -285,6 +290,68 @@ async def update_design_brief(
     for key, value in payload.items():
         setattr(brief, key, value)
     await db.commit()
+    return await _get_brief(db, team_id, brief_id)
+
+
+@router.post("/{brief_id}/approve", response_model=DesignBriefResponse)
+async def approve_design_brief(
+    org_id: str, team_id: str, brief_id: str,
+    data: BriefApprovalIn,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Approve design brief — semua anggota tim boleh. Status → approved.
+    Clear rejection metadata kalau ada."""
+    await _require_team_access(db, org_id, team_id, current_user)
+    brief = await _get_brief(db, team_id, brief_id)
+    if brief.status == "approved":
+        raise HTTPException(status_code=400, detail="Brief sudah disetujui")
+    if brief.status == "published":
+        raise HTTPException(status_code=400, detail="Brief sudah published")
+    brief.status = "approved"
+    brief.approved_by_id = current_user.id
+    brief.approved_at = datetime.now(timezone.utc)
+    brief.approval_note = (data.note or None) if data.note else None
+    brief.rejected_by_id = None
+    brief.rejected_at = None
+    brief.rejection_reason = None
+    await db.commit()
+    await log_activity(
+        db, org_id=org_id, user_id=current_user.id,
+        action="design_brief_approved", entity_type="design_brief", entity_id=brief.id,
+        team_id=team_id, metadata={"title": brief.title},
+    )
+    return await _get_brief(db, team_id, brief_id)
+
+
+@router.post("/{brief_id}/reject", response_model=DesignBriefResponse)
+async def reject_design_brief(
+    org_id: str, team_id: str, brief_id: str,
+    data: BriefRejectIn,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Reject design brief — status balik ke draft, simpan reason."""
+    await _require_team_access(db, org_id, team_id, current_user)
+    brief = await _get_brief(db, team_id, brief_id)
+    if brief.status == "published":
+        raise HTTPException(status_code=400, detail="Brief sudah published, tidak bisa ditolak")
+    reason = (data.reason or "").strip()
+    if not reason:
+        raise HTTPException(status_code=400, detail="Alasan reject wajib diisi")
+    brief.status = "draft"
+    brief.rejected_by_id = current_user.id
+    brief.rejected_at = datetime.now(timezone.utc)
+    brief.rejection_reason = reason
+    brief.approved_by_id = None
+    brief.approved_at = None
+    brief.approval_note = None
+    await db.commit()
+    await log_activity(
+        db, org_id=org_id, user_id=current_user.id,
+        action="design_brief_rejected", entity_type="design_brief", entity_id=brief.id,
+        team_id=team_id, metadata={"title": brief.title, "reason": reason[:200]},
+    )
     return await _get_brief(db, team_id, brief_id)
 
 

@@ -31,6 +31,7 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
   draft:      { label: "Draft",      cls: "bg-secondary text-muted-foreground border-border" },
   onprogress: { label: "On Progress", cls: "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30" },
   review:     { label: "Review",     cls: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30" },
+  approved:   { label: "Approved",   cls: "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border-cyan-500/30" },
   published:  { label: "Published",  cls: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30" },
 };
 
@@ -166,7 +167,7 @@ export default function DesignBriefsListPage() {
           </form>
 
           <div className="flex flex-wrap gap-2 pt-2">
-            {(["all", "draft", "onprogress", "review", "published"] as const).map((s) => {
+            {(["all", "draft", "onprogress", "review", "approved", "published"] as const).map((s) => {
               const active = statusFilter === s;
               const label = s === "all" ? "Semua" : STATUS_META[s].label;
               const count = s === "all" ? briefs.length : briefs.filter((b) => b.status === s).length;

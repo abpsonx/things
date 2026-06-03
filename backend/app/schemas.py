@@ -608,6 +608,14 @@ class ContentBriefUpdate(BaseModel):
     status: Optional[str] = None
 
 
+class BriefApprovalIn(BaseModel):
+    note: Optional[str] = None  # catatan opsional dari approver
+
+
+class BriefRejectIn(BaseModel):
+    reason: str = Field(..., min_length=1)  # alasan reject wajib
+
+
 class ContentBriefResponse(ContentBriefBase):
     id: UUID
     org_id: UUID
@@ -615,6 +623,15 @@ class ContentBriefResponse(ContentBriefBase):
     creator_id: Optional[UUID] = None
     creator: Optional[UserResponse] = None
     brand_label: Optional[DesignBrandResponse] = None
+    # Approval fields
+    approved_by_id: Optional[UUID] = None
+    approved_at: Optional[datetime] = None
+    approval_note: Optional[str] = None
+    approved_by: Optional[UserResponse] = None
+    rejected_by_id: Optional[UUID] = None
+    rejected_at: Optional[datetime] = None
+    rejection_reason: Optional[str] = None
+    rejected_by: Optional[UserResponse] = None
     created_at: datetime
     updated_at: datetime
     scenes: List[BriefSceneResponse] = []
@@ -763,6 +780,15 @@ class DesignBriefResponse(DesignBriefBase):
     creator_id: Optional[UUID] = None
     creator: Optional[UserResponse] = None
     brand_label: Optional[DesignBrandResponse] = None
+    # Approval fields
+    approved_by_id: Optional[UUID] = None
+    approved_at: Optional[datetime] = None
+    approval_note: Optional[str] = None
+    approved_by: Optional[UserResponse] = None
+    rejected_by_id: Optional[UUID] = None
+    rejected_at: Optional[datetime] = None
+    rejection_reason: Optional[str] = None
+    rejected_by: Optional[UserResponse] = None
     created_at: datetime
     updated_at: datetime
     images: List[DesignBriefImageResponse] = []

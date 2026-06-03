@@ -299,6 +299,21 @@ async def lifespan(app: FastAPI):
                 await conn.execute(text(f"ALTER TABLE social_posts ADD COLUMN IF NOT EXISTS {col} INTEGER"))
             except Exception:
                 pass
+        # Brief approval workflow (content + design): siapa & kapan + alasan
+        for tbl in ("content_briefs", "design_briefs"):
+            for col, ddl in (
+                ("approved_by_id", "UUID REFERENCES users(id) ON DELETE SET NULL"),
+                ("approved_at", "TIMESTAMP WITH TIME ZONE"),
+                ("approval_note", "TEXT"),
+                ("rejected_by_id", "UUID REFERENCES users(id) ON DELETE SET NULL"),
+                ("rejected_at", "TIMESTAMP WITH TIME ZONE"),
+                ("rejection_reason", "TEXT"),
+            ):
+                try:
+                    await conn.execute(text(f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS {col} {ddl}"))
+                except Exception:
+                    pass
+
         # Scheduled post extras: collab, carousel, share-to-feed
         try:
             await conn.execute(text("ALTER TABLE social_scheduled_posts ADD COLUMN IF NOT EXISTS carousel_urls JSONB"))

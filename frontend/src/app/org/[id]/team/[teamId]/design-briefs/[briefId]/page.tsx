@@ -6,6 +6,7 @@ import Link from "next/link";
 import {
   Image as ImageIcon, ChevronLeft, Loader2, Trash2, Upload, MapPin,
   Check, X, MessageCircle, Plus, Square as SquareIcon, CalendarClock, Send,
+  XCircle, ShieldCheck,
 } from "lucide-react";
 import Modal from "@/components/ui/Modal";
 import { toast } from "sonner";
@@ -67,12 +68,20 @@ interface Brief {
   images: BriefImage[];
   annotations: Annotation[]; // union semua image annotations (legacy)
   creator: { id: string; name: string; avatar_url?: string } | null;
+  // Approval workflow
+  approved_by?: { id: string; name: string; avatar_url?: string } | null;
+  approved_at?: string | null;
+  approval_note?: string | null;
+  rejected_by?: { id: string; name: string; avatar_url?: string } | null;
+  rejected_at?: string | null;
+  rejection_reason?: string | null;
 }
 
 const STATUS_OPTIONS = [
   { value: "draft",      label: "Draft",       color: "bg-secondary text-muted-foreground" },
   { value: "onprogress", label: "On Progress", color: "bg-blue-500/10 text-blue-700 dark:text-blue-300" },
   { value: "review",     label: "Review",      color: "bg-amber-500/10 text-amber-700 dark:text-amber-300" },
+  { value: "approved",   label: "Approved",    color: "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300" },
   { value: "published",  label: "Published",   color: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" },
 ];
 
@@ -505,6 +514,47 @@ export default function DesignBriefDetailPage() {
     }
   };
 
+  // Approval workflow
+  const [approving, setApproving] = useState(false);
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
+  const [rejecting, setRejecting] = useState(false);
+
+  const approveBrief = async () => {
+    if (!brief) return;
+    const note = prompt("Catatan approval (opsional):") ?? null;
+    if (note === null) return;
+    setApproving(true);
+    try {
+      const res = await api.post(`${base}/${briefId}/approve`, { note: note || null });
+      setBrief(res.data);
+      setForm((f) => ({ ...f, status: res.data.status }));
+      toast.success("Brief disetujui");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || "Gagal menyetujui");
+    } finally {
+      setApproving(false);
+    }
+  };
+
+  const submitReject = async () => {
+    if (!brief) return;
+    if (!rejectReason.trim()) { toast.error("Alasan reject wajib"); return; }
+    setRejecting(true);
+    try {
+      const res = await api.post(`${base}/${briefId}/reject`, { reason: rejectReason.trim() });
+      setBrief(res.data);
+      setForm((f) => ({ ...f, status: res.data.status }));
+      setRejectOpen(false);
+      setRejectReason("");
+      toast.success("Brief ditolak — status balik ke draft");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || "Gagal menolak");
+    } finally {
+      setRejecting(false);
+    }
+  };
+
   if (loading) return (
     <div className="flex justify-center py-24">
       <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
@@ -559,6 +609,93 @@ export default function DesignBriefDetailPage() {
             className="flex-1 text-2xl font-bold tracking-tight bg-transparent border-0 outline-none focus:bg-secondary/30 focus:px-2 focus:py-1 focus:rounded-lg transition-all"
           />
         </div>
+
+        {/* Approval banner — render kalau status review / approved / atau ada rejection metadata */}
+        {(brief.status === "review" || brief.status === "approved" || brief.rejection_reason) && (
+          <div className={cn(
+            "rounded-2xl border-2 p-4 space-y-3",
+            brief.status === "approved"
+              ? "border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20"
+              : brief.rejection_reason
+                ? "border-destructive bg-destructive/5"
+                : "border-amber-500 bg-amber-50/50 dark:bg-amber-950/20"
+          )}>
+            {brief.status === "approved" && brief.approved_by ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center">
+                    <ShieldCheck className="w-4 h-4 text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-extrabold text-emerald-900 dark:text-emerald-100">
+                      ✓ Disetujui oleh {brief.approved_by.name}
+                    </p>
+                    {brief.approved_at && (
+                      <p className="text-[10px] text-emerald-800/80 dark:text-emerald-200/80">
+                        {new Date(brief.approved_at).toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                {brief.approval_note && (
+                  <div className="text-xs text-foreground pl-10 italic border-l-2 border-emerald-500/40 ml-3">
+                    "{brief.approval_note}"
+                  </div>
+                )}
+              </div>
+            ) : brief.rejection_reason && brief.rejected_by ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-full bg-destructive flex items-center justify-center">
+                    <XCircle className="w-4 h-4 text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-extrabold text-foreground">
+                      Ditolak oleh {brief.rejected_by.name}
+                    </p>
+                    {brief.rejected_at && (
+                      <p className="text-[10px] text-muted-foreground">
+                        {new Date(brief.rejected_at).toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="text-xs text-foreground pl-10 italic border-l-2 border-destructive/40 ml-3">
+                  "{brief.rejection_reason}"
+                </div>
+                {brief.status === "draft" && (
+                  <p className="text-[10px] text-muted-foreground pl-10">
+                    ⓘ Status sudah balik ke <strong>Draft</strong> — perbaiki, lalu submit ulang ke Review.
+                  </p>
+                )}
+              </div>
+            ) : null}
+
+            {brief.status === "review" && (
+              <div className="flex items-center justify-between gap-2 pt-2 border-t border-current/10">
+                <p className="text-xs text-muted-foreground flex-1">
+                  Brief menunggu approval. Semua anggota tim bisa menyetujui atau menolak.
+                </p>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => setRejectOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-destructive/40 bg-destructive/10 text-destructive text-xs font-bold hover:bg-destructive/20 transition-all"
+                  >
+                    <XCircle className="w-3.5 h-3.5" /> Tolak
+                  </button>
+                  <button
+                    onClick={approveBrief}
+                    disabled={approving}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 disabled:opacity-50 transition-all"
+                  >
+                    {approving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                    Setujui
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 2-column: form (left) + image carousel (right). Form sengaja
             dilebarin ke 560px supaya caption/visual text gak cramped. */}
@@ -1152,6 +1289,46 @@ export default function DesignBriefDetailPage() {
           </div>
         )}
       </Modal>
+
+      {/* Reject modal */}
+      {rejectOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => !rejecting && setRejectOpen(false)}>
+          <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-md w-full p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2">
+              <XCircle className="w-5 h-5 text-destructive" />
+              <h3 className="font-extrabold text-base">Tolak Brief</h3>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Alasan akan disimpan + status balik ke <strong>Draft</strong>. Designer bisa lihat alasan dan perbaiki.
+            </p>
+            <textarea
+              autoFocus
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="Misal: warna brand kurang pas, headline terlalu panjang, perlu CTA tombol di pojok kanan bawah..."
+              rows={5}
+              className="w-full p-3 rounded-lg border border-border bg-background text-sm resize-none focus:outline-none focus:ring-2 focus:ring-destructive/40"
+            />
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                onClick={() => { setRejectOpen(false); setRejectReason(""); }}
+                disabled={rejecting}
+                className="px-4 py-2 rounded-lg text-xs font-bold text-muted-foreground hover:bg-secondary transition-all"
+              >
+                Batal
+              </button>
+              <button
+                onClick={submitReject}
+                disabled={rejecting || !rejectReason.trim()}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-destructive text-white text-xs font-bold disabled:opacity-50 hover:opacity-90 transition-all"
+              >
+                {rejecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
+                Tolak Brief
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
