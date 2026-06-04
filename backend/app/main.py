@@ -299,6 +299,16 @@ async def lifespan(app: FastAPI):
                 await conn.execute(text(f"ALTER TABLE social_posts ADD COLUMN IF NOT EXISTS {col} INTEGER"))
             except Exception:
                 pass
+        # Event reminder fields — menit-sebelum + sent flag (anti spam)
+        try:
+            await conn.execute(text("ALTER TABLE events ADD COLUMN IF NOT EXISTS reminder_minutes INTEGER"))
+        except Exception:
+            pass
+        try:
+            await conn.execute(text("ALTER TABLE events ADD COLUMN IF NOT EXISTS reminder_sent CHAR(1) DEFAULT 'N' NOT NULL"))
+        except Exception:
+            pass
+
         # Brief approval workflow (content + design): siapa & kapan + alasan
         for tbl in ("content_briefs", "design_briefs"):
             for col, ddl in (
@@ -681,6 +691,7 @@ app.include_router(channels.router, prefix="/api")
 app.include_router(tasks.router, prefix="/api")
 app.include_router(attachments.router, prefix="/api")
 app.include_router(events.router, prefix="/api")
+app.include_router(events.me_router, prefix="/api")
 app.include_router(comments.router, prefix="/api")
 app.include_router(subtasks.router, prefix="/api")
 app.include_router(labels.router, prefix="/api")

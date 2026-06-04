@@ -354,8 +354,34 @@ class EventCreate(BaseModel):
     start_at: datetime
     end_at: Optional[datetime] = None
     category: Optional[str] = "meeting"
+    reminder_minutes: Optional[int] = None  # null = no reminder
     attendee_ids: List[UUID] = []
     mention_ids: List[UUID] = []
+
+
+class EventUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    start_at: Optional[datetime] = None
+    end_at: Optional[datetime] = None
+    category: Optional[str] = None
+    reminder_minutes: Optional[int] = None  # explicit null akan clear; pakai sentinel terpisah kalau perlu
+    clear_reminder: Optional[bool] = False  # True → clear reminder_minutes
+
+
+class GlobalEventCreate(BaseModel):
+    """Buat event dari Kalender Global. Pilih salah satu scope (org/team/project)."""
+    title: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = None
+    start_at: datetime
+    end_at: Optional[datetime] = None
+    category: Optional[str] = "event"
+    reminder_minutes: Optional[int] = None
+    # Tepat satu wajib ada — kalau gak ada, default ke personal (org user pertama).
+    org_id: Optional[UUID] = None
+    team_id: Optional[UUID] = None
+    project_id: Optional[UUID] = None
+    attendee_ids: List[UUID] = []
 
 
 class EventResponse(BaseModel):
@@ -369,6 +395,7 @@ class EventResponse(BaseModel):
     start_at: datetime
     end_at: Optional[datetime] = None
     category: str = "meeting"
+    reminder_minutes: Optional[int] = None
     created_at: datetime
     creator: Optional[UserResponse] = None
     attendees: List[EventAttendeeResponse] = []

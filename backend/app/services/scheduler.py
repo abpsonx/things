@@ -122,22 +122,31 @@ async def check_reminders():
                 if tasks:
                     await db.commit()
 
-                # 2. Check Events starting in 1 hour
-                event_start_window = now + timedelta(hours=1)
-                event_end_window = now + timedelta(hours=1, minutes=5)
-                
+                # 2. Event reminders — pakai reminder_minutes per-event.
+                # Default 60 menit kalau kosong (preserve perilaku lama).
+                # reminder_sent='N' guard biar gak spam tiap tick.
+                future_cutoff = now + timedelta(days=2)  # don't scan jauh ke depan
                 events_query = select(Event).where(
                     and_(
-                        Event.start_at >= event_start_window,
-                        Event.start_at <= event_end_window
+                        Event.start_at > now,
+                        Event.start_at <= future_cutoff,
+                        Event.reminder_sent == "N",
                     )
                 )
-                
                 events_result = await db.execute(events_query)
-                events = events_result.scalars().all()
-                
-                for event in events:
-                    # Get attendees who accepted or invited
+                events_to_check = events_result.scalars().all()
+
+                events_due: list[Event] = []
+                for ev in events_to_check:
+                    minutes = ev.reminder_minutes if ev.reminder_minutes is not None else 60
+                    fire_at = ev.start_at - timedelta(minutes=minutes)
+                    # Fire kalau sekarang sudah lewat fire_at + masih 5 menit setelahnya.
+                    if fire_at <= now <= fire_at + timedelta(minutes=5):
+                        events_due.append(ev)
+
+                for event in events_due:
+                    # Kirim ke attendees + creator (creator otomatis dikirim juga)
+                    recipient_ids = {event.created_by}
                     attendees_query = select(EventAttendee).where(
                         and_(
                             EventAttendee.event_id == event.id,
@@ -145,18 +154,30 @@ async def check_reminders():
                         )
                     )
                     att_res = await db.execute(attendees_query)
-                    attendees = att_res.scalars().all()
-                    
-                    for attendee in attendees:
-                        print(f"[SCHEDULER] Sending reminder for event: {event.title} to {attendee.user_id}")
+                    for a in att_res.scalars().all():
+                        recipient_ids.add(a.user_id)
+
+                    minutes_label = event.reminder_minutes if event.reminder_minutes is not None else 60
+                    if minutes_label >= 1440:
+                        when_label = f"{minutes_label // 1440} hari"
+                    elif minutes_label >= 60:
+                        when_label = f"{minutes_label // 60} jam"
+                    else:
+                        when_label = f"{minutes_label} menit"
+                    for uid in recipient_ids:
+                        print(f"[SCHEDULER] Sending reminder for event: {event.title} to {uid}")
                         await notify_user(
                             db=db,
-                            user_id=attendee.user_id,
+                            user_id=uid,
                             type="event_reminder",
-                            content=f"Reminder: Event '{event.title}' starts in 1 hour!",
+                            content=f"Reminder: '{event.title}' mulai {when_label} lagi",
                             ref_id=str(event.id)
                         )
-                        
+                    event.reminder_sent = "Y"
+                if events_due:
+                    await db.commit()
+
+
         except Exception as e:
             print(f"[SCHEDULER] Error: {e}")
 

@@ -1,7 +1,7 @@
 """Event and EventAttendee models for calendar."""
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey, CheckConstraint, UniqueConstraint
+from sqlalchemy import Column, String, Text, DateTime, ForeignKey, CheckConstraint, UniqueConstraint, Integer
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -25,6 +25,12 @@ class Event(Base):
     visibility = Column(String(10), default="public", nullable=False)
     # "meeting" | "event" | "sale" | "promo" | "other"
     category = Column(String(20), default="meeting", nullable=False)
+    # Menit sebelum start_at untuk kirim notif reminder. Null = no reminder.
+    # 5/15/30/60/1440 (=1 hari) — UI preset, tapi DB nerima int bebas.
+    reminder_minutes = Column(Integer, nullable=True)
+    # Track sudah kirim reminder buat event ini atau belum — biar gak spam
+    # kalau scheduler tick masuk window berkali-kali.
+    reminder_sent = Column(String(1), default="N", nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     google_event_id = Column(String(255), nullable=True)
 
