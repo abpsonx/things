@@ -293,6 +293,7 @@ async def create_global_event(
 ):
     """Buat event dari Kalender Global. Bisa scope ke project / team / org."""
     await _validate_scope_membership(db, current_user, data)
+    visibility = data.visibility if data.visibility in ("public", "private") else "public"
     event = Event(
         project_id=data.project_id,
         team_id=data.team_id,
@@ -303,6 +304,7 @@ async def create_global_event(
         start_at=data.start_at,
         end_at=data.end_at,
         category=data.category or "event",
+        visibility=visibility,
         reminder_minutes=data.reminder_minutes,
     )
     db.add(event)
@@ -346,6 +348,15 @@ async def update_global_event(
         event.end_at = data.end_at
     if data.category is not None:
         event.category = data.category
+    if data.visibility is not None and data.visibility in ("public", "private"):
+        event.visibility = data.visibility
+    if data.attendee_ids is not None:
+        # Replace full set of attendees.
+        await db.execute(
+            EventAttendee.__table__.delete().where(EventAttendee.event_id == event.id)
+        )
+        for uid in data.attendee_ids:
+            db.add(EventAttendee(event_id=event.id, user_id=uid, status="invited"))
     if data.clear_reminder:
         event.reminder_minutes = None
         event.reminder_sent = "N"

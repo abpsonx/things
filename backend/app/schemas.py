@@ -354,6 +354,7 @@ class EventCreate(BaseModel):
     start_at: datetime
     end_at: Optional[datetime] = None
     category: Optional[str] = "meeting"
+    visibility: Optional[str] = "public"  # public | private
     reminder_minutes: Optional[int] = None  # null = no reminder
     attendee_ids: List[UUID] = []
     mention_ids: List[UUID] = []
@@ -365,8 +366,10 @@ class EventUpdate(BaseModel):
     start_at: Optional[datetime] = None
     end_at: Optional[datetime] = None
     category: Optional[str] = None
+    visibility: Optional[str] = None
     reminder_minutes: Optional[int] = None  # explicit null akan clear; pakai sentinel terpisah kalau perlu
     clear_reminder: Optional[bool] = False  # True → clear reminder_minutes
+    attendee_ids: Optional[List[UUID]] = None  # null = jangan diubah; [] = clear
 
 
 class GlobalEventCreate(BaseModel):
@@ -376,6 +379,7 @@ class GlobalEventCreate(BaseModel):
     start_at: datetime
     end_at: Optional[datetime] = None
     category: Optional[str] = "event"
+    visibility: Optional[str] = "public"
     reminder_minutes: Optional[int] = None
     # Tepat satu wajib ada — kalau gak ada, default ke personal (org user pertama).
     org_id: Optional[UUID] = None
@@ -395,6 +399,7 @@ class EventResponse(BaseModel):
     start_at: datetime
     end_at: Optional[datetime] = None
     category: str = "meeting"
+    visibility: str = "public"
     reminder_minutes: Optional[int] = None
     created_at: datetime
     creator: Optional[UserResponse] = None

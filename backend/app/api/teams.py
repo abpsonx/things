@@ -1350,10 +1350,14 @@ async def list_team_events(
             "end_at": e.end_at.isoformat() if e.end_at else None,
             "visibility": e.visibility or "public",
             "category": e.category or "meeting",
+            "reminder_minutes": e.reminder_minutes,
+            "team_id": str(e.team_id) if e.team_id else None,
+            "org_id": str(e.org_id) if e.org_id else None,
+            "project_id": str(e.project_id) if e.project_id else None,
             "created_by": str(e.created_by),
             "creator": {"id": str(e.creator.id), "name": e.creator.name} if e.creator else None,
             "attendees": [
-                {"id": str(a.user_id), "name": a.user.name if a.user else "", "avatar_url": a.user.avatar_url if a.user else None}
+                {"user_id": str(a.user_id), "user": {"id": str(a.user_id), "name": a.user.name if a.user else "", "avatar_url": a.user.avatar_url if a.user else None}}
                 for a in (e.attendees or [])
             ],
         })
