@@ -851,28 +851,61 @@ export default function SosmedPage() {
                   </button>
                 </div>
 
+                {/* Verify link — buka profil IG di tab baru sebelum tambah. */}
+                {(() => {
+                  const raw = newCollabInput.trim().replace(/^@/, "");
+                  const isFormatValid = /^[A-Za-z0-9._]{1,30}$/.test(raw);
+                  if (!raw) return null;
+                  if (!isFormatValid) {
+                    return (
+                      <p className="text-[10px] text-destructive mt-1.5 pl-1">
+                        Format tidak valid (huruf, angka, titik, underscore).
+                      </p>
+                    );
+                  }
+                  return (
+                    <div className="mt-1.5 flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-secondary/40 border border-border">
+                      <span className="text-[10px] text-muted-foreground">Verify dulu:</span>
+                      <a
+                        href={`https://instagram.com/${raw}/`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-[10px] font-extrabold text-primary hover:underline"
+                      >
+                        <ExternalLink className="w-2.5 h-2.5" /> Cek @{raw} di IG
+                      </a>
+                      <span className="text-[10px] text-muted-foreground italic ml-auto">
+                        Lihat dulu, baru klik Tambah
+                      </span>
+                    </div>
+                  );
+                })()}
+
                 {newCollaborators.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     {newCollaborators.map((u) => (
                       <span key={u} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-bold">
                         @{u}
-                        <button onClick={() => setNewCollaborators(newCollaborators.filter((x) => x !== u))}>
+                        <a
+                          href={`https://instagram.com/${u}/`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="hover:text-primary/70"
+                          title={`Buka @${u} di IG`}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
+                        <button onClick={() => setNewCollaborators(newCollaborators.filter((x) => x !== u))} title="Hapus">
                           <X className="w-3 h-3" />
                         </button>
                       </span>
                     ))}
                   </div>
                 )}
-                <div className="mt-2 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800">
-                  <p className="text-[10px] text-amber-900 dark:text-amber-100 leading-snug">
-                    <strong>ⓘ Pastikan username persis benar.</strong> IG API yang kita pake (Instagram
-                    Business Login) gak ngasih cara verifikasi username — kita kirim ke IG apa adanya.
-                    Kalau username salah, invite collab gagal silent waktu publish (post tetep
-                    nayang tapi tanpa collaborator). Cek dulu di app IG biar yakin.
-                  </p>
-                </div>
-                <p className="text-[9px] text-muted-foreground italic mt-1">
-                  Collaborator harus accept invite di IG mereka — post tampil di kedua akun.
+                <p className="text-[9px] text-muted-foreground italic mt-1.5 leading-snug">
+                  ⓘ IG gak ngasih cara verify username via API kita — verify visual lewat tombol
+                  &quot;Cek di IG&quot; di atas. Collaborator harus accept invite di IG mereka — post tampil di kedua akun.
                 </p>
               </div>
 
