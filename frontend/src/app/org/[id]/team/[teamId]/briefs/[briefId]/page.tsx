@@ -46,7 +46,10 @@ interface Brief {
   scenes: Scene[];
   creator: { id: string; name: string; avatar_url?: string } | null;
   created_at?: string;
-  // Approval workflow
+  // Approval workflow 2-tahap
+  approved_1_by?: { id: string; name: string; avatar_url?: string } | null;
+  approved_1_at?: string | null;
+  approval_1_note?: string | null;
   approved_by?: { id: string; name: string; avatar_url?: string } | null;
   approved_at?: string | null;
   approval_note?: string | null;
@@ -59,10 +62,11 @@ interface Brief {
 }
 
 const STATUS_OPTIONS = [
-  { value: "draft",     label: "Draft",     color: "bg-secondary text-muted-foreground" },
-  { value: "review",    label: "Review",    color: "bg-amber-500/10 text-amber-700 dark:text-amber-300" },
-  { value: "approved",  label: "Approved",  color: "bg-blue-500/10 text-blue-700 dark:text-blue-300" },
-  { value: "published", label: "Published", color: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" },
+  { value: "draft",      label: "Draft",       color: "bg-secondary text-muted-foreground" },
+  { value: "review",     label: "Review",      color: "bg-amber-500/10 text-amber-700 dark:text-amber-300" },
+  { value: "approved_1", label: "Approved 1",  color: "bg-sky-500/10 text-sky-700 dark:text-sky-300" },
+  { value: "approved",   label: "Approved Final", color: "bg-blue-500/10 text-blue-700 dark:text-blue-300" },
+  { value: "published",  label: "Published",   color: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" },
 ];
 
 const FORMAT_PRESETS = ["9:16", "16:9", "1:1", "4:5"];
@@ -238,16 +242,18 @@ export default function BriefDetailPage() {
   const [rejectReason, setRejectReason] = useState("");
   const [rejecting, setRejecting] = useState(false);
 
-  const approveBrief = async () => {
+  const approveBriefStage = async (stage: 1 | "final") => {
     if (!brief) return;
-    const note = prompt("Catatan approval (opsional):") ?? null;
-    if (note === null) return;  // cancel
+    const label = stage === 1 ? "Tahap 1" : "Final";
+    const note = prompt(`Catatan approval ${label} (opsional):`) ?? null;
+    if (note === null) return;
     setApproving(true);
     try {
-      const res = await api.post(`${base}/${briefId}/approve`, { note: note || null });
+      const endpoint = stage === 1 ? "approve-1" : "approve-final";
+      const res = await api.post(`${base}/${briefId}/${endpoint}`, { note: note || null });
       setBrief(res.data);
       setForm((f) => ({ ...f, status: res.data.status }));
-      toast.success("Brief disetujui");
+      toast.success(`Brief disetujui (${label})`);
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || "Gagal menyetujui");
     } finally {
@@ -349,17 +355,20 @@ export default function BriefDetailPage() {
         </div>
       )}
 
-      {/* Approval banner — render kalau status review / approved / atau rejected (status balik draft + ada reason) */}
-      {(brief.status === "review" || brief.status === "approved" || brief.rejection_reason) && (
+      {/* Approval banner — render kalau review/approved_1/approved/rejected */}
+      {(brief.status === "review" || brief.status === "approved_1" || brief.status === "approved" || brief.rejection_reason) && (
         <div className={cn(
           "rounded-2xl border-2 p-4 space-y-3",
           brief.status === "approved"
             ? "border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20"
-            : brief.rejection_reason
-              ? "border-destructive bg-destructive/5"
-              : "border-amber-500 bg-amber-50/50 dark:bg-amber-950/20"
+            : brief.status === "approved_1"
+              ? "border-sky-500 bg-sky-50/50 dark:bg-sky-950/20"
+              : brief.rejection_reason
+                ? "border-destructive bg-destructive/5"
+                : "border-amber-500 bg-amber-50/50 dark:bg-amber-950/20"
         )}>
-          {brief.status === "approved" && brief.approved_by ? (
+          {/* Final approval stamp — paling atas kalau sudah final */}
+          {brief.status === "approved" && brief.approved_by && (
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center">
@@ -367,7 +376,7 @@ export default function BriefDetailPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-extrabold text-emerald-900 dark:text-emerald-100">
-                    ✓ Disetujui oleh {brief.approved_by.name}
+                    ✓ Approved Final oleh {brief.approved_by.name}
                   </p>
                   {brief.approved_at && (
                     <p className="text-[10px] text-emerald-800/80 dark:text-emerald-200/80">
@@ -382,7 +391,35 @@ export default function BriefDetailPage() {
                 </div>
               )}
             </div>
-          ) : brief.rejection_reason && brief.rejected_by ? (
+          )}
+
+          {/* Stage-1 stamp — show kalau approved_1 atau approved (audit trail) */}
+          {(brief.status === "approved_1" || brief.status === "approved") && brief.approved_1_by && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-sky-500 flex items-center justify-center">
+                  <Check className="w-4 h-4 text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-extrabold text-sky-900 dark:text-sky-100">
+                    Approved Tahap 1 oleh {brief.approved_1_by.name}
+                  </p>
+                  {brief.approved_1_at && (
+                    <p className="text-[10px] text-sky-800/80 dark:text-sky-200/80">
+                      {new Date(brief.approved_1_at).toLocaleString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                    </p>
+                  )}
+                </div>
+              </div>
+              {brief.approval_1_note && (
+                <div className="text-xs text-foreground pl-10 italic border-l-2 border-sky-500/40 ml-3">
+                  "{brief.approval_1_note}"
+                </div>
+              )}
+            </div>
+          )}
+
+          {brief.rejection_reason && brief.rejected_by && (
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-full bg-destructive flex items-center justify-center">
@@ -408,13 +445,13 @@ export default function BriefDetailPage() {
                 </p>
               )}
             </div>
-          ) : null}
+          )}
 
-          {/* Action buttons — muncul kalau status review (siapapun di tim boleh approve/reject) */}
+          {/* Action buttons — beda per tahap */}
           {brief.status === "review" && (
-            <div className="flex items-center justify-between gap-2 pt-2 border-t border-current/10">
-              <p className="text-xs text-muted-foreground flex-1">
-                Brief menunggu approval. Semua anggota tim bisa menyetujui atau menolak.
+            <div className="flex items-center justify-between gap-2 pt-2 border-t border-current/10 flex-wrap">
+              <p className="text-xs text-muted-foreground flex-1 min-w-[180px]">
+                Menunggu approval <strong>Tahap 1</strong>. Semua anggota tim bisa menyetujui atau menolak.
               </p>
               <div className="flex items-center gap-2 shrink-0">
                 <button
@@ -424,12 +461,35 @@ export default function BriefDetailPage() {
                   <XCircle className="w-3.5 h-3.5" /> Tolak
                 </button>
                 <button
-                  onClick={approveBrief}
+                  onClick={() => approveBriefStage(1)}
+                  disabled={approving}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 text-white text-xs font-bold hover:bg-sky-700 disabled:opacity-50 transition-all"
+                >
+                  {approving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                  Setujui Tahap 1
+                </button>
+              </div>
+            </div>
+          )}
+          {brief.status === "approved_1" && (
+            <div className="flex items-center justify-between gap-2 pt-2 border-t border-current/10 flex-wrap">
+              <p className="text-xs text-muted-foreground flex-1 min-w-[180px]">
+                Sudah lewat Tahap 1. Menunggu <strong>Approval Final</strong>.
+              </p>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => setRejectOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-destructive/40 bg-destructive/10 text-destructive text-xs font-bold hover:bg-destructive/20 transition-all"
+                >
+                  <XCircle className="w-3.5 h-3.5" /> Tolak
+                </button>
+                <button
+                  onClick={() => approveBriefStage("final")}
                   disabled={approving}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 disabled:opacity-50 transition-all"
                 >
-                  {approving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                  Setujui
+                  {approving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                  Setujui Final
                 </button>
               </div>
             </div>

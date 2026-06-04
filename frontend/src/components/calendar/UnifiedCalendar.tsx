@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import {
   ChevronLeft, ChevronRight, Clock, Loader2, CheckSquare, Plus,
-  Bell, BellOff, Trash2, X, Calendar as CalendarIcon, Lock, Globe,
+  Bell, BellOff, Trash2, X, Calendar as CalendarIcon, Lock, Globe, Tag,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import MemberMultiSelect from "@/components/ui/MemberMultiSelect";
@@ -28,6 +28,8 @@ interface ApiEvent {
   category?: string | null;
   visibility?: string | null;
   reminder_minutes?: number | null;
+  label_id?: string | null;
+  label?: BrandLabel | null;
   created_by: string;
   project_id?: string | null;
   team_id?: string | null;
@@ -37,6 +39,7 @@ interface ApiEvent {
 }
 
 interface OrgItem { id: string; name: string }
+interface BrandLabel { id: string; name: string; color?: string | null }
 
 // ─── Presets ─────────────────────────────────────────────────────────────────
 
@@ -96,6 +99,26 @@ function listMembersUrl(scope: CalendarScope): string | null {
 // CRUD selalu lewat /me/events — supports semua scope di backend.
 const CRUD_BASE = "/me/events";
 
+// Brands endpoint per scope. Untuk team scope pakai endpoint team
+// (yg ngembaliin brand team itu). Untuk yg lain pakai endpoint org-level
+// yg ngembaliin union org-level + semua team user.
+function brandsListUrl(scope: CalendarScope): string | null {
+  switch (scope.type) {
+    case "global":  return null;  // perlu org_id; nanti di-pick dari orgs[0]
+    case "org":     return `/organizations/${scope.orgId}/brands`;
+    case "team":    return `/organizations/${scope.orgId}/teams/${scope.teamId}/briefs/_brands`;
+    case "project": return `/organizations/${scope.orgId}/brands`;
+  }
+}
+function brandsCreateUrl(scope: CalendarScope, fallbackOrgId?: string): string | null {
+  switch (scope.type) {
+    case "global":  return fallbackOrgId ? `/organizations/${fallbackOrgId}/brands` : null;
+    case "org":     return `/organizations/${scope.orgId}/brands`;
+    case "team":    return `/organizations/${scope.orgId}/teams/${scope.teamId}/briefs/_brands`;
+    case "project": return `/organizations/${scope.orgId}/brands`;
+  }
+}
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function UnifiedCalendar({
@@ -114,8 +137,13 @@ export default function UnifiedCalendar({
   const [tasks, setTasks] = useState<any[]>([]);
   const [members, setMembers] = useState<Array<{ id: string; name: string; avatar_url?: string }>>([]);
   const [orgs, setOrgs] = useState<OrgItem[]>([]);
+  const [labels, setLabels] = useState<BrandLabel[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // Inline create new brand label
+  const [newLabelName, setNewLabelName] = useState("");
+  const [newLabelColor, setNewLabelColor] = useState("");
+  const [creatingLabel, setCreatingLabel] = useState(false);
 
   // Modal
   const [modalOpen, setModalOpen] = useState(false);
@@ -128,6 +156,7 @@ export default function UnifiedCalendar({
     category: "event",
     visibility: "public",
     reminder_minutes: "60",
+    label_id: "",  // "" = tanpa label
     org_id: "",
     attendee_ids: [] as string[],
     mention_ids: [] as string[],
@@ -147,12 +176,15 @@ export default function UnifiedCalendar({
       const meP = api.get("/auth/me").then((r) => r.data).catch(() => null);
       // Orgs cuma kepake buat scope global (pilih workspace di modal create).
       const orgsP = scope.type === "global" ? api.get("/organizations").then((r) => r.data || []).catch(() => []) : Promise.resolve([]);
+      const brandUrl = brandsListUrl(scope);
+      const brandsP = brandUrl ? api.get(brandUrl).then((r) => r.data || []).catch(() => []) : Promise.resolve([]);
 
-      const [evs, tks, memData, me, orgsList] = await Promise.all([eventsP, tasksP, membersP, meP, orgsP]);
+      const [evs, tks, memData, me, orgsList, brandsList] = await Promise.all([eventsP, tasksP, membersP, meP, orgsP, brandsP]);
       setEvents(evs);
       setTasks((tks || []).filter((t: any) => t.due_date && t.status !== "done"));
       setCurrentUserId(me?.id || null);
       setOrgs(orgsList);
+      setLabels(brandsList);
 
       // Normalize member list shape (org uses {members:[]}, team/project return list of {user_id, user})
       let normalized: Array<{ id: string; name: string; avatar_url?: string }> = [];
@@ -194,10 +226,12 @@ export default function UnifiedCalendar({
       category: "event",
       visibility: "public",
       reminder_minutes: "60",
+      label_id: "",
       org_id: scope.type === "global" ? (orgs[0]?.id || "") : (scope as any).orgId || "",
       attendee_ids: [],
       mention_ids: [],
     });
+    setNewLabelName(""); setNewLabelColor("");
     setModalOpen(true);
   };
 
@@ -218,10 +252,12 @@ export default function UnifiedCalendar({
       category: ev.category || "event",
       visibility: ev.visibility || "public",
       reminder_minutes: ev.reminder_minutes != null ? String(ev.reminder_minutes) : "",
+      label_id: ev.label_id || "",
       org_id: ev.org_id || "",
       attendee_ids: (ev.attendees || []).map((a) => a.user_id),
       mention_ids: [],
     });
+    setNewLabelName(""); setNewLabelColor("");
     setModalOpen(true);
   };
 
@@ -242,10 +278,12 @@ export default function UnifiedCalendar({
         category: form.category,
         visibility: form.visibility,
         reminder_minutes: form.reminder_minutes ? parseInt(form.reminder_minutes, 10) : null,
+        label_id: form.label_id || null,
         attendee_ids: form.attendee_ids,
       };
       if (editing) {
         if (!form.reminder_minutes) payload.clear_reminder = true;
+        if (!form.label_id) payload.clear_label = true;
         const res = await api.patch(`${CRUD_BASE}/${editing.id}`, payload);
         setEvents((prev) => prev.map((e) => (e.id === editing.id ? res.data : e)));
       } else {
@@ -283,6 +321,28 @@ export default function UnifiedCalendar({
       alert(err?.response?.data?.detail || "Gagal menghapus");
     } finally {
       setDeleting(false);
+    }
+  };
+
+  // Inline create brand label. Untuk scope global pakai org yang lagi
+  // dipilih di form (form.org_id). Untuk yang lain pakai scope-nya sendiri.
+  const createLabel = async () => {
+    const name = newLabelName.trim();
+    if (!name) return;
+    const fallback = scope.type === "global" ? form.org_id : undefined;
+    const url = brandsCreateUrl(scope, fallback);
+    if (!url) { alert("Pilih workspace dulu sebelum bikin label"); return; }
+    setCreatingLabel(true);
+    try {
+      const res = await api.post(url, { name, color: newLabelColor || null });
+      const created: BrandLabel = res.data;
+      setLabels((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+      setForm((f) => ({ ...f, label_id: created.id }));
+      setNewLabelName(""); setNewLabelColor("");
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || "Gagal bikin label");
+    } finally {
+      setCreatingLabel(false);
     }
   };
 
@@ -367,6 +427,18 @@ export default function UnifiedCalendar({
           <span className="shrink-0">{meta.emoji}</span>
           <span className="truncate">{ev.title}</span>
         </span>
+        {ev.label && (
+          <span
+            className="inline-flex items-center gap-0.5 mt-1 px-1.5 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider"
+            style={{
+              backgroundColor: ev.label.color ? `${ev.label.color}30` : undefined,
+              color: ev.label.color || undefined,
+              border: `1px solid ${ev.label.color || "currentColor"}`,
+            }}
+          >
+            <Tag className="w-2 h-2" /> {ev.label.name}
+          </span>
+        )}
       </button>
     );
   };
@@ -561,6 +633,60 @@ export default function UnifiedCalendar({
               <select value={form.reminder_minutes} onChange={(e) => setForm({ ...form, reminder_minutes: e.target.value })} className="w-full mt-1 px-3 py-2 rounded-lg border border-border bg-background text-sm">
                 {REMINDER_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
+            </div>
+
+            {/* Label brand */}
+            <div>
+              <label className="text-[10px] uppercase tracking-widest font-extrabold text-muted-foreground flex items-center gap-1">
+                <Tag className="w-3 h-3" /> Label
+              </label>
+              <div className="mt-1 flex items-center gap-2">
+                <select
+                  value={form.label_id}
+                  onChange={(e) => setForm({ ...form, label_id: e.target.value })}
+                  className="flex-1 px-3 py-2 rounded-lg border border-border bg-background text-sm"
+                >
+                  <option value="">— Tanpa label —</option>
+                  {labels.map((l) => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                </select>
+                {form.label_id && (() => {
+                  const sel = labels.find((l) => l.id === form.label_id);
+                  return sel?.color ? (
+                    <span
+                      className="inline-block w-5 h-5 rounded-full border border-border shrink-0"
+                      style={{ backgroundColor: sel.color }}
+                      title={sel.color}
+                    />
+                  ) : null;
+                })()}
+              </div>
+              {/* Inline create */}
+              <div className="flex items-center gap-1.5 mt-1.5">
+                <input
+                  value={newLabelName}
+                  onChange={(e) => setNewLabelName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); createLabel(); } }}
+                  placeholder="+ Brand baru…"
+                  className="flex-1 px-2.5 py-1.5 text-xs bg-secondary/30 border border-dashed border-border rounded-lg outline-none focus:border-primary focus:bg-card"
+                />
+                <input
+                  type="color"
+                  value={newLabelColor || "#3b82f6"}
+                  onChange={(e) => setNewLabelColor(e.target.value)}
+                  className="w-8 h-8 rounded-lg border border-border cursor-pointer"
+                  title="Warna label"
+                />
+                <button
+                  type="button"
+                  onClick={createLabel}
+                  disabled={creatingLabel || !newLabelName.trim()}
+                  className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold disabled:opacity-40"
+                >
+                  {creatingLabel ? <Loader2 className="w-3 h-3 animate-spin" /> : "Buat"}
+                </button>
+              </div>
             </div>
 
             {/* Kategori */}

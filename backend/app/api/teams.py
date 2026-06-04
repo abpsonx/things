@@ -1330,6 +1330,7 @@ async def list_team_events(
         select(Event)
         .options(
             selectinload(Event.creator),
+            selectinload(Event.label),
             selectinload(Event.attendees).selectinload(EventAttendee.user),
         )
         .where(Event.team_id == team_id)
@@ -1351,6 +1352,12 @@ async def list_team_events(
             "visibility": e.visibility or "public",
             "category": e.category or "meeting",
             "reminder_minutes": e.reminder_minutes,
+            "label_id": str(e.label_id) if e.label_id else None,
+            "label": {
+                "id": str(e.label.id),
+                "name": e.label.name,
+                "color": e.label.color,
+            } if e.label else None,
             "team_id": str(e.team_id) if e.team_id else None,
             "org_id": str(e.org_id) if e.org_id else None,
             "project_id": str(e.project_id) if e.project_id else None,
@@ -1406,6 +1413,8 @@ async def create_team_event(
         end_at=_parse(data.get("end_at")),
         visibility=visibility,
         category=category,
+        reminder_minutes=data.get("reminder_minutes"),
+        label_id=data.get("label_id") or None,
     )
     db.add(ev)
     await db.flush()

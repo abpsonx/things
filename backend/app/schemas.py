@@ -356,6 +356,7 @@ class EventCreate(BaseModel):
     category: Optional[str] = "meeting"
     visibility: Optional[str] = "public"  # public | private
     reminder_minutes: Optional[int] = None  # null = no reminder
+    label_id: Optional[UUID] = None  # FK design_brands; null = tanpa label
     attendee_ids: List[UUID] = []
     mention_ids: List[UUID] = []
 
@@ -369,6 +370,8 @@ class EventUpdate(BaseModel):
     visibility: Optional[str] = None
     reminder_minutes: Optional[int] = None  # explicit null akan clear; pakai sentinel terpisah kalau perlu
     clear_reminder: Optional[bool] = False  # True → clear reminder_minutes
+    label_id: Optional[UUID] = None
+    clear_label: Optional[bool] = False  # True → clear label_id
     attendee_ids: Optional[List[UUID]] = None  # null = jangan diubah; [] = clear
 
 
@@ -381,6 +384,7 @@ class GlobalEventCreate(BaseModel):
     category: Optional[str] = "event"
     visibility: Optional[str] = "public"
     reminder_minutes: Optional[int] = None
+    label_id: Optional[UUID] = None
     # Tepat satu wajib ada — kalau gak ada, default ke personal (org user pertama).
     org_id: Optional[UUID] = None
     team_id: Optional[UUID] = None
@@ -401,6 +405,8 @@ class EventResponse(BaseModel):
     category: str = "meeting"
     visibility: str = "public"
     reminder_minutes: Optional[int] = None
+    label_id: Optional[UUID] = None
+    label: Optional[DesignBrandResponse] = None
     created_at: datetime
     creator: Optional[UserResponse] = None
     attendees: List[EventAttendeeResponse] = []
@@ -595,7 +601,9 @@ class DesignBrandUpdate(BaseModel):
 
 class DesignBrandResponse(BaseModel):
     id: UUID
-    team_id: UUID
+    # Bisa null sekarang — brand org-scoped tidak punya team.
+    team_id: Optional[UUID] = None
+    org_id: Optional[UUID] = None
     name: str
     color: Optional[str] = None
     created_at: datetime
@@ -655,7 +663,12 @@ class ContentBriefResponse(ContentBriefBase):
     creator_id: Optional[UUID] = None
     creator: Optional[UserResponse] = None
     brand_label: Optional[DesignBrandResponse] = None
-    # Approval fields
+    # Approval fields — tahap 1
+    approved_1_by_id: Optional[UUID] = None
+    approved_1_at: Optional[datetime] = None
+    approval_1_note: Optional[str] = None
+    approved_1_by: Optional[UserResponse] = None
+    # Approval fields — final
     approved_by_id: Optional[UUID] = None
     approved_at: Optional[datetime] = None
     approval_note: Optional[str] = None
@@ -812,7 +825,12 @@ class DesignBriefResponse(DesignBriefBase):
     creator_id: Optional[UUID] = None
     creator: Optional[UserResponse] = None
     brand_label: Optional[DesignBrandResponse] = None
-    # Approval fields
+    # Approval fields — tahap 1
+    approved_1_by_id: Optional[UUID] = None
+    approved_1_at: Optional[datetime] = None
+    approval_1_note: Optional[str] = None
+    approved_1_by: Optional[UserResponse] = None
+    # Approval fields — final
     approved_by_id: Optional[UUID] = None
     approved_at: Optional[datetime] = None
     approval_note: Optional[str] = None

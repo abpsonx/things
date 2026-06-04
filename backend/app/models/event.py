@@ -31,6 +31,9 @@ class Event(Base):
     # Track sudah kirim reminder buat event ini atau belum — biar gak spam
     # kalau scheduler tick masuk window berkali-kali.
     reminder_sent = Column(String(1), default="N", nullable=False)
+    # Brand label opsional — supaya pengingat keliatan ini buat brand mana
+    # (mis. "Reminder posting Nike" beda dari "Reminder posting Adidas").
+    label_id = Column(UUID(as_uuid=True), ForeignKey("design_brands.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     google_event_id = Column(String(255), nullable=True)
 
@@ -39,6 +42,7 @@ class Event(Base):
     team = relationship("Team")
     creator = relationship("User", foreign_keys=[created_by])
     attendees = relationship("EventAttendee", back_populates="event", cascade="all, delete-orphan")
+    label = relationship("DesignBrand")
 
 
 class EventAttendee(Base):

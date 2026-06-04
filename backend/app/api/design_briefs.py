@@ -37,7 +37,7 @@ from datetime import datetime, timezone
 
 router = APIRouter(prefix="/organizations/{org_id}/teams/{team_id}/design-briefs", tags=["Design Briefs"])
 
-VALID_STATUSES = {"draft", "onprogress", "review", "approved", "published"}
+VALID_STATUSES = {"draft", "onprogress", "review", "approved_1", "approved", "published"}
 
 
 async def _require_team_access(db: AsyncSession, org_id: str, team_id: str, user: User) -> Team:
@@ -69,6 +69,7 @@ async def _get_brief(db: AsyncSession, team_id: str, brief_id: str) -> DesignBri
         .options(
             selectinload(DesignBrief.creator),
             selectinload(DesignBrief.brand_label),
+            selectinload(DesignBrief.approved_1_by),
             selectinload(DesignBrief.approved_by),
             selectinload(DesignBrief.rejected_by),
             selectinload(DesignBrief.annotations).selectinload(DesignBriefAnnotation.creator),
@@ -293,21 +294,53 @@ async def update_design_brief(
     return await _get_brief(db, team_id, brief_id)
 
 
-@router.post("/{brief_id}/approve", response_model=DesignBriefResponse)
-async def approve_design_brief(
+@router.post("/{brief_id}/approve-1", response_model=DesignBriefResponse)
+async def approve_design_brief_stage1(
     org_id: str, team_id: str, brief_id: str,
     data: BriefApprovalIn,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Approve design brief — semua anggota tim boleh. Status → approved.
-    Clear rejection metadata kalau ada."""
+    """Approve tahap 1. Status review → approved_1."""
+    await _require_team_access(db, org_id, team_id, current_user)
+    brief = await _get_brief(db, team_id, brief_id)
+    if brief.status in ("approved_1", "approved", "published"):
+        raise HTTPException(status_code=400, detail=f"Brief sudah {brief.status}")
+    brief.status = "approved_1"
+    brief.approved_1_by_id = current_user.id
+    brief.approved_1_at = datetime.now(timezone.utc)
+    brief.approval_1_note = (data.note or None) if data.note else None
+    brief.approved_by_id = None
+    brief.approved_at = None
+    brief.approval_note = None
+    brief.rejected_by_id = None
+    brief.rejected_at = None
+    brief.rejection_reason = None
+    await db.commit()
+    await log_activity(
+        db, org_id=org_id, user_id=current_user.id,
+        action="design_brief_approved_stage1", entity_type="design_brief", entity_id=brief.id,
+        team_id=team_id, metadata={"title": brief.title},
+    )
+    return await _get_brief(db, team_id, brief_id)
+
+
+@router.post("/{brief_id}/approve-final", response_model=DesignBriefResponse)
+async def approve_design_brief_final(
+    org_id: str, team_id: str, brief_id: str,
+    data: BriefApprovalIn,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Approve final. Harus sudah approved_1."""
     await _require_team_access(db, org_id, team_id, current_user)
     brief = await _get_brief(db, team_id, brief_id)
     if brief.status == "approved":
-        raise HTTPException(status_code=400, detail="Brief sudah disetujui")
+        raise HTTPException(status_code=400, detail="Brief sudah final")
     if brief.status == "published":
         raise HTTPException(status_code=400, detail="Brief sudah published")
+    if brief.status != "approved_1":
+        raise HTTPException(status_code=400, detail="Brief harus approve tahap 1 dulu sebelum final")
     brief.status = "approved"
     brief.approved_by_id = current_user.id
     brief.approved_at = datetime.now(timezone.utc)
@@ -318,10 +351,25 @@ async def approve_design_brief(
     await db.commit()
     await log_activity(
         db, org_id=org_id, user_id=current_user.id,
-        action="design_brief_approved", entity_type="design_brief", entity_id=brief.id,
+        action="design_brief_approved_final", entity_type="design_brief", entity_id=brief.id,
         team_id=team_id, metadata={"title": brief.title},
     )
     return await _get_brief(db, team_id, brief_id)
+
+
+@router.post("/{brief_id}/approve", response_model=DesignBriefResponse)
+async def approve_design_brief_auto(
+    org_id: str, team_id: str, brief_id: str,
+    data: BriefApprovalIn,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Auto-progress approval. Klien baru pakai endpoint eksplisit."""
+    await _require_team_access(db, org_id, team_id, current_user)
+    brief = await _get_brief(db, team_id, brief_id)
+    if brief.status == "approved_1":
+        return await approve_design_brief_final(org_id, team_id, brief_id, data, db, current_user)
+    return await approve_design_brief_stage1(org_id, team_id, brief_id, data, db, current_user)
 
 
 @router.post("/{brief_id}/reject", response_model=DesignBriefResponse)
@@ -343,6 +391,9 @@ async def reject_design_brief(
     brief.rejected_by_id = current_user.id
     brief.rejected_at = datetime.now(timezone.utc)
     brief.rejection_reason = reason
+    brief.approved_1_by_id = None
+    brief.approved_1_at = None
+    brief.approval_1_note = None
     brief.approved_by_id = None
     brief.approved_at = None
     brief.approval_note = None

@@ -13,12 +13,18 @@ from app.core.database import Base
 
 
 class DesignBrand(Base):
-    """Label brand per tim untuk foldering brief design.
-    name di-unique per team supaya gak duplikat."""
+    """Label brand untuk foldering brief design + label pengingat di kalender.
+
+    Awalnya per-team (team_id required). Sekarang bisa juga org-scoped
+    (team_id NULL, org_id set) supaya bisa dipakai kalender workspace/global
+    yang gak nempel ke satu tim. Kalau team_id ada, org_id otomatis diambil
+    dari team-nya (atau di-set eksplisit waktu create).
+    name di-unique per scope (team kalau team_id ada, else per org)."""
     __tablename__ = "design_brands"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    team_id = Column(UUID(as_uuid=True), ForeignKey("teams.id", ondelete="CASCADE"), nullable=False)
+    team_id = Column(UUID(as_uuid=True), ForeignKey("teams.id", ondelete="CASCADE"), nullable=True)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True)
     name = Column(String(255), nullable=False)
     color = Column(String(16), nullable=True)  # hex (#3b82f6) — opsional
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
@@ -56,8 +62,13 @@ class DesignBrief(Base):
     # 5-step status: draft → onprogress → review → approved → published
     status = Column(String(20), default="draft", nullable=False)
 
-    # Approval workflow — siapa & kapan, plus catatan optional.
-    # Reject set status balik ke "draft" dan simpan reason.
+    # Approval workflow 2 tahap:
+    # draft → onprogress → review → approved_1 → approved → published
+    # Tahap 1.
+    approved_1_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approved_1_at = Column(DateTime(timezone=True), nullable=True)
+    approval_1_note = Column(Text, nullable=True)
+    # Tahap final.
     approved_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     approved_at = Column(DateTime(timezone=True), nullable=True)
     approval_note = Column(Text, nullable=True)
@@ -71,6 +82,7 @@ class DesignBrief(Base):
     team = relationship("Team")
     creator = relationship("User", foreign_keys=[creator_id])
     brand_label = relationship("DesignBrand")
+    approved_1_by = relationship("User", foreign_keys=[approved_1_by_id])
     approved_by = relationship("User", foreign_keys=[approved_by_id])
     rejected_by = relationship("User", foreign_keys=[rejected_by_id])
     annotations = relationship(

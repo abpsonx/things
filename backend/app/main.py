@@ -308,6 +308,32 @@ async def lifespan(app: FastAPI):
             await conn.execute(text("ALTER TABLE events ADD COLUMN IF NOT EXISTS reminder_sent CHAR(1) DEFAULT 'N' NOT NULL"))
         except Exception:
             pass
+        # Event brand label opsional
+        try:
+            await conn.execute(text("ALTER TABLE events ADD COLUMN IF NOT EXISTS label_id UUID REFERENCES design_brands(id) ON DELETE SET NULL"))
+        except Exception:
+            pass
+        # design_brands: extend agar bisa org-scoped (team_id NULL) — drop NOT NULL
+        try:
+            await conn.execute(text("ALTER TABLE design_brands ALTER COLUMN team_id DROP NOT NULL"))
+        except Exception:
+            pass
+        try:
+            await conn.execute(text("ALTER TABLE design_brands ADD COLUMN IF NOT EXISTS org_id UUID REFERENCES organizations(id) ON DELETE CASCADE"))
+        except Exception:
+            pass
+        # Brief approval Lv1 columns (content + design) — Lv2/final pakai
+        # kolom approved_* yg sudah ada.
+        for tbl in ("content_briefs", "design_briefs"):
+            for col, ddl in (
+                ("approved_1_by_id", "UUID REFERENCES users(id) ON DELETE SET NULL"),
+                ("approved_1_at", "TIMESTAMP WITH TIME ZONE"),
+                ("approval_1_note", "TEXT"),
+            ):
+                try:
+                    await conn.execute(text(f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS {col} {ddl}"))
+                except Exception:
+                    pass
 
         # Brief approval workflow (content + design): siapa & kapan + alasan
         for tbl in ("content_briefs", "design_briefs"):
@@ -692,6 +718,8 @@ app.include_router(tasks.router, prefix="/api")
 app.include_router(attachments.router, prefix="/api")
 app.include_router(events.router, prefix="/api")
 app.include_router(events.me_router, prefix="/api")
+from app.api import brands as brands_api
+app.include_router(brands_api.router, prefix="/api")
 app.include_router(comments.router, prefix="/api")
 app.include_router(subtasks.router, prefix="/api")
 app.include_router(labels.router, prefix="/api")

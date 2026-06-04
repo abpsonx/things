@@ -37,6 +37,7 @@ async def create_event(
             end_at=data.end_at,
             category=data.category or "meeting",
             reminder_minutes=data.reminder_minutes,
+            label_id=data.label_id,
         )
         db.add(event)
         await db.flush() # Flush to get event.id
@@ -98,7 +99,7 @@ async def create_event(
         result = await db.execute(
             select(Event)
             .options(
-                selectinload(Event.creator), 
+                selectinload(Event.creator), selectinload(Event.label), 
                 selectinload(Event.attendees).selectinload(EventAttendee.user)
             )
             .where(Event.id == event.id)
@@ -120,7 +121,7 @@ async def list_events(
     result = await db.execute(
         select(Event)
         .options(
-            selectinload(Event.creator), 
+            selectinload(Event.creator), selectinload(Event.label), 
             selectinload(Event.attendees).selectinload(EventAttendee.user)
         )
         .where(Event.project_id == project_id)
@@ -166,7 +167,7 @@ async def list_my_events(
     result = await db.execute(
         select(Event)
         .options(
-            selectinload(Event.creator),
+            selectinload(Event.creator), selectinload(Event.label),
             selectinload(Event.attendees).selectinload(EventAttendee.user)
         )
         .where(or_(*where_clauses))
@@ -185,7 +186,7 @@ async def delete_event(
     await require_project_manager(db, project_id, current_user)
     """Delete an event."""
     result = await db.execute(
-        select(Event).options(selectinload(Event.creator)).where(Event.id == event_id)
+        select(Event).options(selectinload(Event.creator), selectinload(Event.label)).where(Event.id == event_id)
     )
     event = result.scalar_one_or_none()
     if not event:
@@ -306,6 +307,7 @@ async def create_global_event(
         category=data.category or "event",
         visibility=visibility,
         reminder_minutes=data.reminder_minutes,
+        label_id=data.label_id,
     )
     db.add(event)
     await db.flush()
@@ -316,7 +318,7 @@ async def create_global_event(
     result = await db.execute(
         select(Event)
         .options(
-            selectinload(Event.creator),
+            selectinload(Event.creator), selectinload(Event.label),
             selectinload(Event.attendees).selectinload(EventAttendee.user),
         )
         .where(Event.id == event.id)
@@ -363,11 +365,15 @@ async def update_global_event(
     elif data.reminder_minutes is not None:
         event.reminder_minutes = data.reminder_minutes
         event.reminder_sent = "N"  # reset biar reminder bisa terkirim kembali
+    if data.clear_label:
+        event.label_id = None
+    elif data.label_id is not None:
+        event.label_id = data.label_id
     await db.commit()
     result = await db.execute(
         select(Event)
         .options(
-            selectinload(Event.creator),
+            selectinload(Event.creator), selectinload(Event.label),
             selectinload(Event.attendees).selectinload(EventAttendee.user),
         )
         .where(Event.id == event.id)

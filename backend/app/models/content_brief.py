@@ -37,9 +37,15 @@ class ContentBrief(Base):
     # 4-step status: draft → review → approved → published
     status = Column(String(20), default="draft", nullable=False)
 
-    # Approval workflow — siapa & kapan, plus catatan optional.
-    # Reject set status balik ke "draft" dan simpan reason; UI render banner
-    # merah "ditolak oleh X" sampai pengaju submit ulang.
+    # Approval workflow 2 tahap:
+    # draft → review → approved_1 → approved (final) → published
+    # Reject di tahap mana pun balik ke draft + simpan reason.
+    # Tahap 1 — first reviewer.
+    approved_1_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approved_1_at = Column(DateTime(timezone=True), nullable=True)
+    approval_1_note = Column(Text, nullable=True)
+    # Tahap final — second/final approver. Field-nya namespace tanpa suffix
+    # demi backward compat: row lama yg "approved" cuma punya kolom ini.
     approved_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     approved_at = Column(DateTime(timezone=True), nullable=True)
     approval_note = Column(Text, nullable=True)
@@ -53,6 +59,7 @@ class ContentBrief(Base):
     team = relationship("Team")
     creator = relationship("User", foreign_keys=[creator_id])
     brand_label = relationship("DesignBrand")
+    approved_1_by = relationship("User", foreign_keys=[approved_1_by_id])
     approved_by = relationship("User", foreign_keys=[approved_by_id])
     rejected_by = relationship("User", foreign_keys=[rejected_by_id])
     scenes = relationship(
