@@ -406,7 +406,9 @@ class EventResponse(BaseModel):
     visibility: str = "public"
     reminder_minutes: Optional[int] = None
     label_id: Optional[UUID] = None
-    label: Optional[DesignBrandResponse] = None
+    # Forward ref — DesignBrandResponse didefinisikan jauh di bawah file ini.
+    # Di-resolve di akhir file via EventResponse.model_rebuild().
+    label: Optional["DesignBrandResponse"] = None
     created_at: datetime
     creator: Optional[UserResponse] = None
     attendees: List[EventAttendeeResponse] = []
@@ -870,4 +872,10 @@ class DesignBriefListItem(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ─── Resolve forward references ─────────────────────────────────────────────
+# EventResponse.label pakai forward ref ke DesignBrandResponse (yang
+# didefinisikan di tengah file). Rebuild di sini setelah semua kelas ready.
+EventResponse.model_rebuild()
 
