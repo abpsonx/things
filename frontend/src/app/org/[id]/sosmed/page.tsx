@@ -164,15 +164,6 @@ export default function SosmedPage() {
   const [newCarouselPreviews, setNewCarouselPreviews] = useState<string[]>([]);
   const [newCollaborators, setNewCollaborators] = useState<string[]>([]);
   const [newCollabInput, setNewCollabInput] = useState("");
-  const [newCollabLookup, setNewCollabLookup] = useState<{
-    loading: boolean;
-    found?: boolean;
-    username?: string;
-    name?: string | null;
-    profile_picture_url?: string | null;
-    followers_count?: number | null;
-    reason?: string;
-  } | null>(null);
   const [newShareToFeed, setNewShareToFeed] = useState(true);
   const [newSubmitting, setNewSubmitting] = useState(false);
 
@@ -232,20 +223,17 @@ export default function SosmedPage() {
     const raw = newCollabInput.trim().replace(/^@/, "");
     if (!raw) return;
     if (newCollaborators.length >= 3) { alert("Maksimal 3 collaborator."); return; }
-    // Wajib validated dulu — gak boleh add username yang gak terbukti ada.
-    if (!newCollabLookup || newCollabLookup.loading || newCollabLookup.found !== true) {
-      alert("Username belum tervalidasi. Tunggu lookup atau ganti username.");
+    // Format check basic — IG username: alphanumeric + . + _, 1-30 char.
+    if (!/^[A-Za-z0-9._]{1,30}$/.test(raw)) {
+      alert("Format username tidak valid (huruf, angka, titik, underscore).");
       return;
     }
-    const u = newCollabLookup.username || raw;
-    if (newCollaborators.includes(u)) {
+    if (newCollaborators.includes(raw)) {
       setNewCollabInput("");
-      setNewCollabLookup(null);
       return;
     }
-    setNewCollaborators([...newCollaborators, u]);
+    setNewCollaborators([...newCollaborators, raw]);
     setNewCollabInput("");
-    setNewCollabLookup(null);
   };
 
   const submitNewSchedule = async () => {
@@ -441,38 +429,10 @@ export default function SosmedPage() {
     if (orgId) refresh();
   }, [orgId]);
 
-  // Debounce IG username lookup buat collab input. Validasi via Business
-  // Discovery API — tampilkan preview profil supaya jelas siapa yang ke-tag.
-  useEffect(() => {
-    const raw = newCollabInput.trim().replace(/^@/, "");
-    if (!raw || !newAccountId || raw.length < 2) {
-      setNewCollabLookup(null);
-      return;
-    }
-    // Basic sanity sebelum hit API.
-    if (!/^[A-Za-z0-9._]{2,30}$/.test(raw)) {
-      setNewCollabLookup({ loading: false, found: false, username: raw, reason: "Format username tidak valid" });
-      return;
-    }
-    setNewCollabLookup({ loading: true });
-    const t = setTimeout(async () => {
-      try {
-        const res = await api.get(
-          `/organizations/${orgId}/sosmed/accounts/${newAccountId}/ig-lookup`,
-          { params: { username: raw } }
-        );
-        setNewCollabLookup({ loading: false, ...res.data });
-      } catch (err: any) {
-        setNewCollabLookup({
-          loading: false,
-          found: false,
-          username: raw,
-          reason: err?.response?.data?.detail || "Gagal lookup",
-        });
-      }
-    }, 500);
-    return () => clearTimeout(t);
-  }, [newCollabInput, newAccountId, orgId]);
+  // (Auto-lookup via IG Business Discovery API dihapus — endpoint itu cuma
+  // jalan via Facebook Graph dgn FB Login, bukan via graph.instagram.com
+  // yang kita pakai. Hasilnya selalu "not found" walau username valid. UI
+  // sekarang format-check aja + warning "verify manual sebelum tambah".)
 
   // Surface the Instagram OAuth callback result, then strip the query params.
   useEffect(() => {
@@ -883,9 +843,7 @@ export default function SosmedPage() {
                     disabled={
                       !newCollabInput.trim() ||
                       newCollaborators.length >= 3 ||
-                      !newCollabLookup ||
-                      newCollabLookup.loading ||
-                      newCollabLookup.found !== true
+                      !/^[A-Za-z0-9._]{1,30}$/.test(newCollabInput.trim().replace(/^@/, ""))
                     }
                     className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold disabled:opacity-40"
                   >
@@ -893,75 +851,6 @@ export default function SosmedPage() {
                   </button>
                 </div>
 
-                {/* Preview lookup result — validation feedback */}
-                {newCollabInput.trim() && newCollabLookup && (
-                  <div className="mt-2">
-                    {newCollabLookup.loading ? (
-                      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary/40 text-xs text-muted-foreground">
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                        <span>Cek username...</span>
-                      </div>
-                    ) : newCollabLookup.found ? (
-                      <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-card border-2 border-emerald-500">
-                        {newCollabLookup.profile_picture_url ? (
-                          <img
-                            src={newCollabLookup.profile_picture_url}
-                            alt=""
-                            className="w-8 h-8 rounded-full object-cover border border-border bg-secondary"
-                          />
-                        ) : (
-                          <div className="w-8 h-8 rounded-full bg-secondary border border-border flex items-center justify-center text-xs font-bold">
-                            {(newCollabLookup.username || "?").charAt(0).toUpperCase()}
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-bold truncate text-foreground">
-                            {newCollabLookup.name || `@${newCollabLookup.username}`}
-                          </p>
-                          <p className="text-[10px] text-muted-foreground truncate">
-                            @{newCollabLookup.username}
-                            {newCollabLookup.followers_count != null && (
-                              <> · {newCollabLookup.followers_count.toLocaleString("id-ID")} followers</>
-                            )}
-                          </p>
-                        </div>
-                        <span className="text-[10px] font-extrabold text-white bg-emerald-600 px-1.5 py-0.5 rounded">
-                          ✓ VALID
-                        </span>
-                      </div>
-                    ) : (
-                      <div className="px-3 py-2.5 rounded-lg bg-card border-2 border-destructive space-y-2">
-                        <div className="flex items-start gap-2">
-                          <div className="w-5 h-5 rounded-full bg-destructive flex items-center justify-center shrink-0 mt-0.5">
-                            <X className="w-3 h-3 text-white" strokeWidth={3} />
-                          </div>
-                          <p className="text-xs text-foreground leading-snug font-semibold">
-                            <span className="font-extrabold">@{newCollabLookup.username}</span> — {newCollabLookup.reason || "Tidak ditemukan."}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const raw = (newCollabLookup.username || newCollabInput).trim().replace(/^@/, "");
-                            if (!raw) return;
-                            if (newCollaborators.length >= 3) { alert("Maksimal 3 collaborator."); return; }
-                            if (newCollaborators.includes(raw)) { setNewCollabInput(""); setNewCollabLookup(null); return; }
-                            setNewCollaborators([...newCollaborators, raw]);
-                            setNewCollabInput("");
-                            setNewCollabLookup(null);
-                          }}
-                          className="text-xs font-extrabold underline text-foreground hover:text-primary pl-7"
-                        >
-                          Tambahkan tanpa validasi →
-                        </button>
-                        <p className="text-[10px] text-muted-foreground pl-7 leading-snug">
-                          Pakai ini kalau yakin username benar (mis. akun Personal — IG cuma show Business via API).
-                          Kalau salah, invite collab akan gagal saat publish.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                )}
                 {newCollaborators.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     {newCollaborators.map((u) => (
@@ -974,6 +863,14 @@ export default function SosmedPage() {
                     ))}
                   </div>
                 )}
+                <div className="mt-2 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800">
+                  <p className="text-[10px] text-amber-900 dark:text-amber-100 leading-snug">
+                    <strong>ⓘ Pastikan username persis benar.</strong> IG API yang kita pake (Instagram
+                    Business Login) gak ngasih cara verifikasi username — kita kirim ke IG apa adanya.
+                    Kalau username salah, invite collab gagal silent waktu publish (post tetep
+                    nayang tapi tanpa collaborator). Cek dulu di app IG biar yakin.
+                  </p>
+                </div>
                 <p className="text-[9px] text-muted-foreground italic mt-1">
                   Collaborator harus accept invite di IG mereka — post tampil di kedua akun.
                 </p>
