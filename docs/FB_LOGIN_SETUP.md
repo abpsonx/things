@@ -1,7 +1,14 @@
-# Facebook Login Flow — Setup Checklist
+# Facebook Login for Business — Setup Checklist
 
-Setup ini one-time, dilakukan di **Meta For Developers Dashboard**.
-App ID & Secret yang sama dgn Instagram Business Login bisa di-reuse.
+Setup one-time di **Meta For Developers Dashboard**. Pakai product
+**"Facebook Login for Business" (FBLB)**, bukan FB Login standar.
+
+⚠️ Things butuh 3 env vars:
+```
+META_CLIENT_ID=<App ID>
+META_CLIENT_SECRET=<App Secret>
+META_FB_CONFIG_ID=<Configuration ID dari FBLB>
+```
 
 ## A. Meta Dev Dashboard — Aktifin Facebook Login Product
 

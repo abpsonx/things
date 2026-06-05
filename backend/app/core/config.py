@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     META_CLIENT_ID: str = ""
     META_CLIENT_SECRET: str = ""
     META_WEBHOOK_VERIFY_TOKEN: str = ""
+    # Facebook Login for Business — Configuration ID dari Meta Dev Dashboard
+    # > Facebook Login for Business > Konfigurasi > Create.
+    # Wajib di-pass via `config_id` query param waktu authorize URL (FBLB
+    # gak pake `scope` literal — scope sudah di-bundle di config).
+    META_FB_CONFIG_ID: str = ""
 
     # TikTok
     TIKTOK_CLIENT_KEY: str = ""

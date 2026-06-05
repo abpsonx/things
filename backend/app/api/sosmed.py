@@ -802,34 +802,43 @@ async def connect_facebook(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Start FB Login flow — unlocks hashtag search + Marketplace.
+    """Start FB Login for Business (FBLB) flow — unlocks hashtag search,
+    Marketplace, business_discovery.
 
-    User flow: login Facebook → pilih Page yg link ke IG → kita simpan
-    Page token + IG user ID. Semua API call ke IG selanjutnya lewat
-    graph.facebook.com pakai Page access token.
+    FBLB butuh `config_id` parameter (bukan `scope`) — scope sudah di-bake
+    di Configuration yg dibuat lewat Meta Dev Dashboard > Facebook Login
+    for Business > Konfigurasi.
 
     Prerequisite (di sisi user/brand):
-    1. Punya akun Facebook pribadi
-    2. Akun FB itu admin di FB Page
-    3. FB Page di-link ke akun IG-nya (di IG app: Settings → Account →
-       Sharing to Other Apps → Facebook)
-    4. Akun IG-nya Business atau Creator (bukan Personal)
+    1. Punya akun Facebook + admin FB Page
+    2. FB Page link ke akun IG (IG app: Settings → Account → Sharing to
+       Other Apps → Facebook)
+    3. Akun IG Business atau Creator (bukan Personal)
     """
     await _require_member(db, org_id, current_user.id)
     s = get_settings()
     if not (s.META_CLIENT_ID and s.META_CLIENT_SECRET):
         raise HTTPException(status_code=400, detail="Meta belum dikonfigurasi (META_CLIENT_ID/SECRET kosong)")
+    if not s.META_FB_CONFIG_ID:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "META_FB_CONFIG_ID belum di-set di env. Bikin Configuration di "
+                "Meta Dev Dashboard → Facebook Login for Business → Konfigurasi, "
+                "lalu copy Configuration ID ke env."
+            ),
+        )
     state = create_access_token(
         {"org_id": str(org_id), "uid": str(current_user.id), "scope": "fb_connect"},
         expires_delta=timedelta(minutes=15),
     )
+    # FBLB params: scope ditentukan via config_id (bukan literal scope string).
     params = {
         "client_id": s.META_CLIENT_ID,
+        "config_id": s.META_FB_CONFIG_ID,
         "redirect_uri": _fb_redirect_uri(),
         "response_type": "code",
-        "scope": FACEBOOK_SCOPES,
         "state": state,
-        "auth_type": "reauthenticate",  # force consent biar scope baru ke-grant
     }
     return {"auth_url": f"{FACEBOOK_AUTH_URL}?{urlencode(params)}"}
 
