@@ -874,6 +874,107 @@ class DesignBriefListItem(BaseModel):
         from_attributes = True
 
 
+# ─── Creator Pool ───────────────────────────────────────────────────────────
+
+class CreatorBase(BaseModel):
+    ig_username: str = Field(..., min_length=1, max_length=64)
+    display_name: Optional[str] = None
+    avatar_url: Optional[str] = None
+    tier: Optional[str] = None  # nano/micro/mid/macro/mega
+    follower_count: Optional[int] = None
+    categories: List[str] = []
+    location: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    contact_wa: Optional[str] = None
+    rate_card: Optional[dict] = {}
+    notes: Optional[str] = None
+    status: Optional[str] = "active"  # active|inactive|blacklist
+
+
+class CreatorCreate(CreatorBase):
+    pass
+
+
+class CreatorUpdate(BaseModel):
+    ig_username: Optional[str] = Field(None, min_length=1, max_length=64)
+    display_name: Optional[str] = None
+    avatar_url: Optional[str] = None
+    tier: Optional[str] = None
+    follower_count: Optional[int] = None
+    categories: Optional[List[str]] = None
+    location: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    contact_wa: Optional[str] = None
+    rate_card: Optional[dict] = None
+    notes: Optional[str] = None
+    status: Optional[str] = None
+
+
+class CreatorCampaignResponse(BaseModel):
+    id: UUID
+    creator_id: UUID
+    brand_id: Optional[UUID] = None
+    brand: Optional[DesignBrandResponse] = None
+    title: str
+    campaign_date: Optional[date] = None
+    deliverables: List[str] = []
+    budget: Optional[int] = None
+    status: str = "planned"
+    result_notes: Optional[str] = None
+    design_brief_id: Optional[UUID] = None
+    content_brief_id: Optional[UUID] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CreatorCampaignCreate(BaseModel):
+    brand_id: Optional[UUID] = None
+    title: str = Field(..., min_length=1, max_length=255)
+    campaign_date: Optional[date] = None
+    deliverables: List[str] = []
+    budget: Optional[int] = None
+    status: Optional[str] = "planned"
+    result_notes: Optional[str] = None
+    design_brief_id: Optional[UUID] = None
+    content_brief_id: Optional[UUID] = None
+
+
+class CreatorCampaignUpdate(BaseModel):
+    brand_id: Optional[UUID] = None
+    title: Optional[str] = None
+    campaign_date: Optional[date] = None
+    deliverables: Optional[List[str]] = None
+    budget: Optional[int] = None
+    status: Optional[str] = None
+    result_notes: Optional[str] = None
+    design_brief_id: Optional[UUID] = None
+    content_brief_id: Optional[UUID] = None
+
+
+class CreatorResponse(CreatorBase):
+    id: UUID
+    org_id: UUID
+    created_by: Optional[UUID] = None
+    created_at: datetime
+    updated_at: datetime
+    # Computed/aggregate — frontend tampil di list card.
+    campaign_count: int = 0
+    total_spent: int = 0  # sum budget dari campaigns status=done
+    last_campaign_date: Optional[date] = None
+
+    class Config:
+        from_attributes = True
+
+
+class CreatorDetailResponse(CreatorResponse):
+    """Full detail termasuk daftar campaign — dipakai di halaman detail."""
+    campaigns: List[CreatorCampaignResponse] = []
+
+
 # ─── Resolve forward references ─────────────────────────────────────────────
 # EventResponse.label pakai forward ref ke DesignBrandResponse (yang
 # didefinisikan di tengah file). Rebuild di sini setelah semua kelas ready.

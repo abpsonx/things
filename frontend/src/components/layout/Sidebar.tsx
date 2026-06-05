@@ -23,6 +23,7 @@ import {
   Users,
   CheckSquare,
   Share2,
+  Star,
   Hash,
   Building2,
   ChevronDown,
@@ -307,6 +308,11 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       icon: Share2,
       label: "Sosmed",
       href: activeOrgId ? `/org/${activeOrgId}/sosmed` : "#"
+    },
+    {
+      icon: Star,
+      label: "Creator Pool",
+      href: activeOrgId ? `/org/${activeOrgId}/creators` : "#"
     }
   ];
 
@@ -382,8 +388,10 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
               isActive = pathname.includes("/files");
             } else if (item.label === "Sosmed") {
               isActive = pathname.includes("/sosmed");
+            } else if (item.label === "Creator Pool") {
+              isActive = pathname.includes("/creators");
             } else if (item.label === "Dashboard") {
-              isActive = pathname === "/dashboard" || (pathname.startsWith("/org/") && !pathname.includes("/project/") && !pathname.includes("/team/") && !pathname.includes("/activity") && !pathname.includes("/files") && !pathname.includes("/members") && !pathname.includes("/sosmed") && !pathname.endsWith("/chat"));
+              isActive = pathname === "/dashboard" || (pathname.startsWith("/org/") && !pathname.includes("/project/") && !pathname.includes("/team/") && !pathname.includes("/activity") && !pathname.includes("/files") && !pathname.includes("/members") && !pathname.includes("/sosmed") && !pathname.includes("/creators") && !pathname.endsWith("/chat"));
             }
 
             return (

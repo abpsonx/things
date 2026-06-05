@@ -720,6 +720,8 @@ app.include_router(events.router, prefix="/api")
 app.include_router(events.me_router, prefix="/api")
 from app.api import brands as brands_api
 app.include_router(brands_api.router, prefix="/api")
+from app.api import creators as creators_api
+app.include_router(creators_api.router, prefix="/api")
 app.include_router(comments.router, prefix="/api")
 app.include_router(subtasks.router, prefix="/api")
 app.include_router(labels.router, prefix="/api")
