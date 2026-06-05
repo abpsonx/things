@@ -100,9 +100,16 @@ async def list_creators(
         stmt = stmt.where(Creator.tier == tier)
     if q:
         like = f"%{q.lower()}%"
+        # Search broad: username, nama, lokasi, kontak, notes.
+        # COALESCE(..., '') biar field NULL gak match dgn pattern like '%%'.
         stmt = stmt.where(
             safunc.lower(Creator.ig_username).like(like)
-            | safunc.lower(Creator.display_name).like(like)
+            | safunc.lower(safunc.coalesce(Creator.display_name, "")).like(like)
+            | safunc.lower(safunc.coalesce(Creator.location, "")).like(like)
+            | safunc.lower(safunc.coalesce(Creator.notes, "")).like(like)
+            | safunc.lower(safunc.coalesce(Creator.contact_email, "")).like(like)
+            | safunc.lower(safunc.coalesce(Creator.contact_phone, "")).like(like)
+            | safunc.lower(safunc.coalesce(Creator.contact_wa, "")).like(like)
         )
     stmt = stmt.order_by(Creator.created_at.desc())
     res = await db.execute(stmt)
