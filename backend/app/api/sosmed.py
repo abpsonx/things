@@ -817,8 +817,12 @@ async def connect_facebook(
     """
     await _require_member(db, org_id, current_user.id)
     s = get_settings()
-    if not (s.META_CLIENT_ID and s.META_CLIENT_SECRET):
-        raise HTTPException(status_code=400, detail="Meta belum dikonfigurasi (META_CLIENT_ID/SECRET kosong)")
+    # FBLB pake App ID PARENT (kalau di-set), fallback ke META_CLIENT_ID
+    # (kalau app punya 1 ID aja).
+    fb_client_id = s.META_FB_CLIENT_ID or s.META_CLIENT_ID
+    fb_client_secret = s.META_FB_CLIENT_SECRET or s.META_CLIENT_SECRET
+    if not (fb_client_id and fb_client_secret):
+        raise HTTPException(status_code=400, detail="Meta belum dikonfigurasi (META_FB_CLIENT_ID/SECRET atau META_CLIENT_ID/SECRET kosong)")
     if not s.META_FB_CONFIG_ID:
         raise HTTPException(
             status_code=400,
@@ -834,7 +838,7 @@ async def connect_facebook(
     )
     # FBLB params: scope ditentukan via config_id (bukan literal scope string).
     params = {
-        "client_id": s.META_CLIENT_ID,
+        "client_id": fb_client_id,
         "config_id": s.META_FB_CONFIG_ID,
         "redirect_uri": _fb_redirect_uri(),
         "response_type": "code",
@@ -884,12 +888,16 @@ async def facebook_oauth_callback(
         return _back(org_id, {"fb_error": "not_member"})
 
     redirect_uri = _fb_redirect_uri()
+    # FB Login pakai App ID PARENT (fallback ke IG sub-config kalau env baru
+    # belum di-set).
+    fb_client_id = s.META_FB_CLIENT_ID or s.META_CLIENT_ID
+    fb_client_secret = s.META_FB_CLIENT_SECRET or s.META_CLIENT_SECRET
     try:
         async with httpx.AsyncClient(timeout=20) as client:
             # Step 1: code → short-lived user token
             tok = await client.get(FACEBOOK_TOKEN_URL, params={
-                "client_id": s.META_CLIENT_ID,
-                "client_secret": s.META_CLIENT_SECRET,
+                "client_id": fb_client_id,
+                "client_secret": fb_client_secret,
                 "redirect_uri": redirect_uri,
                 "code": code,
             })
@@ -902,8 +910,8 @@ async def facebook_oauth_callback(
             # Step 2: short → long-lived (~60 days)
             ll = await client.get(FACEBOOK_TOKEN_URL, params={
                 "grant_type": "fb_exchange_token",
-                "client_id": s.META_CLIENT_ID,
-                "client_secret": s.META_CLIENT_SECRET,
+                "client_id": fb_client_id,
+                "client_secret": fb_client_secret,
                 "fb_exchange_token": short_token,
             })
             ll_data = ll.json()

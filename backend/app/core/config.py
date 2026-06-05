@@ -48,13 +48,19 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str = ""
 
     # Meta (Instagram / Facebook)
+    # IG Business Login (graph.instagram.com) — pakai App ID dari
+    # Instagram API sub-config di Meta Dev Dashboard.
     META_CLIENT_ID: str = ""
     META_CLIENT_SECRET: str = ""
     META_WEBHOOK_VERIFY_TOKEN: str = ""
-    # Facebook Login for Business — Configuration ID dari Meta Dev Dashboard
-    # > Facebook Login for Business > Konfigurasi > Create.
-    # Wajib di-pass via `config_id` query param waktu authorize URL (FBLB
-    # gak pake `scope` literal — scope sudah di-bundle di config).
+    # Facebook Login for Business (FBLB, graph.facebook.com) — pakai App
+    # ID PARENT dari Meta Dev Dashboard (bukan IG sub-config). Kalau kosong,
+    # fallback ke META_CLIENT_ID/SECRET (untuk app yg cuma punya 1 ID).
+    META_FB_CLIENT_ID: str = ""
+    META_FB_CLIENT_SECRET: str = ""
+    # FBLB Configuration ID — dari Meta Dev Dashboard > Facebook Login for
+    # Business > Konfigurasi > Create. Wajib di-pass via `config_id` query
+    # param di authorize URL.
     META_FB_CONFIG_ID: str = ""
 
     # TikTok

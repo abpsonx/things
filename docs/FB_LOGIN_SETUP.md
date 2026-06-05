@@ -3,12 +3,30 @@
 Setup one-time di **Meta For Developers Dashboard**. Pakai product
 **"Facebook Login for Business" (FBLB)**, bukan FB Login standar.
 
-⚠️ Things butuh 3 env vars:
+⚠️ Things butuh **5 env vars** (FB Login dan IG Login dipisah karena
+beda App ID di Meta Dev Dashboard):
+
 ```
-META_CLIENT_ID=<App ID>
-META_CLIENT_SECRET=<App Secret>
+# IG Business Login (App ID sub-config IG)
+META_CLIENT_ID=<IG sub-config App ID>
+META_CLIENT_SECRET=<IG sub-config App Secret>
+
+# FB Login for Business (App ID PARENT)
+META_FB_CLIENT_ID=<Parent App ID>
+META_FB_CLIENT_SECRET=<Parent App Secret>
 META_FB_CONFIG_ID=<Configuration ID dari FBLB>
 ```
+
+**Cara dapet App ID Parent vs Sub-config:**
+1. Buka Meta Dev Dashboard → app yg dipakai
+2. **App ID Parent** = ada di URL/header app (cth: `1634585144317006`)
+3. **IG sub-config App ID** = di sidebar "Instagram API > Penyiapan API
+   dengan login Instagram" → "ID aplikasi Instagram" (cth: `1892899761420333`)
+4. **App Secret Parent** = Pengaturan aplikasi → Dasar → "Rahasia App"
+5. **IG sub-config Secret** = di section "Rahasia aplikasi Instagram"
+
+Kalau App ID-nya cuma 1 (gak ada sub-config IG terpisah), `META_FB_*`
+boleh dikosongkan — code auto-fallback ke `META_CLIENT_*`.
 
 ## A. Meta Dev Dashboard — Aktifin Facebook Login Product
 
