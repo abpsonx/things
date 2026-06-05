@@ -133,6 +133,17 @@ export default function CreatorPoolPage() {
   const [detail, setDetail] = useState<CreatorDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
 
+  // Apakah POOL benar2 kosong (gak ada creator sama sekali) vs cuma
+  // narrow karena filter? Cek tanpa filter sekali di mount + setelah
+  // create/delete biar tau onboarding mode atau enggak.
+  const [poolHasAny, setPoolHasAny] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!orgId) return;
+    api.get(`/organizations/${orgId}/creators`).then((r) => {
+      setPoolHasAny((r.data || []).length > 0);
+    }).catch(() => setPoolHasAny(false));
+  }, [orgId]);
+
   const fetchCreators = useCallback(async () => {
     setLoading(true);
     try {
@@ -187,6 +198,7 @@ export default function CreatorPoolPage() {
       } else {
         const res = await api.post(`/organizations/${orgId}/creators`, payload);
         setCreators((prev) => [res.data, ...prev]);
+        setPoolHasAny(true);
         toast.success("Creator ditambahkan");
       }
       setModalOpen(false);
@@ -241,7 +253,8 @@ export default function CreatorPoolPage() {
           <h1 className="text-3xl font-bold tracking-tight">Creator Pool</h1>
         </div>
         <p className="text-muted-foreground">
-          Database influencer & creator buat MEDBER. Add, organize, track campaign history per creator.
+          Catatan internal MEDBER — kontak creator/influencer yang pernah/calon kerja sama.
+          Input manual, lalu tracking campaign per orang.
         </p>
       </div>
 
@@ -253,49 +266,90 @@ export default function CreatorPoolPage() {
         <StatCard icon={Wallet} label="Total Spent" value={fmtIDR(stats.spent)} />
       </div>
 
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-card p-3 border border-border rounded-2xl">
-        <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
-          <div className="relative flex-1 min-w-[200px] max-w-[320px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Cari username, nama, lokasi, kontak, notes…"
-              className="w-full pl-9 pr-3 py-2 rounded-xl border border-border bg-background text-sm"
-            />
+      {/* Toolbar — sembunyiin kalau pool kosong (gak ada apapun yg bisa di-search) */}
+      {poolHasAny && (
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-card p-3 border border-border rounded-2xl">
+          <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
+            <div className="relative flex-1 min-w-[200px] max-w-[320px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Cari username, nama, lokasi, kontak, notes…"
+                className="w-full pl-9 pr-3 py-2 rounded-xl border border-border bg-background text-sm"
+              />
+            </div>
+            <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="px-3 py-2 rounded-xl border border-border bg-background text-xs font-semibold">
+              <option value="">Semua status</option>
+              {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+            <select value={filterTier} onChange={(e) => setFilterTier(e.target.value)} className="px-3 py-2 rounded-xl border border-border bg-background text-xs font-semibold">
+              <option value="">Semua tier</option>
+              {TIERS.map((t) => <option key={t.value} value={t.value}>{t.label} ({t.range})</option>)}
+            </select>
+            <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="px-3 py-2 rounded-xl border border-border bg-background text-xs font-semibold">
+              <option value="">Semua kategori</option>
+              {PRESET_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
           </div>
-          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="px-3 py-2 rounded-xl border border-border bg-background text-xs font-semibold">
-            <option value="">Semua status</option>
-            {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-          </select>
-          <select value={filterTier} onChange={(e) => setFilterTier(e.target.value)} className="px-3 py-2 rounded-xl border border-border bg-background text-xs font-semibold">
-            <option value="">Semua tier</option>
-            {TIERS.map((t) => <option key={t.value} value={t.value}>{t.label} ({t.range})</option>)}
-          </select>
-          <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="px-3 py-2 rounded-xl border border-border bg-background text-xs font-semibold">
-            <option value="">Semua kategori</option>
-            {PRESET_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
+          <button
+            onClick={openCreate}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:opacity-90 shadow-md"
+          >
+            <Plus className="w-4 h-4" /> Tambah Creator
+          </button>
         </div>
-        <button
-          onClick={openCreate}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:opacity-90 shadow-md"
-        >
-          <Plus className="w-4 h-4" /> Tambah Creator
-        </button>
-      </div>
+      )}
 
       {/* Grid */}
-      {loading ? (
+      {loading || poolHasAny === null ? (
         <div className="flex justify-center py-24"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>
+      ) : !poolHasAny ? (
+        /* True empty — pool benar2 kosong. Onboarding. */
+        <div className="rounded-3xl border-2 border-dashed border-primary/30 bg-primary/5 p-10 text-center space-y-4">
+          <div className="inline-flex w-16 h-16 rounded-2xl bg-primary/10 items-center justify-center">
+            <Star className="w-8 h-8 text-primary" />
+          </div>
+          <div className="space-y-1">
+            <p className="text-lg font-extrabold text-foreground">Mulai bangun database creator MEDBER</p>
+            <p className="text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
+              Creator Pool ini <strong>catatan internal kalian</strong> — bukan directory universal.
+              Setiap creator harus di-input dulu (username, kontak, rate, dll). Setelah ada datanya,
+              baru bisa di-search & filter.
+            </p>
+          </div>
+          <div className="text-left max-w-md mx-auto bg-background border border-border rounded-2xl p-4 space-y-2">
+            <p className="text-[10px] uppercase tracking-widest font-extrabold text-muted-foreground">Tipikal workflow:</p>
+            <ol className="text-xs text-foreground space-y-1.5 list-decimal list-inside">
+              <li>Ketemu calon collab via DM IG / referensi / scout hashtag</li>
+              <li>Input ke pool: username, follower, kategori, lokasi, rate, kontak</li>
+              <li>Setelah collab → log campaign di profil creator (budget, hasil, dll)</li>
+              <li>Search/filter waktu cari creator buat campaign berikutnya</li>
+            </ol>
+          </div>
+          <button
+            onClick={openCreate}
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl bg-primary text-primary-foreground text-sm font-extrabold hover:opacity-90 shadow-lg shadow-primary/20"
+          >
+            <Plus className="w-4 h-4" /> Tambah Creator Pertama
+          </button>
+        </div>
       ) : creators.length === 0 ? (
-        <div className="rounded-2xl border-2 border-dashed border-border p-12 text-center">
-          <Star className="w-12 h-12 mx-auto text-muted-foreground/30 mb-3" />
-          <p className="text-sm font-bold text-foreground mb-1">Belum ada creator di pool</p>
-          <p className="text-xs text-muted-foreground italic">
-            Klik "Tambah Creator" untuk mulai. Atau coba ubah filter di atas.
-          </p>
+        /* Pool ada datanya tapi filter narrow → 0 hasil. Hint reset filter. */
+        <div className="rounded-2xl border-2 border-dashed border-border p-10 text-center space-y-3">
+          <Search className="w-10 h-10 mx-auto text-muted-foreground/40" />
+          <div>
+            <p className="text-sm font-bold text-foreground mb-1">Gak ketemu creator yang cocok</p>
+            <p className="text-xs text-muted-foreground italic">
+              Filter atau search-nya kemungkinan terlalu sempit. Coba reset di bawah.
+            </p>
+          </div>
+          <button
+            onClick={() => { setSearch(""); setFilterTier(""); setFilterCategory(""); setFilterStatus("active"); }}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-secondary text-foreground text-xs font-bold hover:bg-secondary/70"
+          >
+            Reset Filter
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
