@@ -24,6 +24,20 @@ class SocialAccount(Base):
     token_expires_at = Column(DateTime(timezone=True), nullable=True)
     scopes = Column(Text, nullable=True)  # permissions granted at connect time
     connected_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    # Auth type — bedain IG Business Login (graph.instagram.com) vs FB Login
+    # via linked Page (graph.facebook.com). FB Login unlock fitur tambahan
+    # kayak hashtag search, marketplace discovery, business_discovery.
+    # Nullable + default "ig_business" demi backward compat row lama.
+    auth_type = Column(String(20), nullable=True, default="ig_business")
+    # Khusus auth_type=fb_page — Facebook Page ID + Page access token +
+    # FB user yg authorize. Page token dipakai utk semua API call ke IG
+    # via graph.facebook.com. user_token disimpen biar bisa refresh page
+    # tokens kalau Page rotation.
+    fb_user_id = Column(String(64), nullable=True)
+    fb_user_token = Column(Text, nullable=True)
+    page_id = Column(String(64), nullable=True)
+    page_access_token = Column(Text, nullable=True)
+    page_name = Column(String(255), nullable=True)
     # Insights snapshot — Graph API audience demographics + profile activity.
     # Shape: {profile: {profile_views, website_clicks, ...}, demographics:
     # {gender_age: {...}, city: {...}, country: {...}, age: {...}},

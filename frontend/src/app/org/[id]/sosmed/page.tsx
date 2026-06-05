@@ -14,6 +14,8 @@ interface SocialAccount {
   username?: string | null;
   display_name?: string | null;
   avatar_url?: string | null;
+  auth_type?: "ig_business" | "fb_page" | null;
+  page_name?: string | null;
 }
 
 interface MetricPoint {
@@ -444,6 +446,16 @@ export default function SosmedPage() {
     } else if (params.get("ig_error")) {
       alert(`Gagal menghubungkan Instagram: ${params.get("ig_error")}`);
       window.history.replaceState({}, "", window.location.pathname);
+    } else if (params.get("fb_connected")) {
+      alert(`Facebook berhasil terhubung! IG account: @${params.get("fb_connected")} 🎉`);
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (params.get("fb_error")) {
+      const err = params.get("fb_error");
+      let msg = `Gagal connect via Facebook: ${err}`;
+      if (err === "no_pages_admin") msg = "Akun FB kamu bukan admin Page mana pun. Setup FB Page dulu.";
+      else if (err === "no_ig_linked") msg = "Belum ada FB Page yg link ke IG. Setup link di IG app: Settings → Account → Sharing to Other Apps → Facebook.";
+      alert(msg);
+      window.history.replaceState({}, "", window.location.pathname);
     }
   }, []);
 
@@ -455,15 +467,24 @@ export default function SosmedPage() {
     if (platform === "instagram") {
       try {
         const res = await api.get(`/organizations/${orgId}/sosmed/connect/instagram`);
-        window.location.href = res.data.auth_url; // hop to instagram.com to authorize
+        window.location.href = res.data.auth_url;
       } catch (err) {
         console.error("Failed to start Instagram connect", err);
         alert("Gagal memulai koneksi Instagram. Coba lagi.");
       }
       return;
     }
-    // TikTok OAuth wired in a later step.
     alert("Koneksi TikTok sedang disiapkan untuk tahap berikutnya.");
+  };
+
+  const connectFacebook = async () => {
+    try {
+      const res = await api.get(`/organizations/${orgId}/sosmed/connect/facebook`);
+      window.location.href = res.data.auth_url;
+    } catch (err) {
+      console.error("Failed to start Facebook connect", err);
+      alert("Gagal memulai koneksi Facebook. Coba lagi.");
+    }
   };
 
   const disconnect = async (id: string) => {
@@ -518,12 +539,24 @@ export default function SosmedPage() {
                 </p>
               </div>
             </div>
-            <button
-              onClick={() => connect(p.key, p.ready)}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-all disabled:opacity-50"
-            >
-              <Plus className="w-3.5 h-3.5" /> Hubungkan
-            </button>
+            <div className="flex items-center gap-1.5 flex-wrap justify-end">
+              <button
+                onClick={() => connect(p.key, p.ready)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-all"
+                title="Login pake akun IG langsung — fitur dasar (post, insights akun sendiri, comments, DM)"
+              >
+                <Plus className="w-3.5 h-3.5" /> via Instagram
+              </button>
+              {p.key === "instagram" && p.ready && (
+                <button
+                  onClick={connectFacebook}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#1877F2] text-white text-xs font-bold hover:bg-[#0c63cc] transition-all"
+                  title="Login pake akun Facebook (butuh FB Page yg linked ke IG) — unlock hashtag search + Marketplace + validasi collab"
+                >
+                  <Plus className="w-3.5 h-3.5" /> via Facebook
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>
@@ -548,7 +581,18 @@ export default function SosmedPage() {
                         {a.avatar_url ? <img src={a.avatar_url} alt="" className="w-full h-full object-cover" /> : (a.display_name || a.username || "?").charAt(0).toUpperCase()}
                       </div>
                       <div className="min-w-0">
-                        <p className="text-sm font-bold truncate">{a.display_name || a.username}</p>
+                        <p className="text-sm font-bold truncate flex items-center gap-1.5">
+                          {a.display_name || a.username}
+                          {a.auth_type === "fb_page" ? (
+                            <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#1877F2] text-white" title={a.page_name ? `via FB Page: ${a.page_name}` : "via Facebook Login"}>
+                              FB
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded bg-pink-500 text-white" title="via Instagram Business Login (fitur dasar)">
+                              IG
+                            </span>
+                          )}
+                        </p>
                         <p className="text-[11px] text-muted-foreground capitalize">{a.platform} · @{a.username}</p>
                       </div>
                       <ChevronDown className={cn("w-4 h-4 text-muted-foreground transition-transform shrink-0", expanded && "rotate-180")} />

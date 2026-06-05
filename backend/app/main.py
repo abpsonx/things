@@ -369,6 +369,19 @@ async def lifespan(app: FastAPI):
             await conn.execute(text("ALTER TABLE social_accounts ADD COLUMN IF NOT EXISTS scopes TEXT"))
         except Exception:
             pass
+        # FB Login flow — auth_type discriminator + Page-level credentials
+        for col, ddl in (
+            ("auth_type", "VARCHAR(20) DEFAULT 'ig_business'"),
+            ("fb_user_id", "VARCHAR(64)"),
+            ("fb_user_token", "TEXT"),
+            ("page_id", "VARCHAR(64)"),
+            ("page_access_token", "TEXT"),
+            ("page_name", "VARCHAR(255)"),
+        ):
+            try:
+                await conn.execute(text(f"ALTER TABLE social_accounts ADD COLUMN IF NOT EXISTS {col} {ddl}"))
+            except Exception:
+                pass
         # IG audience demographics + profile insights snapshot (JSONB)
         try:
             await conn.execute(text("ALTER TABLE social_accounts ADD COLUMN IF NOT EXISTS insights JSONB"))

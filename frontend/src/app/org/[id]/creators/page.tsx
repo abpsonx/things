@@ -905,6 +905,7 @@ interface HashtagItem {
   timestamp: string | null;
   like_count: number | null;
   comments_count: number | null;
+  username: string | null;
 }
 
 interface MarketplaceItem {
@@ -917,9 +918,16 @@ interface MarketplaceItem {
 }
 
 function DiscoveryView({ orgId, onAddToPool }: { orgId: string; onAddToPool: (prefilled: Partial<Creator>) => void }) {
-  // Default ke "quick" — Mode 1 (Marketplace) & Mode 2 (Hashtag) butuh
-  // FB Login flow yg belum kita implement. Cuma Quick Scout yang beneran
-  // jalan dgn auth kita yg sekarang (IG Business Login).
+  // Cek apakah ada IG account auth_type=fb_page → Hashtag + Marketplace
+  // beneran jalan via FB Graph. Kalau gak, badge "FB LOGIN" + disabled banner.
+  const [fbReady, setFbReady] = useState<boolean | null>(null);
+  useEffect(() => {
+    api.get(`/organizations/${orgId}/sosmed/accounts`).then((r) => {
+      const accounts: any[] = r.data || [];
+      setFbReady(accounts.some((a) => a.platform === "instagram" && a.auth_type === "fb_page"));
+    }).catch(() => setFbReady(false));
+  }, [orgId]);
+
   const [mode, setMode] = useState<"quick" | "hashtag" | "marketplace">("quick");
   return (
     <div className="space-y-4">
@@ -927,8 +935,8 @@ function DiscoveryView({ orgId, onAddToPool }: { orgId: string; onAddToPool: (pr
       <div className="flex flex-wrap items-center gap-1.5">
         {([
           { key: "quick" as const, label: "Quick Scout", icon: ExternalLink, working: true },
-          { key: "hashtag" as const, label: "Hashtag Search", icon: Hash, working: false },
-          { key: "marketplace" as const, label: "IG Marketplace", icon: Compass, working: false },
+          { key: "hashtag" as const, label: "Hashtag Search", icon: Hash, working: fbReady === true },
+          { key: "marketplace" as const, label: "IG Marketplace", icon: Compass, working: fbReady === true },
         ]).map((t) => {
           const Icon = t.icon;
           const active = mode === t.key;
@@ -966,23 +974,7 @@ function HashtagDiscovery({ orgId, onAddToPool }: { orgId: string; onAddToPool: 
   const [searchMode, setSearchMode] = useState<"top" | "recent">("top");
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<HashtagItem[] | null>(null);
-  const [note, setNote] = useState<string>("");
   const [error, setError] = useState<string>("");
-
-  const fbLoginBanner = (
-    <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800">
-      <p className="text-[11px] text-amber-900 dark:text-amber-100 leading-snug">
-        <strong>⚠ Mode ini butuh Facebook Login flow yang belum diimplement.</strong> Endpoint
-        <code className="px-1 bg-amber-200/50 dark:bg-amber-800/50 rounded text-[10px] mx-0.5">ig_hashtag_search</code>
-        cuma jalan via <code className="px-1 bg-amber-200/50 dark:bg-amber-800/50 rounded text-[10px] mx-0.5">graph.facebook.com</code>
-        (FB Login + Page → IG link), bukan via <code className="px-1 bg-amber-200/50 dark:bg-amber-800/50 rounded text-[10px] mx-0.5">graph.instagram.com</code>
-        (IG Business Login yg kita pakai sekarang).
-        <br /><br />
-        Sambil tunggu FB Login flow di-build, pakai <strong>Quick Scout</strong> tab — sama-sama
-        bisa search hashtag IG, cuma lewat tab browser (not API).
-      </p>
-    </div>
-  );
 
   const search = async () => {
     const tag = hashtag.trim().replace(/^#/, "").toLowerCase();
@@ -993,7 +985,6 @@ function HashtagDiscovery({ orgId, onAddToPool }: { orgId: string; onAddToPool: 
         hashtag: tag, mode: searchMode,
       });
       setResults(res.data.items || []);
-      setNote(res.data.note || "");
     } catch (err: any) {
       setError(err?.response?.data?.detail || "Gagal cari hashtag");
     } finally {
@@ -1003,8 +994,7 @@ function HashtagDiscovery({ orgId, onAddToPool }: { orgId: string; onAddToPool: 
 
   return (
     <div className="space-y-3">
-      {fbLoginBanner}
-      <div className="p-4 rounded-2xl border border-border bg-card space-y-3 opacity-60">
+      <div className="p-4 rounded-2xl border border-border bg-card space-y-3">
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -1012,7 +1002,7 @@ function HashtagDiscovery({ orgId, onAddToPool }: { orgId: string; onAddToPool: 
               value={hashtag}
               onChange={(e) => setHashtag(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); search(); } }}
-              placeholder="hashtag (tanpa #) — bakal error sampai FB Login flow di-implement"
+              placeholder="hashtag (tanpa #), mis. kulinerjkt, foodjakarta, bandungkuliner"
               className="w-full pl-9 pr-3 py-2 rounded-xl border border-border bg-background text-sm"
             />
           </div>
@@ -1021,9 +1011,12 @@ function HashtagDiscovery({ orgId, onAddToPool }: { orgId: string; onAddToPool: 
             <option value="recent">Recent</option>
           </select>
           <button onClick={search} disabled={loading || !hashtag.trim()} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold disabled:opacity-40 hover:opacity-90">
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} Coba
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} Cari
           </button>
         </div>
+        <p className="text-[10px] text-muted-foreground italic">
+          ⓘ Pakai FB Graph — hasil dapet username creator langsung. Klik &quot;+ Tambah ke Pool&quot; di tiap card buat catat.
+        </p>
       </div>
 
       {error && (
@@ -1056,19 +1049,29 @@ function HashtagDiscovery({ orgId, onAddToPool }: { orgId: string; onAddToPool: 
                     </div>
                   </a>
                   <div className="p-2 space-y-1.5">
+                    {m.username && (
+                      <a
+                        href={`https://instagram.com/${m.username}/`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block text-[11px] font-extrabold text-primary hover:underline truncate"
+                      >
+                        @{m.username}
+                      </a>
+                    )}
                     <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
                       <Heart className="w-2.5 h-2.5" /> {(m.like_count || 0).toLocaleString("id-ID")}
                       <MessageCircle className="w-2.5 h-2.5" /> {(m.comments_count || 0).toLocaleString("id-ID")}
                     </div>
                     <p className="text-[10px] text-foreground line-clamp-2">{m.caption || <span className="italic text-muted-foreground">(tanpa caption)</span>}</p>
-                    <a
-                      href={m.permalink || "#"}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-[10px] font-bold text-primary hover:underline"
-                    >
-                      <ExternalLink className="w-2.5 h-2.5" /> Buka post → catat creator
-                    </a>
+                    {m.username && (
+                      <button
+                        onClick={() => onAddToPool({ ig_username: m.username || "", notes: (m.caption || "").slice(0, 280) })}
+                        className="w-full inline-flex items-center justify-center gap-1 px-2 py-1 rounded-lg bg-primary text-primary-foreground text-[10px] font-bold hover:opacity-90"
+                      >
+                        <Plus className="w-2.5 h-2.5" /> Tambah ke Pool
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -1117,19 +1120,14 @@ function MarketplaceDiscovery({ orgId, onAddToPool }: { orgId: string; onAddToPo
     <div className="space-y-3">
       <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800">
         <p className="text-[11px] text-amber-900 dark:text-amber-100 leading-snug">
-          <strong>⚠ Mode ini gak akan jalan sampai 2 syarat dipenuhi:</strong>
-          <br />
-          <strong>1.</strong> Kita migrate ke <strong>Facebook Login flow</strong> (sekarang pakai IG Business Login — endpoint Marketplace cuma di FB Graph)
-          <br />
-          <strong>2.</strong> Meta approve <strong>App Review</strong> kita buat scope
-          <code className="px-1 bg-amber-200/50 dark:bg-amber-800/50 rounded text-[9px] mx-0.5">instagram_creator_marketplace_discovery</code>
-          <br /><br />
-          Ditambah lagi, adoption Marketplace di Indonesia masih tipis (5-50 hasil aja kemungkinan).
-          Sambil tunggu, pakai <strong>Quick Scout</strong> — sama-sama bisa filter manual lewat hashtag/lokasi.
+          <strong>ⓘ Heads up:</strong> Marketplace API jalan via FB Login, tapi butuh
+          scope <code className="px-1 bg-amber-200/50 dark:bg-amber-800/50 rounded text-[9px] mx-0.5">instagram_creator_marketplace_discovery</code> yang
+          perlu <strong>App Review Meta</strong>. Tanpa approve, search return error scope.
+          Adoption Indonesia juga masih tipis (5-50 hasil saja).
         </p>
       </div>
 
-      <div className="p-4 rounded-2xl border border-border bg-card grid grid-cols-2 sm:grid-cols-3 gap-2 opacity-60">
+      <div className="p-4 rounded-2xl border border-border bg-card grid grid-cols-2 sm:grid-cols-3 gap-2">
         <div>
           <label className="text-[10px] uppercase tracking-widest font-extrabold text-muted-foreground">Country</label>
           <input value={filters.audience_country || ""} onChange={(e) => setFilters({ ...filters, audience_country: e.target.value.toUpperCase().slice(0, 2) })} placeholder="ID" className="w-full mt-1 px-3 py-2 rounded-lg border border-border bg-background text-sm uppercase" maxLength={2} />

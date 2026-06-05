@@ -32,6 +32,23 @@ logger = logging.getLogger(__name__)
 INSTAGRAM_AUTH_URL = "https://www.instagram.com/oauth/authorize"
 INSTAGRAM_TOKEN_URL = "https://api.instagram.com/oauth/access_token"
 INSTAGRAM_GRAPH = "https://graph.instagram.com"
+# FB Login flow — unlock hashtag search, Marketplace, business_discovery.
+# Pakai Page access token, semua call ke graph.facebook.com.
+FACEBOOK_AUTH_URL = "https://www.facebook.com/v22.0/dialog/oauth"
+FACEBOOK_TOKEN_URL = "https://graph.facebook.com/v22.0/oauth/access_token"
+FACEBOOK_GRAPH = "https://graph.facebook.com/v22.0"
+# Scope buat FB Login flow. Beberapa butuh App Review (production mode).
+# Dev mode (kalau user app testers/admin) langsung jalan tanpa review.
+FACEBOOK_SCOPES = (
+    "pages_show_list,"
+    "pages_read_engagement,"
+    "instagram_basic,"
+    "instagram_content_publish,"
+    "instagram_manage_comments,"
+    "instagram_manage_insights,"
+    "instagram_manage_messages,"
+    "business_management"
+)
 # Read profile/media/insights + manage comments & messages (DM). Adding a
 # scope here requires users to re-authorize (re-click Hubungkan).
 INSTAGRAM_SCOPES = (
@@ -771,6 +788,193 @@ async def connect_instagram(
         "force_reauth": "true",
     }
     return {"auth_url": f"{INSTAGRAM_AUTH_URL}?{urlencode(params)}"}
+
+
+def _fb_redirect_uri() -> str:
+    """Public OAuth callback URL Facebook redirects back to."""
+    base = (get_settings().FRONTEND_URL or "").rstrip("/")
+    return f"{base}/api/sosmed/oauth/facebook/callback"
+
+
+@router.get("/connect/facebook", response_model=Any)
+async def connect_facebook(
+    org_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Start FB Login flow — unlocks hashtag search + Marketplace.
+
+    User flow: login Facebook → pilih Page yg link ke IG → kita simpan
+    Page token + IG user ID. Semua API call ke IG selanjutnya lewat
+    graph.facebook.com pakai Page access token.
+
+    Prerequisite (di sisi user/brand):
+    1. Punya akun Facebook pribadi
+    2. Akun FB itu admin di FB Page
+    3. FB Page di-link ke akun IG-nya (di IG app: Settings → Account →
+       Sharing to Other Apps → Facebook)
+    4. Akun IG-nya Business atau Creator (bukan Personal)
+    """
+    await _require_member(db, org_id, current_user.id)
+    s = get_settings()
+    if not (s.META_CLIENT_ID and s.META_CLIENT_SECRET):
+        raise HTTPException(status_code=400, detail="Meta belum dikonfigurasi (META_CLIENT_ID/SECRET kosong)")
+    state = create_access_token(
+        {"org_id": str(org_id), "uid": str(current_user.id), "scope": "fb_connect"},
+        expires_delta=timedelta(minutes=15),
+    )
+    params = {
+        "client_id": s.META_CLIENT_ID,
+        "redirect_uri": _fb_redirect_uri(),
+        "response_type": "code",
+        "scope": FACEBOOK_SCOPES,
+        "state": state,
+        "auth_type": "reauthenticate",  # force consent biar scope baru ke-grant
+    }
+    return {"auth_url": f"{FACEBOOK_AUTH_URL}?{urlencode(params)}"}
+
+
+@webhook_router.get("/oauth/facebook/callback")
+async def facebook_oauth_callback(
+    db: AsyncSession = Depends(get_db),
+    code: str = Query(""),
+    state: str = Query(""),
+    error: str = Query(""),
+):
+    """FB OAuth redirect target.
+
+    Flow:
+    1. Exchange code → short-lived FB user token
+    2. Exchange short-lived → long-lived FB user token (~60 days)
+    3. GET /me/accounts — list of FB Pages user admin
+    4. Per Page, GET /{page-id}?fields=instagram_business_account → cek
+       Page mana yg link ke IG
+    5. Per IG-linked Page, ambil profil IG → simpan SocialAccount baru
+       atau update existing (matched by ig_user_id)
+    """
+    s = get_settings()
+    front = (s.FRONTEND_URL or "").rstrip("/")
+
+    def _back(org: str, params: dict):
+        dest = f"{front}/org/{org}/sosmed" if org else front
+        return RedirectResponse(url=f"{dest}?{urlencode(params)}")
+
+    payload = decode_token(state) or {}
+    org_id = payload.get("org_id")
+    uid = payload.get("uid")
+    if payload.get("scope") != "fb_connect" or not org_id or not uid:
+        return _back(org_id or "", {"fb_error": "bad_state"})
+
+    if error or not code:
+        return _back(org_id, {"fb_error": error or "no_code"})
+
+    member = await db.execute(
+        select(OrgMember).where(OrgMember.org_id == org_id, OrgMember.user_id == uid)
+    )
+    if not member.scalar_one_or_none():
+        return _back(org_id, {"fb_error": "not_member"})
+
+    redirect_uri = _fb_redirect_uri()
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            # Step 1: code → short-lived user token
+            tok = await client.get(FACEBOOK_TOKEN_URL, params={
+                "client_id": s.META_CLIENT_ID,
+                "client_secret": s.META_CLIENT_SECRET,
+                "redirect_uri": redirect_uri,
+                "code": code,
+            })
+            tok_data = tok.json()
+            if "access_token" not in tok_data:
+                logger.warning("FB token exchange failed: %s", tok_data)
+                return _back(org_id, {"fb_error": "token_exchange"})
+            short_token = tok_data["access_token"]
+
+            # Step 2: short → long-lived (~60 days)
+            ll = await client.get(FACEBOOK_TOKEN_URL, params={
+                "grant_type": "fb_exchange_token",
+                "client_id": s.META_CLIENT_ID,
+                "client_secret": s.META_CLIENT_SECRET,
+                "fb_exchange_token": short_token,
+            })
+            ll_data = ll.json()
+            user_token = ll_data.get("access_token", short_token)
+            expires_in = ll_data.get("expires_in")
+
+            # Get FB user info
+            me = await client.get(f"{FACEBOOK_GRAPH}/me", params={
+                "fields": "id,name",
+                "access_token": user_token,
+            })
+            me_data = me.json()
+            fb_user_id = me_data.get("id")
+
+            # Step 3: list Pages
+            pages_res = await client.get(f"{FACEBOOK_GRAPH}/me/accounts", params={
+                "fields": "id,name,access_token,instagram_business_account{id,username,name,profile_picture_url,followers_count,media_count}",
+                "access_token": user_token,
+            })
+            pages_data = pages_res.json()
+    except httpx.HTTPError as exc:
+        logger.warning("FB OAuth HTTP error: %s", exc)
+        return _back(org_id, {"fb_error": "network"})
+
+    if not isinstance(pages_data, dict) or "data" not in pages_data:
+        err_msg = pages_data.get("error", {}).get("message") if isinstance(pages_data, dict) else "no_pages"
+        return _back(org_id, {"fb_error": err_msg or "no_pages"})
+
+    pages = pages_data["data"]
+    if not pages:
+        return _back(org_id, {"fb_error": "no_pages_admin"})
+
+    # Filter Page yang punya IG linked
+    ig_pages = [p for p in pages if p.get("instagram_business_account")]
+    if not ig_pages:
+        return _back(org_id, {"fb_error": "no_ig_linked"})
+
+    # Upsert SocialAccount per IG-linked page (biasanya 1, tapi support multi)
+    expires_at = (
+        datetime.now(timezone.utc) + timedelta(seconds=int(expires_in)) if expires_in else None
+    )
+    connected_usernames = []
+    for p in ig_pages:
+        ig = p["instagram_business_account"]
+        ig_user_id = str(ig.get("id") or "")
+        if not ig_user_id:
+            continue
+        existing = await db.execute(
+            select(SocialAccount).where(
+                SocialAccount.org_id == uuid.UUID(org_id),
+                SocialAccount.platform == "instagram",
+                SocialAccount.external_id == ig_user_id,
+            )
+        )
+        acc = existing.scalar_one_or_none()
+        if not acc:
+            acc = SocialAccount(
+                org_id=uuid.UUID(org_id), platform="instagram",
+                external_id=ig_user_id, connected_by=uuid.UUID(uid),
+            )
+            db.add(acc)
+        acc.username = ig.get("username")
+        acc.display_name = ig.get("name") or ig.get("username")
+        acc.avatar_url = ig.get("profile_picture_url")
+        # Convention: untuk auth_type=fb_page, access_token = Page token
+        # supaya existing code yg pakai acc.access_token tetep ke-handle
+        # (asalkan base URL switched ke FACEBOOK_GRAPH).
+        acc.access_token = p["access_token"]
+        acc.token_expires_at = expires_at
+        acc.scopes = FACEBOOK_SCOPES
+        acc.auth_type = "fb_page"
+        acc.fb_user_id = fb_user_id
+        acc.fb_user_token = user_token
+        acc.page_id = p["id"]
+        acc.page_access_token = p["access_token"]
+        acc.page_name = p.get("name")
+        connected_usernames.append(ig.get("username") or ig_user_id)
+
+    await db.commit()
+    return _back(org_id, {"fb_connected": ",".join(connected_usernames)})
 
 
 @router.get("/accounts/{account_id}/metrics", response_model=Any)

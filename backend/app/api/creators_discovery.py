@@ -25,6 +25,23 @@ from app.models.social_account import SocialAccount
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/organizations/{org_id}/creators/discover", tags=["Creator Discovery"])
 INSTAGRAM_GRAPH = "https://graph.instagram.com"
+FACEBOOK_GRAPH = "https://graph.facebook.com/v22.0"
+
+
+def _ig_api_base(acc: SocialAccount) -> str:
+    """Pilih base URL API berdasarkan auth_type akun.
+
+    fb_page → graph.facebook.com (unlock hashtag search, marketplace, dst).
+    ig_business (default/legacy) → graph.instagram.com (limited).
+    """
+    return FACEBOOK_GRAPH if (acc.auth_type or "ig_business") == "fb_page" else INSTAGRAM_GRAPH
+
+
+def _ig_token(acc: SocialAccount) -> str:
+    """Pilih token sesuai auth_type. FB Login pakai Page access token."""
+    if (acc.auth_type or "ig_business") == "fb_page":
+        return acc.page_access_token or acc.access_token or ""
+    return acc.access_token or ""
 
 
 async def _require_org_member(db: AsyncSession, org_id: str, user: User) -> None:
@@ -88,14 +105,26 @@ async def discover_by_hashtag(
         raise HTTPException(status_code=400, detail="Format hashtag tidak valid")
 
     acc = await _get_ig_account(db, org_id, data.account_id)
+    # Hashtag search cuma jalan via FB Graph (graph.facebook.com).
+    # Akun ig_business (legacy IG Login) gak support endpoint ini.
+    if (acc.auth_type or "ig_business") != "fb_page":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Hashtag Search butuh akun yg connected via Facebook Login. "
+                "Re-connect akun ini lewat tombol 'Hubungkan via Facebook' "
+                "di halaman Sosmed."
+            ),
+        )
+    base = _ig_api_base(acc)
+    token = _ig_token(acc)
     ig_user_id = acc.external_id
-    token = acc.access_token
     edge = "top_media" if data.mode != "recent" else "recent_media"
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             # Step 1: hashtag ID
-            r1 = await client.get(f"{INSTAGRAM_GRAPH}/ig_hashtag_search", params={
+            r1 = await client.get(f"{base}/ig_hashtag_search", params={
                 "user_id": ig_user_id, "q": tag, "access_token": token,
             })
             d1 = r1.json()
@@ -107,10 +136,10 @@ async def discover_by_hashtag(
                 )
             hashtag_id = d1["data"][0]["id"]
 
-            # Step 2: top/recent media
-            r2 = await client.get(f"{INSTAGRAM_GRAPH}/{hashtag_id}/{edge}", params={
+            # Step 2: top/recent media + username creator (FB Graph kasih ini)
+            r2 = await client.get(f"{base}/{hashtag_id}/{edge}", params={
                 "user_id": ig_user_id,
-                "fields": "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count",
+                "fields": "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count,username",
                 "access_token": token,
             })
             d2 = r2.json()
@@ -125,11 +154,7 @@ async def discover_by_hashtag(
         logger.warning("IG hashtag discovery HTTP error: %s", exc)
         raise HTTPException(status_code=502, detail="Gagal hubungi Instagram")
 
-    # IG public hashtag API tidak ngembaliin username creator (cuma media).
-    # Jadi hasil ini = list MEDIA, bukan creator. User klik permalink buat
-    # buka post → dari post bisa lihat siapa yg posting → manual tambah ke pool.
-    # NOTE: Limitation IG API: hashtag endpoint tidak punya field `username`
-    # untuk privacy reason. User harus buka link IG manual.
+    # FB Graph kasih `username` creator (beda dgn IG Graph yg di-redact).
     items = [
         {
             "id": str(m.get("id")),
@@ -141,6 +166,7 @@ async def discover_by_hashtag(
             "timestamp": m.get("timestamp"),
             "like_count": m.get("like_count"),
             "comments_count": m.get("comments_count"),
+            "username": m.get("username"),
         }
         for m in media_items
     ]
@@ -149,11 +175,6 @@ async def discover_by_hashtag(
         "hashtag_id": hashtag_id,
         "count": len(items),
         "items": items,
-        "note": (
-            "IG gak expose username creator di public hashtag API (privacy). "
-            "Klik permalink buka post di IG → lihat creator-nya → manual "
-            "tambah ke pool via tombol 'Tambah ke Pool'."
-        ),
     }
 
 
@@ -189,8 +210,18 @@ async def discover_marketplace(
     """
     await _require_org_member(db, org_id, current_user)
     acc = await _get_ig_account(db, org_id, data.account_id)
+    if (acc.auth_type or "ig_business") != "fb_page":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Marketplace Discovery butuh akun connected via Facebook Login. "
+                "Re-connect akun ini lewat tombol 'Hubungkan via Facebook' "
+                "di halaman Sosmed."
+            ),
+        )
+    base = _ig_api_base(acc)
+    token = _ig_token(acc)
     ig_user_id = acc.external_id
-    token = acc.access_token
 
     # Build query params buat Marketplace search.
     params = {
@@ -210,10 +241,8 @@ async def discover_marketplace(
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            # Edge ini berdasar Meta docs Creator Marketplace API. Kalau
-            # endpoint berubah, perlu update sesuai docs terbaru.
             r = await client.get(
-                f"{INSTAGRAM_GRAPH}/{ig_user_id}/creator_marketplace_search",
+                f"{base}/{ig_user_id}/creator_marketplace_search",
                 params=params,
             )
             d = r.json()
