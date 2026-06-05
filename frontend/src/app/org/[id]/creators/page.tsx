@@ -6,7 +6,7 @@ import api from "@/lib/api";
 import {
   Star, Plus, Search, Filter, Loader2, X, ExternalLink, Trash2,
   Edit2, Phone, Mail, MessageCircle, MapPin, Users, Calendar as CalIcon,
-  Wallet, TrendingUp,
+  Wallet, TrendingUp, Compass, Hash, Heart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Modal from "@/components/ui/Modal";
@@ -117,6 +117,7 @@ const emptyForm = (): Partial<Creator> => ({
 
 export default function CreatorPoolPage() {
   const { id: orgId } = useParams();
+  const [tab, setTab] = useState<"pool" | "discovery">("pool");
   const [creators, setCreators] = useState<Creator[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -254,10 +255,48 @@ export default function CreatorPoolPage() {
         </div>
         <p className="text-muted-foreground">
           Catatan internal MEDBER — kontak creator/influencer yang pernah/calon kerja sama.
-          Input manual, lalu tracking campaign per orang.
+          Input manual, lalu tracking campaign per orang. Tab <strong>Discovery</strong> buat scout creator baru.
         </p>
       </div>
 
+      {/* Tab nav */}
+      <div className="flex items-center gap-1 border-b border-border">
+        <button
+          onClick={() => setTab("pool")}
+          className={cn(
+            "inline-flex items-center gap-2 px-4 py-2.5 text-sm font-bold border-b-2 transition-all",
+            tab === "pool"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <Star className="w-4 h-4" /> Pool ({stats.total})
+        </button>
+        <button
+          onClick={() => setTab("discovery")}
+          className={cn(
+            "inline-flex items-center gap-2 px-4 py-2.5 text-sm font-bold border-b-2 transition-all",
+            tab === "discovery"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <Compass className="w-4 h-4" /> Discovery
+        </button>
+      </div>
+
+      {tab === "discovery" ? (
+        <DiscoveryView
+          orgId={orgId as string}
+          onAddToPool={(prefilled) => {
+            setEditing(null);
+            setForm({ ...emptyForm(), ...prefilled });
+            setModalOpen(true);
+            setTab("pool");  // setelah modal kebuka, balik ke pool
+          }}
+        />
+      ) : (
+        <>
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatCard icon={Users} label="Total Creator" value={stats.total} />
@@ -355,6 +394,8 @@ export default function CreatorPoolPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {creators.map((c) => <CreatorCard key={c.id} c={c} onClick={() => openDetail(c)} onEdit={() => openEdit(c)} onDelete={() => deleteCreator(c)} />)}
         </div>
+      )}
+        </>
       )}
 
       {/* Add/Edit Modal */}
@@ -851,6 +892,419 @@ function CampaignRow({ cc, orgId, creatorId, onEdit, onUpdated, onDeleted }: {
     </div>
   );
 }
+
+// ─── Discovery View ────────────────────────────────────────────────────────
+
+interface HashtagItem {
+  id: string;
+  caption: string;
+  media_type: string | null;
+  media_url: string | null;
+  thumbnail_url: string | null;
+  permalink: string | null;
+  timestamp: string | null;
+  like_count: number | null;
+  comments_count: number | null;
+}
+
+interface MarketplaceItem {
+  ig_username: string;
+  display_name: string | null;
+  follower_count: number | null;
+  avatar_url: string | null;
+  biography: string | null;
+  media_count: number | null;
+}
+
+function DiscoveryView({ orgId, onAddToPool }: { orgId: string; onAddToPool: (prefilled: Partial<Creator>) => void }) {
+  const [mode, setMode] = useState<"hashtag" | "marketplace" | "quick">("hashtag");
+  return (
+    <div className="space-y-4">
+      {/* Sub-tab nav */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {([
+          { key: "hashtag" as const, label: "Hashtag Search", icon: Hash, desc: "Cari post via hashtag — paling kerasa" },
+          { key: "marketplace" as const, label: "IG Marketplace", icon: Compass, desc: "API resmi Meta — adoption tipis di Indonesia" },
+          { key: "quick" as const, label: "Quick Scout", icon: ExternalLink, desc: "Link cepat ke IG buat manual scout" },
+        ]).map((t) => {
+          const Icon = t.icon;
+          const active = mode === t.key;
+          return (
+            <button
+              key={t.key}
+              onClick={() => setMode(t.key)}
+              className={cn(
+                "inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold border transition-all",
+                active ? "bg-primary text-primary-foreground border-primary shadow-md" : "bg-card border-border text-muted-foreground hover:bg-secondary/50"
+              )}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              <span>{t.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {mode === "hashtag" && <HashtagDiscovery orgId={orgId} onAddToPool={onAddToPool} />}
+      {mode === "marketplace" && <MarketplaceDiscovery orgId={orgId} onAddToPool={onAddToPool} />}
+      {mode === "quick" && <QuickScout onAddToPool={onAddToPool} />}
+    </div>
+  );
+}
+
+function HashtagDiscovery({ orgId, onAddToPool }: { orgId: string; onAddToPool: (p: Partial<Creator>) => void }) {
+  const [hashtag, setHashtag] = useState("");
+  const [searchMode, setSearchMode] = useState<"top" | "recent">("top");
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState<HashtagItem[] | null>(null);
+  const [note, setNote] = useState<string>("");
+  const [error, setError] = useState<string>("");
+
+  const search = async () => {
+    const tag = hashtag.trim().replace(/^#/, "").toLowerCase();
+    if (!tag) return;
+    setLoading(true); setError(""); setResults(null);
+    try {
+      const res = await api.post(`/organizations/${orgId}/creators/discover/hashtag`, {
+        hashtag: tag, mode: searchMode,
+      });
+      setResults(res.data.items || []);
+      setNote(res.data.note || "");
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || "Gagal cari hashtag");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="p-4 rounded-2xl border border-border bg-card space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <input
+              value={hashtag}
+              onChange={(e) => setHashtag(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); search(); } }}
+              placeholder="hashtag (tanpa #), mis. kulinerjkt, foodjakarta, bandungkuliner"
+              className="w-full pl-9 pr-3 py-2 rounded-xl border border-border bg-background text-sm"
+            />
+          </div>
+          <select value={searchMode} onChange={(e) => setSearchMode(e.target.value as any)} className="px-3 py-2 rounded-xl border border-border bg-background text-xs font-semibold">
+            <option value="top">Top Posts</option>
+            <option value="recent">Recent</option>
+          </select>
+          <button onClick={search} disabled={loading || !hashtag.trim()} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold disabled:opacity-40 hover:opacity-90">
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} Cari
+          </button>
+        </div>
+        <div className="text-[10px] text-muted-foreground italic leading-snug">
+          ⓘ IG <strong>gak expose username creator</strong> di public hashtag API (privacy). Hasil = post-post yg ke-tag hashtag itu. Klik permalink buka post → liat creator-nya di IG → klik <strong>"+ Tambah ke Pool"</strong> buat catat.
+        </div>
+      </div>
+
+      {error && (
+        <div className="p-3 rounded-xl bg-destructive/10 border border-destructive text-xs text-destructive">{error}</div>
+      )}
+
+      {loading && (
+        <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+      )}
+
+      {results && !loading && (
+        results.length === 0 ? (
+          <div className="text-center py-8 text-xs text-muted-foreground italic">Gak ada post buat hashtag itu.</div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">{results.length} post ditemukan</p>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {results.map((m) => (
+                <div key={m.id} className="rounded-xl border border-border bg-card overflow-hidden group">
+                  <a href={m.permalink || "#"} target="_blank" rel="noopener noreferrer" className="block aspect-square bg-secondary relative">
+                    {m.thumbnail_url ? (
+                      <img src={m.thumbnail_url} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-muted-foreground">No image</div>
+                    )}
+                    <div className="absolute inset-0 bg-black/0 hover:bg-black/40 transition-colors flex items-center justify-center opacity-0 hover:opacity-100">
+                      <ExternalLink className="w-6 h-6 text-white" />
+                    </div>
+                  </a>
+                  <div className="p-2 space-y-1.5">
+                    <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                      <Heart className="w-2.5 h-2.5" /> {(m.like_count || 0).toLocaleString("id-ID")}
+                      <MessageCircle className="w-2.5 h-2.5" /> {(m.comments_count || 0).toLocaleString("id-ID")}
+                    </div>
+                    <p className="text-[10px] text-foreground line-clamp-2">{m.caption || <span className="italic text-muted-foreground">(tanpa caption)</span>}</p>
+                    <a
+                      href={m.permalink || "#"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-[10px] font-bold text-primary hover:underline"
+                    >
+                      <ExternalLink className="w-2.5 h-2.5" /> Buka post → catat creator
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* Manual add box di bawah grid */}
+            <div className="mt-4 p-3 rounded-xl border-2 border-dashed border-primary/40 bg-primary/5">
+              <p className="text-xs font-bold text-foreground mb-1">Setelah lihat creator yg menarik:</p>
+              <p className="text-[10px] text-muted-foreground mb-2">Catat manual ke pool — username + info dasar dulu, detail bisa di-edit nanti.</p>
+              <ManualQuickAdd onAdd={onAddToPool} />
+            </div>
+          </>
+        )
+      )}
+    </div>
+  );
+}
+
+function MarketplaceDiscovery({ orgId, onAddToPool }: { orgId: string; onAddToPool: (p: Partial<Creator>) => void }) {
+  const [filters, setFilters] = useState<{ audience_country?: string; audience_city?: string; follower_min?: string; follower_max?: string; interests?: string }>({
+    audience_country: "ID", audience_city: "", follower_min: "", follower_max: "", interests: "",
+  });
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState<MarketplaceItem[] | null>(null);
+  const [error, setError] = useState<string>("");
+
+  const search = async () => {
+    setLoading(true); setError(""); setResults(null);
+    try {
+      const payload: any = {
+        audience_country: filters.audience_country || null,
+        audience_city: filters.audience_city || null,
+        follower_min: filters.follower_min ? parseInt(filters.follower_min, 10) : null,
+        follower_max: filters.follower_max ? parseInt(filters.follower_max, 10) : null,
+        interests: filters.interests ? filters.interests.split(",").map((s) => s.trim()).filter(Boolean) : null,
+      };
+      const res = await api.post(`/organizations/${orgId}/creators/discover/marketplace`, payload);
+      setResults(res.data.items || []);
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || "Gagal akses Marketplace API");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800">
+        <p className="text-[10px] text-amber-900 dark:text-amber-100 leading-snug">
+          <strong>⚠ Realita Indonesia 2026:</strong> Creator Marketplace IG adoption masih tipis.
+          Search-nya bisa return 0-50 hasil aja, dan butuh App Review Meta yg approve scope
+          <code className="px-1 bg-amber-200/50 dark:bg-amber-800/50 rounded text-[9px]">instagram_creator_marketplace_discovery</code>.
+          Kalau gagal, error message akan jelasin apa yg perlu di-set up.
+        </p>
+      </div>
+
+      <div className="p-4 rounded-2xl border border-border bg-card grid grid-cols-2 sm:grid-cols-3 gap-2">
+        <div>
+          <label className="text-[10px] uppercase tracking-widest font-extrabold text-muted-foreground">Country</label>
+          <input value={filters.audience_country || ""} onChange={(e) => setFilters({ ...filters, audience_country: e.target.value.toUpperCase().slice(0, 2) })} placeholder="ID" className="w-full mt-1 px-3 py-2 rounded-lg border border-border bg-background text-sm uppercase" maxLength={2} />
+        </div>
+        <div>
+          <label className="text-[10px] uppercase tracking-widest font-extrabold text-muted-foreground">City</label>
+          <input value={filters.audience_city || ""} onChange={(e) => setFilters({ ...filters, audience_city: e.target.value })} placeholder="Jakarta" className="w-full mt-1 px-3 py-2 rounded-lg border border-border bg-background text-sm" />
+        </div>
+        <div>
+          <label className="text-[10px] uppercase tracking-widest font-extrabold text-muted-foreground">Interests</label>
+          <input value={filters.interests || ""} onChange={(e) => setFilters({ ...filters, interests: e.target.value })} placeholder="food, beauty" className="w-full mt-1 px-3 py-2 rounded-lg border border-border bg-background text-sm" />
+        </div>
+        <div>
+          <label className="text-[10px] uppercase tracking-widest font-extrabold text-muted-foreground">Follower Min</label>
+          <input type="number" value={filters.follower_min || ""} onChange={(e) => setFilters({ ...filters, follower_min: e.target.value })} placeholder="10000" className="w-full mt-1 px-3 py-2 rounded-lg border border-border bg-background text-sm tabular-nums" />
+        </div>
+        <div>
+          <label className="text-[10px] uppercase tracking-widest font-extrabold text-muted-foreground">Follower Max</label>
+          <input type="number" value={filters.follower_max || ""} onChange={(e) => setFilters({ ...filters, follower_max: e.target.value })} placeholder="500000" className="w-full mt-1 px-3 py-2 rounded-lg border border-border bg-background text-sm tabular-nums" />
+        </div>
+        <div className="flex items-end">
+          <button onClick={search} disabled={loading} className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold disabled:opacity-40 hover:opacity-90">
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} Cari Marketplace
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="p-3 rounded-xl bg-destructive/10 border border-destructive text-xs text-destructive whitespace-pre-wrap">{error}</div>
+      )}
+
+      {results && !loading && (
+        results.length === 0 ? (
+          <div className="text-center py-8 text-xs text-muted-foreground italic">Gak ada creator match filter ini. Coba lebarkan kriteria.</div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {results.map((m) => (
+              <div key={m.ig_username} className="rounded-xl border border-border bg-card p-3 space-y-2">
+                <div className="flex items-start gap-2">
+                  <div className="w-10 h-10 rounded-full bg-secondary border border-border overflow-hidden flex items-center justify-center text-sm font-bold">
+                    {m.avatar_url ? <img src={m.avatar_url} alt="" className="w-full h-full object-cover" /> : (m.display_name || m.ig_username).charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold truncate">{m.display_name || `@${m.ig_username}`}</p>
+                    <a href={`https://instagram.com/${m.ig_username}/`} target="_blank" rel="noopener noreferrer" className="text-[10px] text-muted-foreground hover:text-primary inline-flex items-center gap-0.5 truncate">
+                      @{m.ig_username} <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
+                    {m.follower_count != null && (
+                      <p className="text-[10px] font-semibold text-muted-foreground mt-0.5">{fmtFollower(m.follower_count)} followers</p>
+                    )}
+                  </div>
+                </div>
+                {m.biography && <p className="text-[10px] text-foreground line-clamp-2">{m.biography}</p>}
+                <button
+                  onClick={() => onAddToPool({
+                    ig_username: m.ig_username,
+                    display_name: m.display_name || "",
+                    avatar_url: m.avatar_url || "",
+                    follower_count: m.follower_count || undefined,
+                    notes: m.biography || "",
+                  })}
+                  className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:opacity-90"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Tambah ke Pool
+                </button>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
+function QuickScout({ onAddToPool }: { onAddToPool: (p: Partial<Creator>) => void }) {
+  const [hashtag, setHashtag] = useState("");
+  const [location, setLocation] = useState("");
+  const [username, setUsername] = useState("");
+
+  return (
+    <div className="space-y-4">
+      <div className="p-3 rounded-xl bg-sky-50 dark:bg-sky-950/30 border border-sky-300 dark:border-sky-800">
+        <p className="text-[10px] text-sky-900 dark:text-sky-100 leading-snug">
+          <strong>💡 Quick Scout</strong> — gak pakai API, buka IG langsung di tab baru.
+          Best buat scout cepat lewat search IG natively. Setelah ketemu creator menarik, paste username di kotak bawah → langsung tambah ke Pool.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="p-3 rounded-xl border border-border bg-card space-y-2">
+          <p className="text-[10px] uppercase tracking-widest font-extrabold text-muted-foreground flex items-center gap-1"><Hash className="w-3 h-3" /> Search Hashtag</p>
+          <input
+            value={hashtag}
+            onChange={(e) => setHashtag(e.target.value)}
+            placeholder="kulinerjkt"
+            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm"
+            onKeyDown={(e) => { if (e.key === "Enter" && hashtag.trim()) window.open(`https://instagram.com/explore/tags/${encodeURIComponent(hashtag.trim().replace(/^#/, ""))}/`, "_blank"); }}
+          />
+          <a
+            href={hashtag.trim() ? `https://instagram.com/explore/tags/${encodeURIComponent(hashtag.trim().replace(/^#/, ""))}/` : "#"}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={cn("w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all", hashtag.trim() ? "bg-primary text-primary-foreground hover:opacity-90" : "bg-secondary text-muted-foreground cursor-not-allowed")}
+          >
+            <ExternalLink className="w-3.5 h-3.5" /> Buka di IG
+          </a>
+        </div>
+
+        <div className="p-3 rounded-xl border border-border bg-card space-y-2">
+          <p className="text-[10px] uppercase tracking-widest font-extrabold text-muted-foreground flex items-center gap-1"><MapPin className="w-3 h-3" /> Search Lokasi</p>
+          <input
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            placeholder="Jakarta / Bandung / Bali"
+            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm"
+          />
+          <a
+            href={location.trim() ? `https://www.instagram.com/explore/search/keyword/?q=${encodeURIComponent(location.trim())}` : "#"}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={cn("w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all", location.trim() ? "bg-primary text-primary-foreground hover:opacity-90" : "bg-secondary text-muted-foreground cursor-not-allowed")}
+          >
+            <ExternalLink className="w-3.5 h-3.5" /> Buka di IG
+          </a>
+        </div>
+
+        <div className="p-3 rounded-xl border border-border bg-card space-y-2">
+          <p className="text-[10px] uppercase tracking-widest font-extrabold text-muted-foreground flex items-center gap-1"><Users className="w-3 h-3" /> Cek Username</p>
+          <input
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="username (tanpa @)"
+            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm"
+          />
+          <a
+            href={username.trim() ? `https://instagram.com/${encodeURIComponent(username.trim().replace(/^@/, ""))}/` : "#"}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={cn("w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all", username.trim() ? "bg-primary text-primary-foreground hover:opacity-90" : "bg-secondary text-muted-foreground cursor-not-allowed")}
+          >
+            <ExternalLink className="w-3.5 h-3.5" /> Buka Profil
+          </a>
+        </div>
+      </div>
+
+      {/* Hashtag suggestions */}
+      <div className="p-3 rounded-xl border border-border bg-card">
+        <p className="text-[10px] uppercase tracking-widest font-extrabold text-muted-foreground mb-2">Hashtag populer scout (klik buat buka di IG):</p>
+        <div className="flex flex-wrap gap-1.5">
+          {[
+            "kulinerjkt", "foodjakarta", "foodbloggerjkt", "kulinerbandung", "bandungfoodie",
+            "fashionjakarta", "ootdjkt", "skincareindonesia", "beautyindo", "makeupindo",
+            "techindonesia", "gamerindo", "travelinindonesia", "exploreindonesia",
+            "parentingid", "fitnessindo", "olshopjakarta", "umkmindonesia",
+          ].map((h) => (
+            <a
+              key={h}
+              href={`https://instagram.com/explore/tags/${h}/`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-secondary text-foreground text-xs font-semibold hover:bg-primary hover:text-primary-foreground transition-all"
+            >
+              <Hash className="w-2.5 h-2.5" />{h}
+            </a>
+          ))}
+        </div>
+      </div>
+
+      {/* Quick add */}
+      <div className="p-4 rounded-2xl border-2 border-dashed border-primary/40 bg-primary/5">
+        <p className="text-sm font-bold text-foreground mb-1">Setelah scout & ketemu creator menarik:</p>
+        <p className="text-[10px] text-muted-foreground mb-2">Tambah cepat ke pool — detail bisa di-edit nanti.</p>
+        <ManualQuickAdd onAdd={onAddToPool} />
+      </div>
+    </div>
+  );
+}
+
+function ManualQuickAdd({ onAdd }: { onAdd: (p: Partial<Creator>) => void }) {
+  const [val, setVal] = useState("");
+  const submit = () => {
+    const u = val.trim().replace(/^@/, "");
+    if (!u) return;
+    onAdd({ ig_username: u });
+    setVal("");
+  };
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } }}
+        placeholder="username (tanpa @)"
+        className="flex-1 px-3 py-2 rounded-lg border border-border bg-background text-sm"
+      />
+      <button onClick={submit} disabled={!val.trim()} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold disabled:opacity-40 hover:opacity-90">
+        <Plus className="w-3.5 h-3.5" /> Tambah ke Pool
+      </button>
+    </div>
+  );
+}
+
 
 function CampaignFormModal({
   orgId, creatorId, editing, onClose, onSaved,

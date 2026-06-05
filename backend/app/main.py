@@ -722,6 +722,8 @@ from app.api import brands as brands_api
 app.include_router(brands_api.router, prefix="/api")
 from app.api import creators as creators_api
 app.include_router(creators_api.router, prefix="/api")
+from app.api import creators_discovery as creators_discovery_api
+app.include_router(creators_discovery_api.router, prefix="/api")
 app.include_router(comments.router, prefix="/api")
 app.include_router(subtasks.router, prefix="/api")
 app.include_router(labels.router, prefix="/api")

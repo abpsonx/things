@@ -37,6 +37,11 @@ INSTAGRAM_GRAPH = "https://graph.instagram.com"
 INSTAGRAM_SCOPES = (
     "instagram_business_basic,instagram_business_manage_insights,"
     "instagram_business_manage_comments,instagram_business_manage_messages"
+    # Catatan: hashtag search (Opsi 2) udah covered di scope di atas.
+    # Creator Marketplace Discovery (Opsi 1) butuh scope
+    # `instagram_creator_marketplace_discovery` + App Review Meta yg approve
+    # use case kita. Setelah App Review jalan, tambah scope di sini & user
+    # re-connect.
 )
 
 router = APIRouter(prefix="/organizations/{org_id}/sosmed", tags=["Social Media"])
